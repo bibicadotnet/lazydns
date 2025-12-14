@@ -1,0 +1,331 @@
+//! RouterOS address list plugin
+//!
+//! Adds matched IPs to RouterOS address lists (stub implementation)
+
+use crate::plugin::{Context, Plugin};
+use crate::Result;
+use async_trait::async_trait;
+use reqwest::StatusCode;
+use serde_json::json;
+use std::fmt;
+use std::net::IpAddr;
+use std::time::Duration;
+use tracing::{debug, error, info};
+
+/// Plugin that manages RouterOS address lists
+///
+/// This is a stub implementation that logs address list operations.
+/// Full implementation would require RouterOS API integration.
+///
+/// # Example
+///
+/// ```rust
+/// use lazydns::plugins::executable::RosAddrListPlugin;
+///
+/// let plugin = RosAddrListPlugin::new("blocked_ips");
+/// ```
+pub struct RosAddrListPlugin {
+    /// Address list name in RouterOS
+    list_name: String,
+    /// Whether to add IPs from query responses
+    track_responses: bool,
+    /// Optional HTTP endpoint to call for adding IPs (e.g., a helper service)
+    server: Option<String>,
+    /// Optional basic auth user
+    user: Option<String>,
+    /// Optional basic auth password
+    passwd: Option<String>,
+    /// IPv4 mask to apply when adding (e.g., 24)
+    mask4: Option<u8>,
+    /// IPv6 mask to apply when adding (e.g., 32)
+    mask6: Option<u8>,
+    // client: Option<Client>,
+}
+
+impl RosAddrListPlugin {
+    /// Create a new RouterOS address list plugin
+    pub fn new(list_name: impl Into<String>) -> Self {
+        Self {
+            list_name: list_name.into(),
+            track_responses: true,
+            server: None,
+            user: None,
+            passwd: None,
+            mask4: None,
+            mask6: None,
+        }
+    }
+
+    /// Set whether to track response IPs
+    pub fn track_responses(mut self, enabled: bool) -> Self {
+        self.track_responses = enabled;
+        self
+    }
+
+    /// Set an HTTP helper server to notify when adding addresses
+    pub fn with_server(mut self, server: impl Into<String>) -> Self {
+        self.server = Some(server.into());
+        self
+    }
+
+    /// Set basic auth credentials for the HTTP helper
+    pub fn with_auth(mut self, user: impl Into<String>, passwd: impl Into<String>) -> Self {
+        self.user = Some(user.into());
+        self.passwd = Some(passwd.into());
+        self
+    }
+
+    /// Configure masks for IPv4 and IPv6 when adding single IPs
+    pub fn with_masks(mut self, mask4: Option<u8>, mask6: Option<u8>) -> Self {
+        self.mask4 = mask4;
+        self.mask6 = mask6;
+        self
+    }
+
+    /// Set IPv4 mask
+    pub fn with_mask4(mut self, mask4: u8) -> Self {
+        self.mask4 = Some(mask4);
+        self
+    }
+
+    /// Set IPv6 mask
+    pub fn with_mask6(mut self, mask6: u8) -> Self {
+        self.mask6 = Some(mask6);
+        self
+    }
+
+    /// Extract IPs from response
+    fn extract_ips(&self, ctx: &Context) -> Vec<IpAddr> {
+        let mut ips = Vec::new();
+
+        if let Some(response) = ctx.response() {
+            for answer in response.answers() {
+                // Extract IP addresses from A and AAAA records
+                if let Some(ip) = self.extract_ip_from_rdata(answer.rdata()) {
+                    ips.push(ip);
+                }
+            }
+        }
+
+        ips
+    }
+
+    /// Extract IP from RData (simplified)
+    fn extract_ip_from_rdata(&self, rdata: &crate::dns::RData) -> Option<IpAddr> {
+        use crate::dns::RData;
+
+        match rdata {
+            RData::A(addr) => Some(IpAddr::V4(*addr)),
+            RData::AAAA(addr) => Some(IpAddr::V6(*addr)),
+            _ => None,
+        }
+    }
+
+    async fn notify_server(&self, ips: &[IpAddr], domain: &str) -> Result<()> {
+        // Build a fresh client with TLS accept invalid certs and 2s timeout
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .danger_accept_invalid_certs(true)
+            .build()
+            .map_err(|e| crate::Error::Other(format!("failed build http client: {}", e)))?;
+
+        if let Some(srv) = &self.server {
+            for ip in ips {
+                let v6 = matches!(ip, IpAddr::V6(_));
+                let kind = if v6 { "ipv6" } else { "ip" };
+                let router_url = format!(
+                    "{}/rest/{}/firewall/address-list/add",
+                    srv.trim_end_matches('/'),
+                    kind
+                );
+
+                let payload = json!({
+                    "address": ip.to_string(),
+                    "list": self.list_name,
+                    "comment": format!("[lazydns] domain: {}", domain),
+                });
+
+                let mut req = client.post(&router_url).json(&payload);
+                if let (Some(user), Some(pass)) = (&self.user, &self.passwd) {
+                    req = req.basic_auth(user, Some(pass));
+                }
+
+                let resp = req
+                    .send()
+                    .await
+                    .map_err(|e| crate::Error::Other(format!("http request failed: {}", e)))?;
+                match resp.status() {
+                    StatusCode::OK => {
+                        info!(ip = %ip, list = %self.list_name, domain = %domain, "added ip to ros addrlist")
+                    }
+                    StatusCode::BAD_REQUEST => {
+                        debug!(ip = %ip, list = %self.list_name, domain = %domain, "likely ip already exists")
+                    }
+                    StatusCode::UNAUTHORIZED => {
+                        return Err(crate::Error::Other(format!(
+                            "unauthorized when adding {}",
+                            ip
+                        )))
+                    }
+                    StatusCode::INTERNAL_SERVER_ERROR => {
+                        return Err(crate::Error::Other(format!(
+                            "internal server error when adding {}",
+                            ip
+                        )))
+                    }
+                    s => {
+                        return Err(crate::Error::Other(format!(
+                            "unexpected status code {} when adding {}",
+                            s, ip
+                        )))
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Debug for RosAddrListPlugin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RosAddrListPlugin")
+            .field("list_name", &self.list_name)
+            .field("track_responses", &self.track_responses)
+            .field("server", &self.server)
+            .field("user", &self.user)
+            .field("mask4", &self.mask4)
+            .field("mask6", &self.mask6)
+            .finish()
+    }
+}
+
+#[async_trait]
+impl Plugin for RosAddrListPlugin {
+    fn name(&self) -> &str {
+        "ros_addrlist"
+    }
+
+    async fn execute(&self, ctx: &mut Context) -> Result<()> {
+        if !self.track_responses {
+            return Ok(());
+        }
+
+        let ips = self.extract_ips(ctx);
+
+        if !ips.is_empty() {
+            info!(
+                list_name = %self.list_name,
+                ip_count = ips.len(),
+                ips = ?ips,
+                "RouterOS address list: would add IPs (stub implementation)"
+            );
+
+            // In a full implementation, this would:
+            // 1. Connect to RouterOS API
+            // 2. Add IPs to the specified address list
+            // 3. Handle errors and retries
+
+            // For now, just log the operation
+            for ip in &ips {
+                debug!(
+                    list_name = %self.list_name,
+                    ip = %ip,
+                    "Would add IP to RouterOS address list"
+                );
+            }
+
+            // If server is configured, notify helper endpoint (include query domain in comment)
+            let domain = if let Some(question) = ctx.request().questions().first() {
+                question.qname().trim_end_matches('.').to_string()
+            } else {
+                "".to_string()
+            };
+
+            if let Err(e) = self.notify_server(&ips, &domain).await {
+                error!(error = %e, domain = %domain, "Failed to notify RouterOS helper server");
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dns::types::{RecordClass, RecordType};
+    use crate::dns::{Message, RData, ResourceRecord};
+
+    #[tokio::test]
+    async fn test_ros_addrlist_extract_ips() {
+        let plugin = RosAddrListPlugin::new("test_list");
+
+        let mut ctx = Context::new(Message::new());
+        let mut response = Message::new();
+
+        response.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            RData::A("192.0.2.1".parse().unwrap()),
+        ));
+
+        response.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+            300,
+            RData::AAAA("2001:db8::1".parse().unwrap()),
+        ));
+
+        ctx.set_response(Some(response));
+
+        // Should extract IPs and log them
+        plugin.execute(&mut ctx).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_ros_addrlist_disabled() {
+        let plugin = RosAddrListPlugin::new("test_list").track_responses(false);
+
+        let mut ctx = Context::new(Message::new());
+        let mut response = Message::new();
+
+        response.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            RData::A("192.0.2.1".parse().unwrap()),
+        ));
+
+        ctx.set_response(Some(response));
+
+        // Should not process IPs
+        plugin.execute(&mut ctx).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_ros_addrlist_no_ips() {
+        let plugin = RosAddrListPlugin::new("test_list");
+
+        let mut ctx = Context::new(Message::new());
+        let mut response = Message::new();
+
+        // Add non-IP record
+        response.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::CNAME,
+            RecordClass::IN,
+            300,
+            RData::CNAME("target.example.com".to_string()),
+        ));
+
+        ctx.set_response(Some(response));
+
+        // Should not extract any IPs
+        plugin.execute(&mut ctx).await.unwrap();
+    }
+}

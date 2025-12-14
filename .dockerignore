@@ -1,0 +1,28 @@
+# Target directory
+target/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Examples and tests
+examples/
+tests/
+benches/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# CI/CD
+.github/
+
+# Temporary files
+*.tmp
+*.log

@@ -1,0 +1,2 @@
+full:main.vscode-cdn.net
+full:vscode.dev

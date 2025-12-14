@@ -1,0 +1,52 @@
+# lazydns Docker Compose configuration
+
+version: '3.8'
+
+services:
+  lazydns:
+    build: .
+    image: lazydns:latest
+    container_name: lazydns
+    
+    # Network configuration
+    ports:
+      - "53:53/udp"  # DNS UDP
+      - "53:53/tcp"  # DNS TCP
+      - "853:853/tcp" # DoT
+      - "443:443/tcp" # DoH
+    
+    # Volume mounts
+    volumes:
+      - ./config.yaml:/etc/lazydns/config.yaml:ro
+      - ./certs:/etc/lazydns/certs:ro
+      - lazydns-cache:/var/cache/lazydns
+    
+    # Environment variables
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 128M
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "-p", "53", "health.check"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  lazydns-cache:
+    driver: local

@@ -1,0 +1,76 @@
+use std::sync::Arc;
+
+#[tokio::test]
+async fn integration_sequence_save_hook() {
+    use lazydns::config::Config;
+    use lazydns::dns::types::{RecordClass, RecordType};
+    use lazydns::dns::{Message, Question, RData, ResourceRecord};
+    use lazydns::plugin::Context;
+    use lazydns::plugin::PluginBuilder;
+    use lazydns::plugins::advanced::{ArbitraryPlugin, SequencePlugin, SequenceStep};
+    use lazydns::plugins::executable::ReverseLookup;
+
+    // Use examples/etc as working directory and load its config
+    std::env::set_current_dir("examples/etc").expect("chdir examples/etc");
+    let cfg = Config::from_file("config.yaml").expect("load config");
+
+    // Build plugins from config
+    let mut builder = PluginBuilder::new();
+    for p in &cfg.plugins {
+        let _ = builder.build(p).expect("build plugin");
+    }
+    builder
+        .resolve_references(&cfg.plugins)
+        .expect("resolve refs");
+
+    // Get registry and register a ReverseLookup instance for testing
+    let mut registry = builder.get_registry();
+    let rl = Arc::new(ReverseLookup::quick_setup("64"));
+    registry.register_replace_with_name("reverse_lookup", rl.clone());
+
+    // Create an arbitrary response message that contains an A answer for example.com
+    let mut resp = Message::new();
+    resp.add_question(Question::new(
+        "example.com".to_string(),
+        RecordType::A,
+        RecordClass::IN,
+    ));
+    resp.add_answer(ResourceRecord::new(
+        "example.com".to_string(),
+        RecordType::A,
+        RecordClass::IN,
+        300,
+        RData::A("192.0.2.5".parse().unwrap()),
+    ));
+
+    // Build an ArbitraryPlugin that will set the response when executed
+    let arb = Arc::new(ArbitraryPlugin::new(resp.clone()));
+
+    // Sequence with single exec of arbitrary plugin
+    let seq = Arc::new(SequencePlugin::with_steps(vec![SequenceStep::Exec(arb)]));
+    registry.register_replace_with_name("it_sequence", seq.clone());
+
+    // Execute the sequence via the plugin interface
+    let mut ctx = Context::new(Message::new());
+    let plugin = registry.get("it_sequence").expect("sequence present");
+    plugin.execute(&mut ctx).await.expect("execute sequence");
+
+    // After sequence execution, call save_ips_after on reverse_lookup plugins
+    if ctx.has_response() {
+        let resp_ref = ctx.response().unwrap();
+        for name in registry.plugin_names() {
+            if let Some(p) = registry.get(&name) {
+                if p.name() == "reverse_lookup" {
+                    if let Some(rldown) = p.as_ref().as_any().downcast_ref::<ReverseLookup>() {
+                        rldown.save_ips_after(ctx.request(), resp_ref);
+                    }
+                }
+            }
+        }
+    }
+
+    // Verify the reverse lookup cache contains mapping for the IP
+    let ip = std::net::IpAddr::V4("192.0.2.5".parse().unwrap());
+    let got = rl.lookup_cached(&ip).expect("expected cached entry");
+    assert_eq!(got, "example.com");
+}

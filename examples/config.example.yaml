@@ -1,0 +1,39 @@
+# lazydns example configuration file
+# This is a work-in-progress configuration format
+# Full configuration documentation will be available as implementation progresses
+
+# Server configuration
+server:
+  # Listeners
+  listeners:
+    - protocol: udp
+      addr: "0.0.0.0:53"
+    - protocol: tcp
+      addr: "0.0.0.0:53"
+
+  # You may also use a shorthand address like ":5353" which is equivalent to
+  # "0.0.0.0:5353" for binding on all interfaces.
+    
+  # DoH listener (DNS over HTTPS)
+  # - protocol: doh
+  #   addr: "0.0.0.0:443"
+  #   tls:
+  #     cert: "/path/to/cert.pem"
+  #     key: "/path/to/key.pem"
+
+# Log configuration
+log:
+  level: info
+  format: text  # or json
+
+# Plugin execution flow
+# plugins:
+#   - tag: forward
+#     type: forward
+#     args:
+#       upstreams:
+#         - addr: "8.8.8.8:53"
+#         - addr: "1.1.1.1:53"
+
+# Note: This is a placeholder configuration
+# The actual configuration format will be finalized during Phase 4 (Configuration System)

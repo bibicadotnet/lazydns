@@ -1,0 +1,33 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+*.profraw
+*.profdata
+/coverage/
+cobertura.xml
+
+# Logs
+*.log
+
+# Config (local overrides)
+config.local.yaml
+*.local.yaml
+
+# Data files
+/data/
+*.dat
+*.mmdb
+
+# Temporary files
+/tmp/

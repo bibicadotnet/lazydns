@@ -1,0 +1,94 @@
+# Simple LazyDNS configuration for testing
+log:
+  level: info
+
+plugins:
+  # DNS Cache
+  - tag: cache
+    type: cache
+    args:
+      size: 1024
+
+  # Forward to local DNS
+  - tag: forward_local
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - udp://119.29.29.29
+        - udp://223.5.5.5
+
+  # Forward to remote DNS
+  - tag: forward_remote
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - tcp://8.8.8.8
+        - tcp://1.1.1.1
+
+  # Custom hosts with auto-reload
+  - tag: hosts
+    type: hosts
+    args:
+      auto_reload: true
+      files:
+        - "hosts.txt"
+        - "hosts-github.txt"
+
+  # CN domain list with auto-reload
+  - tag: cn-domain-list
+    type: domain_set
+    args:
+      auto_reload: true
+      files:
+        - direct-list.txt
+        - apple-cn.txt
+
+  # GFW domain list with auto-reload
+  - tag: gfw-domain-list
+    type: domain_set
+    args:
+      auto_reload: true
+      files:
+        - proxy-list.txt
+
+  # Ad domain list with auto-reload
+  - tag: ad-domain-list
+    type: domain_set
+    args:
+      auto_reload: true
+      files:
+        - reject-list.txt
+
+  # China IP list with auto-reload
+  - tag: local_ip
+    type: ip_set
+    args:
+      auto_reload: true
+      files:
+        - china-ip-list.txt
+        - white-ip-list.txt
+
+  # Main sequence (simplified)
+  - tag: main_sequence
+    type: sequence
+    args:
+      plugins:
+        - cache
+        - hosts
+        - forward_local
+
+  # Start UDP server
+  - tag: udp_server
+    type: udp_server
+    args:
+      listen: "0.0.0.0:5353"
+      entry: main_sequence
+
+  # Start TCP server
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      listen: "0.0.0.0:5353"
+      entry: main_sequence
