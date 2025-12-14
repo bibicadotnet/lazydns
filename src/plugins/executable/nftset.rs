@@ -168,12 +168,11 @@ impl Plugin for NftSetPlugin {
                             match status {
                                 Ok(s) if s.success() => {}
                                 Ok(s) => {
-                                    return Err(crate::Error::Other(format!(
-                                        "nft command failed: {}",
-                                        s
-                                    )));
+                                    tracing::warn!(table = %table, set = %set_name, prefix = %prefix, status = ?s, "nft command returned non-zero exit status, continuing");
                                 }
-                                Err(e) => return Err(crate::Error::Io(e)),
+                                Err(e) => {
+                                    tracing::warn!(table = %table, set = %set_name, prefix = %prefix, error = %e, "failed to spawn nft command, continuing");
+                                }
                             }
                         }
                     }
@@ -196,12 +195,11 @@ impl Plugin for NftSetPlugin {
                             match status {
                                 Ok(s) if s.success() => {}
                                 Ok(s) => {
-                                    return Err(crate::Error::Other(format!(
-                                        "nft command failed: {}",
-                                        s
-                                    )));
+                                    tracing::warn!(table = %table, set = %set_name, prefix = %prefix, status = ?s, "nft command returned non-zero exit status, continuing");
                                 }
-                                Err(e) => return Err(crate::Error::Io(e)),
+                                Err(e) => {
+                                    tracing::warn!(table = %table, set = %set_name, prefix = %prefix, error = %e, "failed to spawn nft command, continuing");
+                                }
                             }
                         }
                     }

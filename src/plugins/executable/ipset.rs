@@ -165,13 +165,10 @@ impl Plugin for IpSetPlugin {
                     match status {
                         Ok(s) if s.success() => {}
                         Ok(s) => {
-                            return Err(crate::Error::Other(format!(
-                                "ipset command failed: {}",
-                                s
-                            )));
+                            tracing::warn!(set = %set_name, cidr = %cidr, status = ?s, "ipset command returned non-zero exit status, continuing");
                         }
                         Err(e) => {
-                            return Err(crate::Error::Io(e));
+                            tracing::warn!(set = %set_name, cidr = %cidr, error = %e, "failed to spawn ipset command, continuing");
                         }
                     }
                 }
