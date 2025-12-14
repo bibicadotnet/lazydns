@@ -21,7 +21,7 @@ impl ExecCache {
         }
     }
 
-    /// Quick setup from string like the upstream: "[size]"
+    /// Quick setup from string like the upstream: `[size]`
     pub fn quick_setup(s: &str) -> Result<Self> {
         let size = if s.is_empty() {
             1024

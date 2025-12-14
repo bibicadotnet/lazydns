@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! // Example will be added as implementation progresses
+//! # fn main() { let _ = (); }
 //! ```
 
 #![allow(missing_docs)]
