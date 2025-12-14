@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [ master ]
     paths:
@@ -44,7 +45,7 @@ jobs:
         rust: [stable, beta]
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install system packages on Linux (ipset/nftables)
         if: runner.os == 'Linux'
         run: |
