@@ -11,6 +11,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
+use reqwest::Client as HttpClient;
 use tokio::time::{timeout, Duration, Instant};
 use tracing::{debug, error, warn};
 
@@ -446,7 +447,12 @@ impl ForwardPlugin {
     async fn forward_query(&self, request: &Message, upstream: &str) -> Result<Message> {
         debug!("Forwarding query to upstream: {}", upstream);
 
-        // Parse upstream address
+        // If upstream looks like an HTTP URL, use DoH (HTTP POST application/dns-message)
+        if upstream.starts_with("http://") || upstream.starts_with("https://") {
+            return self.forward_query_doh(request, upstream).await;
+        }
+
+        // Otherwise treat as a UDP/TCP socket address (legacy)
         let upstream_addr = SocketAddr::from_str(upstream)
             .map_err(|e| crate::Error::Config(format!("Invalid upstream address: {}", e)))?;
 
@@ -514,6 +520,39 @@ impl ForwardPlugin {
                 return Err(e);
             }
         };
+
+        Ok(response)
+    }
+
+    /// Forward a query using DNS over HTTPS (DoH) via HTTP POST with content-type application/dns-message
+    async fn forward_query_doh(&self, request: &Message, upstream_url: &str) -> Result<Message> {
+        debug!("Forwarding query over DoH to {}", upstream_url);
+
+        let client = HttpClient::builder()
+            .build()
+            .map_err(|e| crate::Error::Other(e.to_string()))?;
+
+        let request_data = Self::serialize_message(request)?;
+
+        let resp = client
+            .post(upstream_url)
+            .header("Content-Type", "application/dns-message")
+            .body(request_data)
+            .send()
+            .await
+            .map_err(|e| crate::Error::Other(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            return Err(crate::Error::Other(format!("HTTP DoH upstream returned error: {}", resp.status())));
+        }
+
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| crate::Error::Other(e.to_string()))?;
+
+        let response = Self::parse_message(&bytes)
+            .map_err(|e| crate::Error::Other(e.to_string()))?;
 
         Ok(response)
     }
