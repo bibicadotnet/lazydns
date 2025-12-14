@@ -45,6 +45,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Install system packages on Linux (ipset/nftables)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ipset nftables iproute2 iptables pkg-config libpcap-dev libnftnl11 libnftables1
+      
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
@@ -94,6 +100,11 @@ jobs:
         run: |
           rustup component add llvm-tools-preview
           cargo install cargo-llvm-cov
+
+      - name: Install system packages for coverage (ipset/nftables)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ipset nftables iproute2 iptables pkg-config libpcap-dev libnftnl11 libnftables1
       
       - name: Generate coverage report (llvm-cov)
         run: |
