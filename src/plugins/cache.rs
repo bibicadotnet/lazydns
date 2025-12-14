@@ -67,7 +67,13 @@ impl CacheEntry {
 
     /// Check if this entry has expired
     fn is_expired(&self) -> bool {
-        self.cached_at.elapsed() > Duration::from_secs(self.ttl as u64)
+        // Entries with a TTL of 0 should be considered expired immediately.
+        if self.ttl == 0 {
+            return true;
+        }
+
+        // Use >= to avoid timing races where elapsed may equal the TTL.
+        self.cached_at.elapsed() >= Duration::from_secs(self.ttl as u64)
     }
 
     /// Update last accessed time
