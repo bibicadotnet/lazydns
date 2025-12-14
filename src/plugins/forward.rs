@@ -6,12 +6,12 @@ use crate::dns::Message;
 use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
+use reqwest::Client as HttpClient;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use reqwest::Client as HttpClient;
 use tokio::time::{timeout, Duration, Instant};
 use tracing::{debug, error, warn};
 
@@ -543,7 +543,10 @@ impl ForwardPlugin {
             .map_err(|e| crate::Error::Other(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(crate::Error::Other(format!("HTTP DoH upstream returned error: {}", resp.status())));
+            return Err(crate::Error::Other(format!(
+                "HTTP DoH upstream returned error: {}",
+                resp.status()
+            )));
         }
 
         let bytes = resp
@@ -551,8 +554,8 @@ impl ForwardPlugin {
             .await
             .map_err(|e| crate::Error::Other(e.to_string()))?;
 
-        let response = Self::parse_message(&bytes)
-            .map_err(|e| crate::Error::Other(e.to_string()))?;
+        let response =
+            Self::parse_message(&bytes).map_err(|e| crate::Error::Other(e.to_string()))?;
 
         Ok(response)
     }
