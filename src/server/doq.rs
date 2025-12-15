@@ -178,3 +178,33 @@ fn build_quic_server_config(cert_path: &str, key_path: &str) -> Result<ServerCon
 
     Ok(server_config)
 }
+
+#[cfg(all(test, feature = "doq"))]
+mod tests {
+    use super::*;
+    use rcgen::generate_simple_self_signed;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_build_quic_server_config_from_pem() {
+        // Ensure a CryptoProvider is installed for rustls v0.23
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.serialize_pem().unwrap();
+        let key_pem = cert.get_key_pair().serialize_pem();
+
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(cert_pem.as_bytes()).unwrap();
+        let cert_path = cert_file.path().to_str().unwrap().to_string();
+
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_str().unwrap().to_string();
+
+        let cfg = build_quic_server_config(&cert_path, &key_path).expect("build quic cfg");
+        // Basic sanity: ensure conversion succeeded (cfg constructed)
+        let _ = cfg;
+    }
+}
