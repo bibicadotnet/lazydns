@@ -83,6 +83,10 @@ opt-level = 0
 [profile.test]
 opt-level = 1
 
+[profile.minimal]
+inherits = "release"
+opt-level = "z"
+
 [[bin]]
 name = "lazydns"
 path = "src/main.rs"
