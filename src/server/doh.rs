@@ -144,7 +144,7 @@ impl DohServer {
                 .map_err(|e| Error::Other(format!("Server error: {}", e)))?;
         }
 
-        // Default (no-tls) 
+        // Default (no-tls)
         #[cfg(not(feature = "tls"))]
         {
             // Default (no-tls) fallback for test and lightweight deployments: plain TCP

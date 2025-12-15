@@ -1,8 +1,19 @@
 //! DNS over TLS (DoT) server implementation
 //!
-//! Implements RFC 7858 - DNS over TLS
+//! Implements RFC 7858 - DNS over TLS.
 //!
-//! DoT provides DNS queries over TLS on port 853, providing privacy and security.
+//! This module provides a straightforward in-process DoT server that:
+//! - Performs TLS handshakes using `tokio-rustls` (`TlsAcceptor`).
+//! - Reads DNS-over-TCP framed messages (2-byte length prefix) from the
+//!   negotiated TLS stream, parses them using `hickory-proto`, and dispatches
+//!   them to a `RequestHandler` implementation.
+//! - Serializes handler responses back to wire format and writes them to the
+//!   TLS stream using the TCP framing (2-byte length prefix).
+//!
+//! The implementation favors clarity and testability for use in the test-suite
+//! and simple deployments. For high-throughput production usage, consider
+//! additional connection and buffer management, timeouts, and connection
+//! limits.
 
 use crate::error::{Error, Result};
 use crate::server::{RequestHandler, TlsConfig};
@@ -132,13 +143,13 @@ impl DotServer {
             let mut buf = vec![0u8; msg_len];
             tls_stream.read_exact(&mut buf).await.map_err(Error::Io)?;
 
-            // Parse request (placeholder)
+            // Parse request from wire-format bytes
             let request = Self::parse_request(&buf)?;
 
             // Handle request
             let response = handler.handle(request).await?;
 
-            // Serialize response (placeholder)
+            // Serialize response to wire-format bytes
             let response_data = Self::serialize_response(&response)?;
 
             // Write response length
@@ -180,14 +191,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_request_placeholder() {
+    fn test_parse_request() {
         let data = vec![0u8; 12]; // Minimal DNS header
         let result = DotServer::parse_request(&data);
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_serialize_response_placeholder() {
+    fn test_serialize_response() {
         let message = crate::dns::Message::new();
         let result = DotServer::serialize_response(&message);
         assert!(result.is_ok());
