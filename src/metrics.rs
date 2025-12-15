@@ -39,7 +39,9 @@
 //! Example: render Prometheus text exposition (useful for tests):
 //!
 //! ```rust
-//! use lazydns::metrics::gather_metrics;
+//! use lazydns::metrics::{gather_metrics, DNS_QUERIES_TOTAL};
+//! // ensure the metric is registered before gathering exposition
+//! let _ = &*DNS_QUERIES_TOTAL;
 //! let text = gather_metrics();
 //! assert!(text.contains("dns_queries_total"));
 //! ```

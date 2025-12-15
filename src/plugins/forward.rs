@@ -882,7 +882,7 @@ mod tests {
     #[tokio::test]
     async fn test_forward_plugin_with_mocked_upstream() {
         use crate::dns::types::{RecordClass, RecordType};
-        use crate::dns::{Message, Question, RData, ResourceRecord};
+        use crate::dns::{Message, Question, RData};
 
         // Start a mocked upstream DoH HTTP server and point plugin to it
         let (upstream_addr, server_task) =

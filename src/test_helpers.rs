@@ -9,7 +9,7 @@ use tokio::task::JoinHandle;
 /// Returns the URL to use and the server JoinHandle.
 pub async fn spawn_doh_http_server(response_ip: &str) -> (String, JoinHandle<()>) {
     use crate::dns::types::{RecordClass, RecordType};
-    use crate::dns::{Message, RData, ResourceRecord};
+    use crate::dns::{RData, ResourceRecord};
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let local_addr = listener.local_addr().unwrap();
@@ -81,7 +81,7 @@ pub async fn spawn_doh_http_server(response_ip: &str) -> (String, JoinHandle<()>
 /// Returns the HTTPS URL and server JoinHandle.
 pub async fn spawn_doh_https_server(response_ip: &str) -> (String, JoinHandle<()>) {
     use crate::dns::types::{RecordClass, RecordType};
-    use crate::dns::{Message, RData, ResourceRecord};
+    use crate::dns::{RData, ResourceRecord};
     use rcgen::generate_simple_self_signed;
     use rustls20::{Certificate, PrivateKey, ServerConfig};
     use std::sync::Arc;
