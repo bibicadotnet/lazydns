@@ -43,6 +43,10 @@ pub mod plugin;
 /// Includes forward, cache, hosts, domain matching, and other plugins.
 pub mod plugins;
 
+/// Test helpers used by crate unit tests (only compiled under `cfg(test)`).
+#[cfg(test)]
+pub mod test_helpers;
+
 /// Configuration loading and validation
 ///
 /// Supports YAML configuration files with validation.

@@ -616,7 +616,14 @@ impl ForwardPlugin {
     async fn forward_query_doh(&self, request: &Message, upstream_url: &str) -> Result<Message> {
         debug!("Forwarding query over DoH to {}", upstream_url);
 
-        let client = HttpClient::builder()
+        let mut client_builder = HttpClient::builder();
+        // Allow tests to accept self-signed certs by setting
+        // LAZYDNS_DOH_ACCEPT_INVALID_CERT in the environment.
+        if std::env::var("LAZYDNS_DOH_ACCEPT_INVALID_CERT").is_ok() {
+            client_builder = client_builder.danger_accept_invalid_certs(true);
+        }
+
+        let client = client_builder
             .build()
             .map_err(|e| crate::Error::Other(e.to_string()))?;
 
@@ -877,39 +884,9 @@ mod tests {
         use crate::dns::types::{RecordClass, RecordType};
         use crate::dns::{Message, Question, RData, ResourceRecord};
 
-        // Start a mocked upstream UDP server that echoes a synthetic A record
-        let server = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let local_addr = server.local_addr().unwrap();
-
-        let server_task = tokio::spawn(async move {
-            let mut buf = vec![0u8; 512];
-            if let Ok((len, src)) = server.recv_from(&mut buf).await {
-                // Parse incoming query
-                if let Ok(req) = ForwardPlugin::parse_message(&buf[..len]) {
-                    // Build a response mirroring the request
-                    let mut resp = req.clone();
-                    resp.set_response(true);
-                    // Add an A answer
-                    resp.add_answer(ResourceRecord::new(
-                        req.questions()[0].qname().to_string(),
-                        RecordType::A,
-                        RecordClass::IN,
-                        300,
-                        RData::A("1.2.3.4".parse().unwrap()),
-                    ));
-
-                    // Ensure response id matches request id
-                    resp.set_id(req.id());
-
-                    if let Ok(data) = ForwardPlugin::serialize_message(&resp) {
-                        let _ = server.send_to(&data, src).await;
-                    }
-                }
-            }
-        });
-
-        // Create plugin pointing to mocked upstream
-        let upstream_addr = format!("{}", local_addr);
+        // Start a mocked upstream DoH HTTP server and point plugin to it
+        let (upstream_addr, server_task) =
+            crate::test_helpers::spawn_doh_http_server("1.2.3.4").await;
         let plugin = ForwardPlugin::builder()
             .add_upstream(upstream_addr.clone())
             .timeout(Duration::from_secs(2))
@@ -954,33 +931,8 @@ mod tests {
         use crate::dns::{Message, Question};
 
         // Mock server for success
-        let server = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let local_addr = server.local_addr().unwrap();
-
-        let server_task = tokio::spawn(async move {
-            let mut buf = vec![0u8; 512];
-            if let Ok((len, src)) = server.recv_from(&mut buf).await {
-                if let Ok(req) = ForwardPlugin::parse_message(&buf[..len]) {
-                    let mut resp = req.clone();
-                    resp.set_response(true);
-                    use crate::dns::types::{RecordClass, RecordType};
-                    use crate::dns::{RData, ResourceRecord};
-                    resp.add_answer(ResourceRecord::new(
-                        req.questions()[0].qname().to_string(),
-                        RecordType::A,
-                        RecordClass::IN,
-                        300,
-                        RData::A("1.2.3.4".parse().unwrap()),
-                    ));
-                    resp.set_id(req.id());
-                    if let Ok(data) = ForwardPlugin::serialize_message(&resp) {
-                        let _ = server.send_to(&data, src).await;
-                    }
-                }
-            }
-        });
-
-        let upstream_addr = format!("{}", local_addr);
+        let (upstream_addr, server_task) =
+            crate::test_helpers::spawn_doh_http_server("1.2.3.4").await;
         let plugin = ForwardPlugin::builder()
             .add_upstream(upstream_addr.clone())
             .timeout(Duration::from_secs(2))
@@ -1116,5 +1068,292 @@ mod tests {
         assert_eq!(plugin.strategy, LoadBalanceStrategy::Fastest);
         assert!(plugin.health_checks_enabled);
         assert_eq!(plugin.max_attempts, 5);
+    }
+
+    #[tokio::test]
+    async fn test_forward_plugin_doh_http_post() {
+        use crate::dns::types::{RecordClass, RecordType};
+        use crate::dns::{Message, Question, RData, ResourceRecord};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        // Start a minimal HTTP server that accepts a single DoH POST
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+
+        let server_task = tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                // Read request (headers + body). Simple approach: read into buffer and parse.
+                let mut buf = vec![0u8; 8192];
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+
+                // Split headers and body
+                let parts: Vec<&str> = req.split("\r\n\r\n").collect();
+                if parts.len() < 2 {
+                    return;
+                }
+                let headers = parts[0];
+                let mut body = parts[1].as_bytes().to_vec();
+
+                // Content-Length may require reading more bytes if truncated
+                let mut content_length = 0usize;
+                for line in headers.lines() {
+                    if line.to_lowercase().starts_with("content-length:") {
+                        if let Some(v) = line.split(':').nth(1) {
+                            content_length = v.trim().parse().unwrap_or(0);
+                        }
+                    }
+                }
+
+                while body.len() < content_length {
+                    let mut more = vec![0u8; 1024];
+                    let m = socket.read(&mut more).await.unwrap_or(0);
+                    if m == 0 {
+                        break;
+                    }
+                    body.extend_from_slice(&more[..m]);
+                }
+
+                // Parse DNS query from body
+                if let Ok(req_msg) =
+                    ForwardPlugin::parse_message(&body[..content_length.min(body.len())])
+                {
+                    let mut resp = req_msg.clone();
+                    resp.set_response(true);
+                    resp.add_answer(ResourceRecord::new(
+                        req_msg.questions()[0].qname().to_string(),
+                        RecordType::A,
+                        RecordClass::IN,
+                        60,
+                        RData::A("9.9.9.9".parse().unwrap()),
+                    ));
+                    resp.set_id(req_msg.id());
+
+                    if let Ok(data) = ForwardPlugin::serialize_message(&resp) {
+                        let resp_hdr = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
+                            data.len()
+                        );
+                        let _ = socket.write_all(resp_hdr.as_bytes()).await;
+                        let _ = socket.write_all(&data).await;
+                    }
+                }
+            }
+        });
+
+        // Build plugin pointing to our minimal DoH endpoint
+        let url = format!("http://{}/dns-query", local_addr);
+        let plugin = ForwardPlugin::builder()
+            .add_upstream(url)
+            .timeout(Duration::from_secs(2))
+            .enable_health_checks(true)
+            .build();
+
+        // Build a request message
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(req);
+
+        // Execute plugin and verify response
+        let res = plugin.execute(&mut ctx).await;
+        assert!(res.is_ok());
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+
+        let mut found = false;
+        for rr in resp.answers() {
+            if rr.rtype() == RecordType::A {
+                if let RData::A(ip) = rr.rdata() {
+                    assert_eq!(ip.to_string(), "9.9.9.9");
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "A record from DoH upstream not found");
+
+        let _ = server_task.await;
+    }
+
+    #[test]
+    fn test_add_upstream_with_tag_parses_tag() {
+        let plugin = ForwardPlugin::builder()
+            .add_upstream_with_tag("8.8.8.8:53", "google")
+            .build();
+
+        assert_eq!(plugin.upstreams.len(), 1);
+        assert_eq!(plugin.upstreams[0].addr, "8.8.8.8:53");
+        assert_eq!(plugin.upstreams[0].tag.as_deref(), Some("google"));
+    }
+
+    #[tokio::test]
+    async fn test_forward_plugin_doh_https_post_with_self_signed_cert() {
+        use crate::dns::types::{RecordClass, RecordType};
+        use crate::dns::{Message, Question, RData, ResourceRecord};
+        use rcgen::generate_simple_self_signed;
+        use rustls20::{Certificate, PrivateKey, ServerConfig};
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+        use tokio_rustls_23::TlsAcceptor;
+
+        // Generate a self-signed certificate for "localhost"
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_der = cert.serialize_der().unwrap();
+        let key_der = cert.get_key_pair().serialize_der();
+
+        // Build rustls server config
+        let certs = vec![Certificate(cert_der.clone())];
+        let priv_key = PrivateKey(key_der.clone());
+        let server_config = ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(certs, priv_key)
+            .unwrap();
+
+        let acceptor = TlsAcceptor::from(Arc::new(server_config));
+
+        // Start TLS listener
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+
+        let server_task = tokio::spawn(async move {
+            if let Ok((socket, _)) = listener.accept().await {
+                if let Ok(mut tls_stream) = acceptor.accept(socket).await {
+                    let mut buf = vec![0u8; 8192];
+                    let n = tls_stream.read(&mut buf).await.unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]);
+
+                    // Split headers and body
+                    let parts: Vec<&str> = req.split("\r\n\r\n").collect();
+                    if parts.len() < 2 {
+                        return;
+                    }
+                    let headers = parts[0];
+                    let mut body = parts[1].as_bytes().to_vec();
+
+                    // Content-Length handling
+                    let mut content_length = 0usize;
+                    for line in headers.lines() {
+                        if line.to_lowercase().starts_with("content-length:") {
+                            if let Some(v) = line.split(':').nth(1) {
+                                content_length = v.trim().parse().unwrap_or(0);
+                            }
+                        }
+                    }
+
+                    while body.len() < content_length {
+                        let mut more = vec![0u8; 1024];
+                        let m = tls_stream.read(&mut more).await.unwrap_or(0);
+                        if m == 0 {
+                            break;
+                        }
+                        body.extend_from_slice(&more[..m]);
+                    }
+
+                    if let Ok(req_msg) =
+                        ForwardPlugin::parse_message(&body[..content_length.min(body.len())])
+                    {
+                        let mut resp = req_msg.clone();
+                        resp.set_response(true);
+                        resp.add_answer(ResourceRecord::new(
+                            req_msg.questions()[0].qname().to_string(),
+                            RecordType::A,
+                            RecordClass::IN,
+                            60,
+                            RData::A("4.4.4.4".parse().unwrap()),
+                        ));
+                        resp.set_id(req_msg.id());
+
+                        if let Ok(data) = ForwardPlugin::serialize_message(&resp) {
+                            let resp_hdr = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
+                                data.len()
+                            );
+                            let _ = tls_stream.write_all(resp_hdr.as_bytes()).await;
+                            let _ = tls_stream.write_all(&data).await;
+                        }
+                    }
+                }
+            }
+        });
+
+        // Set env var so forward_query_doh will accept our self-signed cert
+        unsafe {
+            std::env::set_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT", "1");
+        }
+
+        // Build plugin pointing to our HTTPS DoH endpoint (use localhost hostname)
+        let url = format!("https://localhost:{}/dns-query", local_addr.port());
+        let plugin = ForwardPlugin::builder()
+            .add_upstream(url)
+            .timeout(Duration::from_secs(2))
+            .enable_health_checks(true)
+            .build();
+
+        // Build a request message
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(req);
+
+        // Execute plugin and verify response
+        let res = plugin.execute(&mut ctx).await;
+        assert!(res.is_ok());
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+
+        let mut found = false;
+        for rr in resp.answers() {
+            if rr.rtype() == RecordType::A {
+                if let RData::A(ip) = rr.rdata() {
+                    assert_eq!(ip.to_string(), "4.4.4.4");
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "A record from DoH HTTPS upstream not found");
+
+        // Cleanup
+        let _ = server_task.await;
+        unsafe {
+            std::env::remove_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT");
+        }
+    }
+
+    #[test]
+    fn test_select_upstream_fastest_prefers_measured() {
+        use std::time::Duration;
+
+        let plugin = ForwardPlugin::builder()
+            .add_upstream("8.8.8.8:53")
+            .add_upstream("1.1.1.1:53")
+            .strategy(LoadBalanceStrategy::Fastest)
+            .build();
+
+        // Initially no measurements: Fastest should return first index
+        let idx_initial = plugin.select_upstream().unwrap();
+        assert_eq!(idx_initial, 0);
+
+        // Record a fast response for the second upstream and a slower one for the first
+        plugin.upstreams[1]
+            .health
+            .record_success(Duration::from_millis(5));
+        plugin.upstreams[0]
+            .health
+            .record_success(Duration::from_millis(100));
+
+        // Now Fastest should prefer the second upstream (index 1)
+        let idx_after = plugin.select_upstream().unwrap();
+        assert_eq!(idx_after, 1);
     }
 }
