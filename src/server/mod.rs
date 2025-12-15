@@ -30,6 +30,7 @@ pub mod doq;
 #[cfg(feature = "tls")]
 pub mod dot;
 pub mod handler;
+pub mod launcher;
 pub mod monitoring;
 pub mod tcp;
 pub mod tls;
