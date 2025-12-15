@@ -25,6 +25,7 @@
 pub mod admin;
 pub mod config;
 pub mod doh;
+#[cfg(feature = "tls")]
 pub mod dot;
 pub mod handler;
 pub mod monitoring;
@@ -36,6 +37,7 @@ pub mod udp;
 pub use admin::{AdminServer, AdminState};
 pub use config::ServerConfig;
 pub use doh::DohServer;
+#[cfg(feature = "tls")]
 pub use dot::DotServer;
 pub use handler::{DefaultHandler, RequestHandler};
 pub use monitoring::MonitoringServer;
@@ -101,6 +103,7 @@ mod tests {
         assert!(std::mem::size_of::<UdpServer>() > 0);
         assert!(std::mem::size_of::<TcpServer>() > 0);
         assert!(std::mem::size_of::<DohServer>() > 0);
+        #[cfg(feature = "tls")]
         assert!(std::mem::size_of::<DotServer>() > 0);
         assert!(std::mem::size_of::<AdminServer>() > 0);
         assert!(std::mem::size_of::<MonitoringServer>() > 0);

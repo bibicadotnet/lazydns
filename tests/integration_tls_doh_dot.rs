@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 
 #[tokio::test]
 async fn integration_doh_tls_post() {
