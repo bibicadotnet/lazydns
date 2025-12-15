@@ -1196,7 +1196,7 @@ mod tests {
         use crate::dns::types::{RecordClass, RecordType};
         use crate::dns::{Message, Question, RData, ResourceRecord};
         use rcgen::generate_simple_self_signed;
-        use rustls20::{Certificate, PrivateKey, ServerConfig};
+        use rustls_20::{Certificate, PrivateKey, ServerConfig};
         use std::sync::Arc;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::TcpListener;

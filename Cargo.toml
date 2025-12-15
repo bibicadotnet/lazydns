@@ -70,9 +70,9 @@ tokio-test = "0.4"
 tempfile = "3.8"
 rcgen = "0.9"
 # Testing: DoH (test_helpers)
-rustls20 = { package = "rustls", version = "0.20" }
+rustls_20 = { package = "rustls", version = "~0.20" }
 # Testing: DoH (test_helpers)
-tokio_rustls_23 = { package = "tokio-rustls", version = "0.23" }
+tokio_rustls_23 = { package = "tokio-rustls", version = "~0.23" }
 
 [features]
 default = []
