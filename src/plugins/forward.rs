@@ -55,7 +55,7 @@ use async_trait::async_trait;
 use reqwest::Client as HttpClient;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::time::{timeout, Duration, Instant};
@@ -99,42 +99,35 @@ impl UpstreamHealth {
     }
 
     fn record_success(&self, response_time: Duration) {
-        self.queries
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.successes
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.queries.fetch_add(1, Ordering::Relaxed);
+        self.successes.fetch_add(1, Ordering::Relaxed);
 
         // Update average response time (simple moving average)
         let new_time = response_time.as_micros() as u64;
-        let old_avg = self
-            .avg_response_time_us
-            .load(std::sync::atomic::Ordering::Relaxed);
-        let queries = self.queries.load(std::sync::atomic::Ordering::Relaxed);
+        let old_avg = self.avg_response_time_us.load(Ordering::Relaxed);
+        let queries = self.queries.load(Ordering::Relaxed);
         let new_avg = if queries <= 1 {
             new_time
         } else {
             (old_avg * (queries - 1) + new_time) / queries
         };
-        self.avg_response_time_us
-            .store(new_avg, std::sync::atomic::Ordering::Relaxed);
+        self.avg_response_time_us.store(new_avg, Ordering::Relaxed);
 
         *self.last_success.lock().unwrap() = Some(Instant::now());
     }
 
     fn record_failure(&self) {
-        self.queries
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.failures
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.queries.fetch_add(1, Ordering::Relaxed);
+        self.failures.fetch_add(1, Ordering::Relaxed);
     }
 
     #[allow(dead_code)]
     fn success_rate(&self) -> f64 {
-        let total = self.queries.load(std::sync::atomic::Ordering::Relaxed);
+        let total = self.queries.load(Ordering::Relaxed);
         if total == 0 {
             return 1.0;
         }
-        let successes = self.successes.load(std::sync::atomic::Ordering::Relaxed);
+        let successes = self.successes.load(Ordering::Relaxed);
         successes as f64 / total as f64
     }
 
@@ -147,16 +140,14 @@ impl UpstreamHealth {
     /// Get counters snapshot (queries, successes, failures)
     pub fn counters(&self) -> (u64, u64, u64) {
         (
-            self.queries.load(std::sync::atomic::Ordering::Relaxed),
-            self.successes.load(std::sync::atomic::Ordering::Relaxed),
-            self.failures.load(std::sync::atomic::Ordering::Relaxed),
+            self.queries.load(Ordering::Relaxed),
+            self.successes.load(Ordering::Relaxed),
+            self.failures.load(Ordering::Relaxed),
         )
     }
 
     fn avg_response_time(&self) -> Duration {
-        let micros = self
-            .avg_response_time_us
-            .load(std::sync::atomic::Ordering::Relaxed);
+        let micros = self.avg_response_time_us.load(Ordering::Relaxed);
         Duration::from_micros(micros)
     }
 }
@@ -413,9 +404,7 @@ impl ForwardPlugin {
 
         match self.strategy {
             LoadBalanceStrategy::RoundRobin => {
-                let index = self
-                    .current
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let index = self.current.fetch_add(1, Ordering::Relaxed);
                 Some(index % self.upstreams.len())
             }
             LoadBalanceStrategy::Random => {
@@ -510,7 +499,7 @@ impl ForwardPlugin {
                     queries = queries,
                     successes = successes,
                     failures = failures,
-                    avg_resp_us = upstream.health.avg_response_time_us.load(std::sync::atomic::Ordering::Relaxed),
+                    avg_resp_us = upstream.health.avg_response_time_us.load(Ordering::Relaxed),
                     addrs = ?addrs,
                     "Query to upstream succeeded"
                 );
@@ -1094,23 +1083,14 @@ mod tests {
         health.record_success(Duration::from_millis(20));
         health.record_success(Duration::from_millis(30));
 
-        assert_eq!(health.queries.load(std::sync::atomic::Ordering::Relaxed), 3);
-        assert_eq!(
-            health.successes.load(std::sync::atomic::Ordering::Relaxed),
-            3
-        );
-        assert_eq!(
-            health.failures.load(std::sync::atomic::Ordering::Relaxed),
-            0
-        );
+        assert_eq!(health.queries.load(Ordering::Relaxed), 3);
+        assert_eq!(health.successes.load(Ordering::Relaxed), 3);
+        assert_eq!(health.failures.load(Ordering::Relaxed), 0);
 
         // Record a failure
         health.record_failure();
-        assert_eq!(health.queries.load(std::sync::atomic::Ordering::Relaxed), 4);
-        assert_eq!(
-            health.failures.load(std::sync::atomic::Ordering::Relaxed),
-            1
-        );
+        assert_eq!(health.queries.load(Ordering::Relaxed), 4);
+        assert_eq!(health.failures.load(Ordering::Relaxed), 1);
 
         // Check avg response time is reasonable
         let avg = health.avg_response_time();
