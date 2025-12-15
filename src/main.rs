@@ -13,7 +13,10 @@
 use clap::Parser;
 use lazydns::config::Config;
 use lazydns::plugin::{PluginBuilder, PluginHandler};
+#[cfg(feature = "tls")]
+use lazydns::server::{DohServer, DotServer, TlsConfig};
 use lazydns::server::{ServerConfig, TcpServer, UdpServer};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -153,7 +156,7 @@ async fn main() -> anyhow::Result<()> {
             // Accept shorthand listen address like ":5353" and treat as "0.0.0.0:5353"
             let listen_parse_str = normalize_listen_addr(listen_str);
 
-            if let Ok(addr) = listen_parse_str.parse() {
+            if let Ok(addr) = listen_parse_str.parse::<SocketAddr>() {
                 let config = ServerConfig {
                     udp_addr: Some(addr),
                     ..Default::default()
@@ -192,7 +195,7 @@ async fn main() -> anyhow::Result<()> {
             // Accept shorthand listen address like ":5353" and treat as "0.0.0.0:5353"
             let listen_parse_str = normalize_listen_addr(listen_str);
 
-            if let Ok(addr) = listen_parse_str.parse() {
+            if let Ok(addr) = listen_parse_str.parse::<SocketAddr>() {
                 let config = ServerConfig {
                     tcp_addr: Some(addr),
                     ..Default::default()
@@ -213,6 +216,96 @@ async fn main() -> anyhow::Result<()> {
                     }
                     Err(e) => {
                         error!("Failed to start TCP server: {}", e);
+                    }
+                }
+            }
+        } else if plugin_config.plugin_type == "doh_server" {
+            #[cfg(feature = "tls")]
+            {
+                let args = plugin_config.effective_args();
+                let listen_str = args
+                    .get("listen")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0.0.0.0:443");
+                let listen_parse_str = normalize_listen_addr(listen_str);
+                if let Ok(addr) = listen_parse_str.parse::<SocketAddr>() {
+                    // Expect cert/key paths in args: cert_file, key_file
+                    let cert_path_opt = args.get("cert_file").and_then(|v| v.as_str());
+                    let key_path_opt = args.get("key_file").and_then(|v| v.as_str());
+
+                    if let (Some(cert_path), Some(key_path)) = (cert_path_opt, key_path_opt) {
+                        let tls = match TlsConfig::from_files(cert_path, key_path) {
+                            Ok(t) => t,
+                            Err(e) => {
+                                info!("Failed to load TLS config for DoH: {}", e);
+                                continue;
+                            }
+                        };
+
+                        let entry = args
+                            .get("entry")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("main_sequence")
+                            .to_string();
+
+                        let handler = Arc::new(PluginHandler {
+                            registry: Arc::clone(&registry),
+                            entry,
+                        });
+
+                        let server = DohServer::new(format!("{}", addr), tls, handler);
+                        tokio::spawn(async move {
+                            if let Err(e) = server.run().await {
+                                error!("DoH server error: {}", e);
+                            }
+                        });
+                    } else {
+                        tracing::warn!("doh_server plugin configured without cert_file/key_file");
+                    }
+                }
+            }
+        } else if plugin_config.plugin_type == "dot_server" {
+            #[cfg(feature = "tls")]
+            {
+                let args = plugin_config.effective_args();
+                let listen_str = args
+                    .get("listen")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0.0.0.0:853");
+                let listen_parse_str = normalize_listen_addr(listen_str);
+                if let Ok(addr) = listen_parse_str.parse::<SocketAddr>() {
+                    // Expect cert/key paths in args: cert_file, key_file
+                    let cert_path_opt = args.get("cert_file").and_then(|v| v.as_str());
+                    let key_path_opt = args.get("key_file").and_then(|v| v.as_str());
+
+                    if let (Some(cert_path), Some(key_path)) = (cert_path_opt, key_path_opt) {
+                        let tls = match TlsConfig::from_files(cert_path, key_path) {
+                            Ok(t) => t,
+                            Err(e) => {
+                                info!("Failed to load TLS config for DoT: {}", e);
+                                continue;
+                            }
+                        };
+
+                        let entry = args
+                            .get("entry")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("main_sequence")
+                            .to_string();
+
+                        let handler = Arc::new(PluginHandler {
+                            registry: Arc::clone(&registry),
+                            entry,
+                        });
+
+                        let server = DotServer::new(format!("{}", addr), tls, handler);
+                        tokio::spawn(async move {
+                            if let Err(e) = server.run().await {
+                                error!("DoT server error: {}", e);
+                            }
+                        });
+                    } else {
+                        tracing::warn!("dot_server plugin configured without cert_file/key_file");
                     }
                 }
             }
