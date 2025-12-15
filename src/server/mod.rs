@@ -25,10 +25,10 @@
 pub mod admin;
 pub mod config;
 pub mod doh;
-#[cfg(feature = "tls")]
-pub mod dot;
 #[cfg(feature = "doq")]
 pub mod doq;
+#[cfg(feature = "tls")]
+pub mod dot;
 pub mod handler;
 pub mod monitoring;
 pub mod tcp;
@@ -39,10 +39,10 @@ pub mod udp;
 pub use admin::{AdminServer, AdminState};
 pub use config::ServerConfig;
 pub use doh::DohServer;
-#[cfg(feature = "tls")]
-pub use dot::DotServer;
 #[cfg(feature = "doq")]
 pub use doq::DoqServer;
+#[cfg(feature = "tls")]
+pub use dot::DotServer;
 pub use handler::{DefaultHandler, RequestHandler};
 pub use monitoring::MonitoringServer;
 pub use tcp::TcpServer;

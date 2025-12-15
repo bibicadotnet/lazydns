@@ -2,8 +2,6 @@
 
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-use tokio::task::JoinHandle;
 
 #[tokio::test]
 async fn integration_doh_tls_post() {
@@ -111,74 +109,6 @@ async fn spawn_dot_single_accept(
     let acceptor = TlsAcceptor::from(Arc::new(server_config));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let local_addr = listener.local_addr().unwrap();
-    let ip = response_ip.to_string();
-
-    let handle = tokio::spawn(async move {
-        if let Ok((socket, _)) = listener.accept().await {
-            if let Ok(mut tls_stream) = acceptor.accept(socket).await {
-                // Read 2-byte length prefix
-                let mut len_buf = [0u8; 2];
-                let n = tls_stream.read(&mut len_buf).await.unwrap_or(0);
-                if n < 2 {
-                    return;
-                }
-                let msg_len = u16::from_be_bytes(len_buf) as usize;
-                let mut buf = vec![0u8; msg_len];
-                let _ = tls_stream.read_exact(&mut buf).await;
-
-                if let Ok(req_msg) = lazydns::dns::wire::parse_message(&buf) {
-                    let mut resp = req_msg.clone();
-                    resp.set_response(true);
-                    resp.add_answer(ResourceRecord::new(
-                        req_msg.questions()[0].qname().to_string(),
-                        RecordType::A,
-                        RecordClass::IN,
-                        60,
-                        RData::A(ip.parse().unwrap()),
-                    ));
-                    resp.set_id(req_msg.id());
-
-                    if let Ok(data) = lazydns::dns::wire::serialize_message(&resp) {
-                        let response_len = (data.len() as u16).to_be_bytes();
-                        let _ = tls_stream.write_all(&response_len).await;
-                        let _ = tls_stream.write_all(&data).await;
-                    }
-                }
-            }
-        }
-    });
-
-    (local_addr, cert_der, handle)
-}
-
-/// Spawn a minimal DoT TLS server using a self-signed certificate.
-/// Returns the socket address and server JoinHandle.
-async fn spawn_dot_tls_server(
-    response_ip: &str,
-) -> (std::net::SocketAddr, Vec<u8>, JoinHandle<()>) {
-    use lazydns::dns::types::{RecordClass, RecordType};
-    use lazydns::dns::{RData, ResourceRecord};
-    use rcgen::generate_simple_self_signed;
-    use rustls_20::{Certificate, PrivateKey, ServerConfig};
-    use std::sync::Arc;
-    use tokio_rustls_23::TlsAcceptor;
-
-    let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-    let cert_der = cert.serialize_der().unwrap();
-    let key_der = cert.get_key_pair().serialize_der();
-
-    let certs = vec![Certificate(cert_der.clone())];
-    let priv_key = PrivateKey(key_der.clone());
-    let server_config = ServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth()
-        .with_single_cert(certs, priv_key)
-        .unwrap();
-
-    let acceptor = TlsAcceptor::from(Arc::new(server_config));
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let local_addr = listener.local_addr().unwrap();
     let ip = response_ip.to_string();
 
@@ -341,7 +271,7 @@ async fn integration_dot_concurrent_clients() {
     }
 
     for h in client_handles {
-        let _ = h.await.unwrap();
+        h.await.unwrap();
     }
     for sh in server_handles {
         let _ = sh.await;

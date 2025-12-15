@@ -13,10 +13,10 @@
 use clap::Parser;
 use lazydns::config::Config;
 use lazydns::plugin::{PluginBuilder, PluginHandler};
-#[cfg(feature = "tls")]
-use lazydns::server::{DohServer, DotServer, TlsConfig};
 #[cfg(feature = "doq")]
 use lazydns::server::DoqServer;
+#[cfg(feature = "tls")]
+use lazydns::server::{DohServer, DotServer, TlsConfig};
 use lazydns::server::{ServerConfig, TcpServer, UdpServer};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -311,8 +311,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-        }
-        else if plugin_config.plugin_type == "doq_server" {
+        } else if plugin_config.plugin_type == "doq_server" {
             #[cfg(feature = "doq")]
             {
                 let args = plugin_config.effective_args();
@@ -338,7 +337,8 @@ async fn main() -> anyhow::Result<()> {
                             entry,
                         });
 
-                        let server = DoqServer::new(format!("{}", addr), cert_path, key_path, handler);
+                        let server =
+                            DoqServer::new(format!("{}", addr), cert_path, key_path, handler);
                         tokio::spawn(async move {
                             if let Err(e) = server.run().await {
                                 error!("DoQ server error: {}", e);

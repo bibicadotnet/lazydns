@@ -96,14 +96,14 @@ async fn handle_stream(
     let mut len_buf = [0u8; 2];
     recv.read_exact(&mut len_buf)
         .await
-        .map_err(|e| crate::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| crate::Error::Io(std::io::Error::other(e)))?;
     let msg_len = u16::from_be_bytes(len_buf) as usize;
 
     // Read DNS message
     let mut buf = vec![0u8; msg_len];
     recv.read_exact(&mut buf)
         .await
-        .map_err(|e| crate::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| crate::Error::Io(std::io::Error::other(e)))?;
 
     // Parse DNS message and handle
     let request = crate::dns::wire::parse_message(&buf)?;
@@ -113,14 +113,14 @@ async fn handle_stream(
     // Write response with length prefix
     send.write_all(&(resp_data.len() as u16).to_be_bytes())
         .await
-        .map_err(|e| crate::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| crate::Error::Io(std::io::Error::other(e)))?;
     send.write_all(&resp_data)
         .await
-        .map_err(|e| crate::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| crate::Error::Io(std::io::Error::other(e)))?;
 
     // Finish the stream
     send.finish()
-        .map_err(|e| crate::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        .map_err(|e| crate::Error::Io(std::io::Error::other(e)))?;
 
     Ok(())
 }
@@ -136,12 +136,14 @@ fn build_quic_server_config(cert_path: &str, key_path: &str) -> Result<ServerCon
         .map_err(|e| crate::Error::Config(format!("Failed to read key: {}", e)))?;
 
     // Parse certificates from PEM: certs() returns an iterator that yields Result<CertificateDer, io::Error>
-    let certs_result: std::result::Result<Vec<CertificateDer>, _> = rustls_pemfile::certs(&mut &cert_bytes[..])
-        .collect();
+    let certs_result: std::result::Result<Vec<CertificateDer>, _> =
+        rustls_pemfile::certs(&mut &cert_bytes[..]).collect();
     let certs = certs_result
         .map_err(|e| crate::Error::Config(format!("Failed to parse cert PEM: {}", e)))?;
     if certs.is_empty() {
-        return Err(crate::Error::Config("No certificates found in cert file".to_string()));
+        return Err(crate::Error::Config(
+            "No certificates found in cert file".to_string(),
+        ));
     }
 
     // Parse private key from PEM using read_one
@@ -154,7 +156,11 @@ fn build_quic_server_config(cert_path: &str, key_path: &str) -> Result<ServerCon
         rustls_pemfile::Item::Pkcs8Key(k) => PrivateKeyDer::Pkcs8(k),
         rustls_pemfile::Item::Sec1Key(k) => PrivateKeyDer::Sec1(k),
         rustls_pemfile::Item::Pkcs1Key(k) => PrivateKeyDer::Pkcs1(k),
-        _ => return Err(crate::Error::Config("Unsupported private key type".to_string())),
+        _ => {
+            return Err(crate::Error::Config(
+                "Unsupported private key type".to_string(),
+            ))
+        }
     };
 
     // Build rustls ServerConfig
@@ -164,8 +170,10 @@ fn build_quic_server_config(cert_path: &str, key_path: &str) -> Result<ServerCon
         .map_err(|e| crate::Error::Config(format!("Failed to build rustls config: {}", e)))?;
 
     // Convert to quinn QuicServerConfig
-    let quic_crypto = quinn::crypto::rustls::QuicServerConfig::try_from(rustls_cfg)
-        .map_err(|e| crate::Error::Config(format!("Failed to convert rustls -> quinn crypto: {}", e)))?;
+    let quic_crypto =
+        quinn::crypto::rustls::QuicServerConfig::try_from(rustls_cfg).map_err(|e| {
+            crate::Error::Config(format!("Failed to convert rustls -> quinn crypto: {}", e))
+        })?;
     let server_config = ServerConfig::with_crypto(Arc::new(quic_crypto));
 
     Ok(server_config)
