@@ -40,7 +40,7 @@ use axum_server::tls_rustls::RustlsConfig as AxumRustlsConfig;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// DNS over HTTPS server
 ///
@@ -142,22 +142,25 @@ impl DohServer {
                 .serve(app.into_make_service())
                 .await
                 .map_err(|e| Error::Other(format!("Server error: {}", e)))?;
-
-            return Ok(());
         }
 
+        // Default (no-tls) 
         #[cfg(not(feature = "tls"))]
-        // Default (no-tls) fallback for test and lightweight deployments: plain TCP
-        warn!("DoH server running without TLS; enable `tls` feature for production TLS support");
+        {
+            // Default (no-tls) fallback for test and lightweight deployments: plain TCP
+            tracing::warn!(
+                "DoH server running without TLS; enable `tls` feature for production TLS support"
+            );
 
-        let listener = tokio::net::TcpListener::bind(&self.addr)
-            .await
-            .map_err(Error::Io)?;
+            let listener = tokio::net::TcpListener::bind(&self.addr)
+                .await
+                .map_err(Error::Io)?;
 
-        // Serve without TLS
-        axum::serve(listener, app)
-            .await
-            .map_err(|e| Error::Other(format!("Server error: {}", e)))?;
+            // Serve without TLS
+            axum::serve(listener, app)
+                .await
+                .map_err(|e| Error::Other(format!("Server error: {}", e)))?;
+        }
 
         Ok(())
     }
