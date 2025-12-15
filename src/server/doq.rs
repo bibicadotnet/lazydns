@@ -1,8 +1,25 @@
 //! DNS over QUIC (DoQ) server implementation using `quinn`.
 //!
-//! Each QUIC connection accepts bi-directional streams; each stream carries
-//! a single DNS query/response using the same 2-byte length-prefixed wire
-//! format as TCP.
+//! This module implements a small, test-friendly DoQ server built on top of
+//! the `quinn` QUIC implementation. Design notes:
+//!
+//! - Each incoming QUIC connection accepts bi-directional streams. Each
+//!   bi-directional stream is used for a single DNS query/response exchange
+//!   using the same 2-byte length-prefixed wire framing as used by TCP/DoT.
+//! - TLS certificates are read from PEM files and converted into a `rustls`
+//!   server configuration which is then converted into the `quinn` crypto
+//!   configuration. The helper `build_quic_server_config` performs this
+//!   conversion and performs basic validation of the parsed materials.
+//! - The implementation is intentionally small and test-oriented; it expects
+//!   the caller to provide a `RequestHandler` implementation that performs
+//!   DNS business logic and returns a `dns::Message` response. The server
+//!   handles connection/stream accept loops and maps IO/TLS errors into the
+//!   crate `Error` type.
+//!
+//! Note about rustls providers: `rustls` v0.23 requires a process-level
+//! crypto provider (for example the `ring` feature) or an explicit runtime
+//! installation. Tests and binaries should ensure a provider is installed
+//! (see `rustls::crypto::ring::default_provider().install_default()`).
 
 use crate::server::RequestHandler;
 use crate::Result;
@@ -20,6 +37,13 @@ pub struct DoqServer {
 }
 
 impl DoqServer {
+    /// Create a new `DoqServer`.
+    ///
+    /// - `addr` is the socket address to bind (e.g. "127.0.0.1:784").
+    /// - `cert_path` and `key_path` are filesystem paths to PEM-encoded
+    ///   certificate and private key files respectively.
+    /// - `handler` is an `Arc` to a `RequestHandler` which will be invoked
+    ///   for each parsed DNS request.
     pub fn new(
         addr: impl Into<String>,
         cert_path: impl Into<String>,
@@ -53,6 +77,8 @@ impl DoqServer {
         while let Some(incoming) = endpoint.accept().await {
             let handler = Arc::clone(&self.handler);
 
+            // Spawn a task per accepted connection; each connection will
+            // accept bi-directional streams and spawn a task per stream.
             tokio::spawn(async move {
                 match incoming.await {
                     Ok(connection) => {
@@ -92,7 +118,7 @@ async fn handle_stream(
     mut send: quinn::SendStream,
     handler: Arc<dyn RequestHandler>,
 ) -> Result<()> {
-    // Read 2-byte length prefix
+    // Read 2-byte length prefix (network byte order)
     let mut len_buf = [0u8; 2];
     recv.read_exact(&mut len_buf)
         .await
@@ -111,6 +137,10 @@ async fn handle_stream(
     let resp_data = crate::dns::wire::serialize_message(&response)?;
 
     // Write response with length prefix
+
+    // Send a 2-byte length prefix followed by the DNS message body.
+    // QUIC `SendStream::write_all` is async and may error; map into crate IO
+    // errors for uniform handling.
     send.write_all(&(resp_data.len() as u16).to_be_bytes())
         .await
         .map_err(|e| crate::Error::Io(std::io::Error::other(e)))?;
@@ -118,7 +148,9 @@ async fn handle_stream(
         .await
         .map_err(|e| crate::Error::Io(std::io::Error::other(e)))?;
 
-    // Finish the stream
+    // Finalize the send side of the stream. `finish()` will return an
+    // error if the underlying connection is terminated — map that to the
+    // crate IO error type as well.
     send.finish()
         .map_err(|e| crate::Error::Io(std::io::Error::other(e)))?;
 
@@ -146,7 +178,10 @@ fn build_quic_server_config(cert_path: &str, key_path: &str) -> Result<ServerCon
         ));
     }
 
-    // Parse private key from PEM using read_one
+    // Parse private key from PEM using `read_one`. `rustls_pemfile::read_one`
+    // will return the first PEM item; we support common key encodings used in
+    // tests and production (PKCS#8, PKCS#1/SEC1). If an unsupported item is
+    // encountered an error is returned to the caller.
     let mut key_reader = &key_bytes[..];
     let key = rustls_pemfile::read_one(&mut key_reader)
         .map_err(|e| crate::Error::Config(format!("Failed to parse key PEM: {}", e)))?
@@ -163,13 +198,17 @@ fn build_quic_server_config(cert_path: &str, key_path: &str) -> Result<ServerCon
         }
     };
 
-    // Build rustls ServerConfig
+    // Build rustls ServerConfig from parsed certificate and private key.
+    // This may fail if the certificate and key do not match or are invalid.
     let rustls_cfg = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, key_der)
         .map_err(|e| crate::Error::Config(format!("Failed to build rustls config: {}", e)))?;
 
-    // Convert to quinn QuicServerConfig
+    // Convert to quinn QuicServerConfig. `quinn` expects a specific crypto
+    // configuration derived from `rustls::ServerConfig` — this conversion may
+    // surface configuration incompatibilities and is mapped into a Config
+    // error on failure.
     let quic_crypto =
         quinn::crypto::rustls::QuicServerConfig::try_from(rustls_cfg).map_err(|e| {
             crate::Error::Config(format!("Failed to convert rustls -> quinn crypto: {}", e))
