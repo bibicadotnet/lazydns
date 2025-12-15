@@ -277,26 +277,42 @@ fn serialize_dns_message(message: &Message) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::RequestHandler;
+    use async_trait::async_trait;
+    use axum::body::to_bytes;
+    use axum::body::Bytes as AxumBytes;
+    use axum::http::header::CONTENT_TYPE;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use std::collections::HashMap;
 
-    #[test]
-    fn test_parse_dns_message_placeholder() {
+    struct TestHandler;
+
+    #[async_trait]
+    impl RequestHandler for TestHandler {
+        async fn handle(&self, mut request: Message) -> crate::Result<Message> {
+            // mark as response and return the same message
+            request.set_response(true);
+            Ok(request)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_parse_dns_message_placeholder() {
         let data = vec![0u8; 12];
         let result = parse_dns_message(&data);
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_serialize_dns_message_placeholder() {
+    #[tokio::test]
+    async fn test_serialize_dns_message_placeholder() {
         let message = Message::new();
         let result = serialize_dns_message(&message);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 12);
     }
 
-    #[test]
-    fn test_base64url_encoding_decoding() {
-        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-
+    #[tokio::test]
+    async fn test_base64url_encoding_decoding() {
         // Test data (minimal DNS query header)
         let original_data = vec![
             0x00, 0x01, // ID
@@ -314,5 +330,172 @@ mod tests {
         let decoded = URL_SAFE_NO_PAD.decode(encoded.as_bytes()).unwrap();
 
         assert_eq!(original_data, decoded);
+    }
+
+    #[tokio::test]
+    async fn test_handle_get_query_success() {
+        // build a minimal DNS request
+        let mut req = Message::new();
+        req.set_id(0x1234);
+        req.set_query(true);
+
+        let data = crate::dns::wire::serialize_message(&req).unwrap();
+        let encoded = URL_SAFE_NO_PAD.encode(&data);
+
+        let mut params = HashMap::new();
+        params.insert("dns".to_string(), encoded);
+
+        let resp = handle_get_query(
+            State(Arc::new(TestHandler)),
+            AxumQuery(params),
+            HeaderMap::new(),
+        )
+        .await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let headers = resp.headers();
+        assert_eq!(
+            headers.get(CONTENT_TYPE).unwrap(),
+            "application/dns-message"
+        );
+        let body = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let parsed = crate::dns::wire::parse_message(&body).unwrap();
+        assert!(parsed.is_response());
+        assert_eq!(parsed.id(), 0x1234);
+    }
+
+    #[tokio::test]
+    async fn test_handle_post_query_success() {
+        let mut req = Message::new();
+        req.set_id(0x9a);
+        req.set_query(true);
+        let data = crate::dns::wire::serialize_message(&req).unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, "application/dns-message".parse().unwrap());
+
+        let resp = handle_post_query(
+            State(Arc::new(TestHandler)),
+            headers,
+            AxumBytes::from(data.clone()),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let headers = resp.headers();
+        assert_eq!(
+            headers.get(CONTENT_TYPE).unwrap(),
+            "application/dns-message"
+        );
+        let body = to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let parsed = crate::dns::wire::parse_message(&body).unwrap();
+        assert!(parsed.is_response());
+        assert_eq!(parsed.id(), 0x9a);
+    }
+
+    #[tokio::test]
+    async fn test_handle_post_query_missing_content_type() {
+        let mut req = Message::new();
+        req.set_id(0x55);
+        req.set_query(true);
+        let data = crate::dns::wire::serialize_message(&req).unwrap();
+
+        let headers = HeaderMap::new();
+        let resp =
+            handle_post_query(State(Arc::new(TestHandler)), headers, AxumBytes::from(data)).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_handle_post_query_unsupported_media_type() {
+        let mut req = Message::new();
+        req.set_id(0x66);
+        req.set_query(true);
+        let data = crate::dns::wire::serialize_message(&req).unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, "text/plain".parse().unwrap());
+        let resp =
+            handle_post_query(State(Arc::new(TestHandler)), headers, AxumBytes::from(data)).await;
+        assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    struct TestHandlerErr;
+
+    #[async_trait]
+    impl RequestHandler for TestHandlerErr {
+        async fn handle(&self, _request: Message) -> crate::Result<Message> {
+            Err(crate::Error::Plugin("handler failure".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_handle_get_query_missing_param() {
+        let params: HashMap<String, String> = HashMap::new();
+        let resp = handle_get_query(
+            State(Arc::new(TestHandler)),
+            AxumQuery(params),
+            HeaderMap::new(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_handle_get_query_invalid_base64() {
+        let mut params = HashMap::new();
+        params.insert("dns".to_string(), "!!not_base64!!".to_string());
+        let resp = handle_get_query(
+            State(Arc::new(TestHandler)),
+            AxumQuery(params),
+            HeaderMap::new(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_handle_get_query_invalid_dns_message() {
+        let bad = vec![1u8, 2, 3];
+        let encoded = URL_SAFE_NO_PAD.encode(&bad);
+        let mut params = HashMap::new();
+        params.insert("dns".to_string(), encoded);
+        let resp = handle_get_query(
+            State(Arc::new(TestHandler)),
+            AxumQuery(params),
+            HeaderMap::new(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_handler_error_get_and_post_return_internal() {
+        // GET
+        let mut req = Message::new();
+        req.set_id(0x77);
+        req.set_query(true);
+        let data = crate::dns::wire::serialize_message(&req).unwrap();
+        let encoded = URL_SAFE_NO_PAD.encode(&data);
+        let mut params = HashMap::new();
+        params.insert("dns".to_string(), encoded);
+
+        let resp_get = handle_get_query(
+            State(Arc::new(TestHandlerErr)),
+            AxumQuery(params.clone()),
+            HeaderMap::new(),
+        )
+        .await;
+        assert_eq!(resp_get.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        // POST
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, "application/dns-message".parse().unwrap());
+        let resp_post = handle_post_query(
+            State(Arc::new(TestHandlerErr)),
+            headers,
+            AxumBytes::from(data),
+        )
+        .await;
+        assert_eq!(resp_post.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

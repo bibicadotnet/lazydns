@@ -1,6 +1,4 @@
 //! Test helpers for DoH HTTP/HTTPS servers used in unit tests.
-#![cfg(test)]
-
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
