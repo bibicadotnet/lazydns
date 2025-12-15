@@ -173,7 +173,6 @@ async fn main() -> anyhow::Result<()> {
 
                 match UdpServer::new(config, handler).await {
                     Ok(server) => {
-                        info!("udp_server started on {}", addr);
                         tokio::spawn(async move {
                             if let Err(e) = server.run().await {
                                 error!("UDP server error: {}", e);
@@ -212,7 +211,6 @@ async fn main() -> anyhow::Result<()> {
 
                 match TcpServer::new(config, handler).await {
                     Ok(server) => {
-                        info!("tcp_server started on {}", addr);
                         tokio::spawn(async move {
                             if let Err(e) = server.run().await {
                                 error!("TCP server error: {}", e);

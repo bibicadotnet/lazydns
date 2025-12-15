@@ -74,7 +74,7 @@ tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = ["doq"]
+default = ["doq", "tls"]
 # Enable TLS-backed (DoH using axum-server + rustls) server implementation
 tls = ["axum-server"]
 # Enable DoQ (QUIC) server implementation
