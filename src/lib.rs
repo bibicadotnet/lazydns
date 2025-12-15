@@ -20,8 +20,7 @@
 //! # fn main() { let _ = (); }
 //! ```
 
-#![allow(missing_docs)]
-#![warn(clippy::all)]
+// #![warn(clippy::all)]
 
 /// DNS protocol implementation
 ///
@@ -44,7 +43,6 @@ pub mod plugin;
 pub mod plugins;
 
 /// Test helpers used by crate unit tests (only compiled under `cfg(test)`).
-#[cfg(test)]
 pub mod test_helpers;
 
 /// Configuration loading and validation
