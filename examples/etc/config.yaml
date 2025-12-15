@@ -184,3 +184,25 @@ plugins:
     args:
       entry: main_sequence
       listen: :5354
+
+  # DNS over HTTPS (DoH) server (requires TLS)
+  - tag: doh_server
+    type: doh_server
+    args:
+      entry: main_sequence
+      # use unprivileged port for examples; change to :443 for production
+      listen: :8443
+      # Paths to certificate and private key PEM files (relative to this config dir)
+      cert_file: certs/cert.pem
+      key_file: certs/key.pem
+
+  # DNS over TLS (DoT) server (requires TLS)
+  - tag: dot_server
+    type: dot_server
+    args:
+      entry: main_sequence
+      # standard DoT port is 853; use 8853 in examples if you need non-root port
+      listen: :8853
+      # Paths relative to this config directory
+      cert_file: certs/cert.pem
+      key_file: certs/key.pem
