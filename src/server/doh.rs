@@ -33,6 +33,10 @@ use axum::{
     routing::post,
     Router,
 };
+#[cfg(feature = "tls")]
+use axum_server::bind_rustls as axum_bind_rustls;
+#[cfg(feature = "tls")]
+use axum_server::tls_rustls::RustlsConfig as AxumRustlsConfig;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -45,7 +49,7 @@ pub struct DohServer {
     /// Server listening address
     addr: String,
     /// TLS configuration
-    tls_config: TlsConfig,
+    _tls_config: TlsConfig,
     /// Request handler
     handler: Arc<dyn RequestHandler>,
     /// DoH path (default: /dns-query)
@@ -82,7 +86,7 @@ impl DohServer {
     ) -> Self {
         Self {
             addr: addr.into(),
-            tls_config,
+            _tls_config: tls_config,
             handler,
             path: "/dns-query".to_string(),
         }
@@ -113,20 +117,44 @@ impl DohServer {
             self.addr, self.path
         );
 
-        // Build TLS config (placeholder for now)
-        let _tls_config = self.tls_config.build_server_config()?;
+        // If compiled with `--features tls`, run axum-server with Rustls.
+        // This enables proper TLS termination and HTTP/2 for DoH.
+        #[cfg(feature = "tls")]
+        {
+            // Build TLS config only when TLS feature is enabled to avoid
+            // unnecessary work in the default (non-TLS) build.
+            let tls_config = self._tls_config.build_server_config()?;
 
-        // Use axum-server for TLS support (requires axum-server crate in production)
-        // For now, this is a placeholder that would need axum-server crate
-        warn!("DoH server implementation is simplified - requires axum-server crate for full functionality");
+            // Convert our rustls ServerConfig (Arc) into axum-server's RustlsConfig
+            let axum_tls = AxumRustlsConfig::from_config(tls_config.clone());
 
-        // Bind and serve (placeholder - would use axum-server::bind_rustls)
+            info!(
+                "Starting DoH server with TLS on {} (path: {})",
+                self.addr, self.path
+            );
+
+            let bind_addr: std::net::SocketAddr = self
+                .addr
+                .parse()
+                .map_err(|e| Error::Config(format!("Invalid bind address: {}", e)))?;
+
+            axum_bind_rustls(bind_addr, axum_tls)
+                .serve(app.into_make_service())
+                .await
+                .map_err(|e| Error::Other(format!("Server error: {}", e)))?;
+
+            return Ok(());
+        }
+
+        #[cfg(not(feature = "tls"))]
+        // Default (no-tls) fallback for test and lightweight deployments: plain TCP
+        warn!("DoH server running without TLS; enable `tls` feature for production TLS support");
+
         let listener = tokio::net::TcpListener::bind(&self.addr)
             .await
             .map_err(Error::Io)?;
 
-        // Simplified: serve without TLS for testing
-        // In production, use: axum_server::bind_rustls(addr, tls_config).serve(app.into_make_service())
+        // Serve without TLS
         axum::serve(listener, app)
             .await
             .map_err(|e| Error::Other(format!("Server error: {}", e)))?;
@@ -545,5 +573,83 @@ mod tests {
         )
         .await;
         assert_eq!(resp_post.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // Integration-style unit test that exercises the TLS (DoH over HTTPS) server
+    // path. This test is only compiled when the `tls` feature is enabled.
+    #[cfg(feature = "tls")]
+    #[tokio::test]
+    async fn test_doh_server_tls_post() {
+        use crate::server::TlsConfig;
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+        use std::time::Duration;
+
+        // Generate self-signed cert and key using rcgen and write PEM files
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.serialize_pem().unwrap();
+        let key_pem = cert.get_key_pair().serialize_pem();
+
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(cert_pem.as_bytes()).unwrap();
+        let cert_path = cert_file.path().to_path_buf();
+
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_path_buf();
+
+        // Build TlsConfig from the generated PEM files
+        let tls = TlsConfig::from_files(cert_path, key_path).unwrap();
+
+        // Choose an address (0 -> ephemeral port). We'll attempt to bind
+        // to an ephemeral port by reserving one briefly to obtain a free port.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // Drop the listener so `DohServer` can bind to the same port.
+        drop(listener);
+
+        let addr = format!("127.0.0.1:{}", port);
+
+        // Use the simple TestHandler from above
+        let handler = Arc::new(TestHandler);
+
+        let server = DohServer::new(addr.clone(), tls, handler);
+
+        // Spawn server
+        let server_task = tokio::spawn(async move { let _ = server.run().await; });
+
+        // Give server a moment to start
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Build a reqwest client that accepts the self-signed cert for testing
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+
+        // Build a minimal DNS query
+        let mut req_msg = Message::new();
+        req_msg.set_id(0xBEEF);
+        req_msg.set_query(true);
+        let data = crate::dns::wire::serialize_message(&req_msg).unwrap();
+
+        let url = format!("https://{}/dns-query", addr);
+
+        let resp = client
+            .post(&url)
+            .header("Content-Type", "application/dns-message")
+            .body(data.clone())
+            .send()
+            .await
+            .expect("request failed");
+
+        assert!(resp.status().is_success());
+        let bytes = resp.bytes().await.expect("read body");
+        let parsed = crate::dns::wire::parse_message(&bytes).unwrap();
+        assert!(parsed.is_response());
+        assert_eq!(parsed.id(), 0xBEEF);
+
+        // Shutdown server task
+        server_task.abort();
     }
 }
