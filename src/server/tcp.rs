@@ -177,7 +177,10 @@ impl TcpServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dns::wire;
+    use crate::dns::{Question, RecordClass, RecordType};
     use crate::server::DefaultHandler;
+    use tokio::net::{TcpListener, TcpStream};
 
     #[tokio::test]
     async fn test_tcp_server_creation() {
@@ -189,17 +192,81 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_parse_request_placeholder() {
-        let data = vec![0u8; 12];
-        let message = TcpServer::parse_request(&data);
-        assert!(message.is_ok());
+    async fn test_parse_request_and_serialize_response() {
+        // Build a real DNS query message and serialize it, then parse via parse_request
+        let mut req = Message::new();
+        req.set_id(0x42);
+        req.set_query(true);
+        req.add_question(Question::new(
+            "example.test".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let data = wire::serialize_message(&req).expect("serialize request");
+        let parsed = TcpServer::parse_request(&data).expect("parse request");
+        assert_eq!(parsed.id(), 0x42);
+        assert_eq!(parsed.question_count(), 1);
+
+        // Turn parsed message into a response and serialize via serialize_response
+        let mut resp = parsed.clone();
+        resp.set_response(true);
+        let resp_data = TcpServer::serialize_response(&resp).expect("serialize response");
+        assert!(resp_data.len() >= 12);
     }
 
     #[tokio::test]
-    async fn test_serialize_response_placeholder() {
-        let message = Message::new();
-        let data = TcpServer::serialize_response(&message);
-        assert!(data.is_ok());
-        assert_eq!(data.unwrap().len(), 12); // DNS header size
+    async fn test_handle_connection_roundtrip() {
+        // Create a listener and accept one connection to exercise handle_connection
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        // Spawn a server-side task that accepts one connection and runs handle_connection
+        let server_task = tokio::spawn(async move {
+            if let Ok((stream, _peer)) = listener.accept().await {
+                let handler = Arc::new(DefaultHandler);
+                // allow reasonably large messages
+                let _ = TcpServer::handle_connection(stream, handler, 64 * 1024).await;
+            }
+        });
+
+        // Create a client connection and send a request
+        let mut client = TcpStream::connect(addr).await.unwrap();
+
+        let mut req = Message::new();
+        req.set_id(0x99);
+        req.set_query(true);
+        req.add_question(Question::new(
+            "roundtrip.test".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+
+        let req_data = wire::serialize_message(&req).expect("serialize client request");
+        let len = req_data.len() as u16;
+        client
+            .write_all(&len.to_be_bytes())
+            .await
+            .map_err(|e| eprintln!("write len: {}", e))
+            .ok();
+        client
+            .write_all(&req_data)
+            .await
+            .map_err(|e| eprintln!("write data: {}", e))
+            .ok();
+
+        // Read response length
+        let mut len_buf = [0u8; 2];
+        client.read_exact(&mut len_buf).await.unwrap();
+        let resp_len = u16::from_be_bytes(len_buf) as usize;
+        let mut resp_buf = vec![0u8; resp_len];
+        client.read_exact(&mut resp_buf).await.unwrap();
+
+        // Parse response and validate it was converted to a response by DefaultHandler
+        let response = wire::parse_message(&resp_buf).expect("parse response");
+        assert!(response.is_response());
+        assert_eq!(response.id(), 0x99);
+
+        let _ = server_task.await;
     }
 }
