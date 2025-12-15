@@ -169,6 +169,8 @@ impl UdpServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dns::wire;
+    use crate::dns::{Question, RecordClass, RecordType};
     use crate::server::DefaultHandler;
 
     #[tokio::test]
@@ -178,6 +180,73 @@ mod tests {
 
         let server = UdpServer::new(config, handler).await;
         assert!(server.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_udp_server_local_addr() {
+        let config = ServerConfig::default().with_udp_addr("127.0.0.1:0".parse().unwrap());
+        let handler = Arc::new(DefaultHandler);
+
+        let server = UdpServer::new(config, handler).await.unwrap();
+        let addr = server.local_addr();
+        assert!(addr.is_ok());
+        assert_eq!(addr.unwrap().ip(), std::net::Ipv4Addr::LOCALHOST);
+    }
+
+    #[tokio::test]
+    async fn test_udp_server_creation_without_udp_addr() {
+        let config = ServerConfig::new(None, None); // No UDP addr configured
+        let handler = Arc::new(DefaultHandler);
+
+        let server = UdpServer::new(config, handler).await;
+        assert!(server.is_err());
+        // Check that it's a config error
+        if let Err(Error::Config(_)) = server {
+            // Expected
+        } else {
+            panic!("Expected Config error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_parse_request_with_real_dns_message() {
+        // Build a real DNS query message and serialize it, then parse via parse_request
+        let mut req = Message::new();
+        req.set_id(0x42);
+        req.set_query(true);
+        req.add_question(Question::new(
+            "example.test".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let data = wire::serialize_message(&req).expect("serialize request");
+        let parsed = UdpServer::parse_request(&data).expect("parse request");
+        assert_eq!(parsed.id(), 0x42);
+        assert_eq!(parsed.question_count(), 1);
+        assert!(!parsed.is_response()); // Should be a query, not a response
+    }
+
+    #[tokio::test]
+    async fn test_serialize_response_with_real_dns_message() {
+        // Build a DNS response message and serialize via serialize_response
+        let mut resp = Message::new();
+        resp.set_id(0x99);
+        resp.set_response(true);
+        resp.add_question(Question::new(
+            "example.test".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let data = UdpServer::serialize_response(&resp).expect("serialize response");
+        assert!(data.len() >= 12); // DNS header is at least 12 bytes
+
+        // Verify we can parse it back
+        let parsed = wire::parse_message(&data).expect("parse serialized response");
+        assert_eq!(parsed.id(), 0x99);
+        assert!(parsed.is_response());
+        assert_eq!(parsed.question_count(), 1);
     }
 
     #[tokio::test]
@@ -193,5 +262,34 @@ mod tests {
         let data = UdpServer::serialize_response(&message);
         assert!(data.is_ok());
         assert_eq!(data.unwrap().len(), 12); // DNS header size
+    }
+
+    #[tokio::test]
+    async fn test_parse_request_with_invalid_data() {
+        let data = vec![0u8; 5]; // Too short for DNS message
+        let message = UdpServer::parse_request(&data);
+        assert!(message.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_serialize_response_with_complex_message() {
+        let mut resp = Message::new();
+        resp.set_id(0x1234);
+        resp.set_response(true);
+        resp.set_recursion_available(true);
+        resp.add_question(Question::new(
+            "complex.example.test".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+
+        let data = UdpServer::serialize_response(&resp).expect("serialize complex response");
+        assert!(data.len() > 12); // Should be larger than header
+
+        // Parse back and verify
+        let parsed = wire::parse_message(&data).expect("parse complex response");
+        assert_eq!(parsed.id(), 0x1234);
+        assert!(parsed.is_response());
+        assert!(parsed.recursion_available());
     }
 }
