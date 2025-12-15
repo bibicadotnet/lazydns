@@ -206,3 +206,14 @@ plugins:
       # Paths relative to this config directory
       cert_file: certs/cert.pem
       key_file: certs/key.pem
+
+  # DNS over QUIC (DoQ) server (requires TLS)
+  - tag: doq_server
+    type: doq_server
+    args:
+      entry: main_sequence
+      # standard DoQ port is 784; use 8784 in examples if you need non-root port
+      listen: :8784
+      # Paths relative to this config directory
+      cert_file: certs/cert.pem
+      key_file: certs/key.pem
