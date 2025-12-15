@@ -333,7 +333,7 @@ mod tests {
         assert_eq!(expected_hit_rate, 0.75);
 
         // Test zero division case
-        let zero_hit_rate = if 0 + 0 > 0 { 1.0 } else { 0.0 };
+        let zero_hit_rate = if 0 > 0 { 1.0 } else { 0.0 };
         assert_eq!(zero_hit_rate, 0.0);
 
         // Test active connections summation logic
