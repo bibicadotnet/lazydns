@@ -204,4 +204,110 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 12);
     }
+
+    #[tokio::test]
+    async fn test_parse_request_invalid() {
+        // empty data should fail parsing
+        let data: Vec<u8> = vec![];
+        let result = DotServer::parse_request(&data);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_run_invalid_bind_address() {
+        use rcgen::generate_simple_self_signed;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        // generate self-signed cert and key files
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.serialize_pem().unwrap();
+        let key_pem = cert.serialize_private_key_pem();
+
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(cert_pem.as_bytes()).unwrap();
+        let cert_path = cert_file.path().to_path_buf();
+
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_path_buf();
+
+        let tls = crate::server::TlsConfig::from_files(cert_path, key_path).unwrap();
+
+        struct DummyHandler;
+        #[async_trait::async_trait]
+        impl crate::server::RequestHandler for DummyHandler {
+            async fn handle(&self, req: crate::dns::Message) -> crate::Result<crate::dns::Message> {
+                Ok(req)
+            }
+        }
+
+        // Invalid bind address should return an Io error when attempting to bind
+        let server = DotServer::new("not-a-valid-addr", tls, Arc::new(DummyHandler));
+        let res = server.run().await;
+        assert!(res.is_err());
+        match res.unwrap_err() {
+            Error::Io(_) => {}
+            other => panic!("expected Io error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dot_integration_tls_exchange() {
+        // Spawn a minimal DoT TLS server test helper and perform a real TLS-framed exchange
+        let (addr, cert_der, server_handle) =
+            crate::test_helpers::spawn_dot_tls_server("127.0.0.1").await;
+
+        // Build a TLS client using the tokio-rustls-23 / rustls-0.20 types and trust the helper's cert
+        use tokio_rustls_23::rustls::{
+            client::ServerName as ServerName23, Certificate as RCert, RootCertStore,
+        };
+        use tokio_rustls_23::TlsConnector as TlsConn23;
+
+        // Trust the generated certificate
+        let mut root_store = RootCertStore::empty();
+        root_store.add(&RCert(cert_der.clone())).unwrap();
+
+        let client_cfg = tokio_rustls_23::rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        let connector = TlsConn23::from(Arc::new(client_cfg));
+
+        // Connect and perform TLS handshake
+        let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let server_name = ServerName23::try_from("localhost").unwrap();
+        let mut tls_stream = connector.connect(server_name, stream).await.unwrap();
+
+        // build a minimal DNS query
+        let mut req = crate::dns::Message::new();
+        req.set_id(0x4321);
+        req.set_query(true);
+        req.add_question(crate::dns::Question::new(
+            "localhost".to_string(),
+            crate::dns::RecordType::A,
+            crate::dns::RecordClass::IN,
+        ));
+        let data = crate::dns::wire::serialize_message(&req).unwrap();
+        let mut framed = Vec::with_capacity(2 + data.len());
+        framed.extend_from_slice(&(data.len() as u16).to_be_bytes());
+        framed.extend_from_slice(&data);
+
+        // send query
+        tls_stream.write_all(&framed).await.unwrap();
+
+        // read response length
+        let mut len_buf = [0u8; 2];
+        tls_stream.read_exact(&mut len_buf).await.unwrap();
+        let resp_len = u16::from_be_bytes(len_buf) as usize;
+        let mut resp_buf = vec![0u8; resp_len];
+        tls_stream.read_exact(&mut resp_buf).await.unwrap();
+
+        let parsed = crate::dns::wire::parse_message(&resp_buf).unwrap();
+        assert!(parsed.is_response());
+        assert_eq!(parsed.id(), 0x4321);
+
+        let _ = server_handle.await;
+    }
 }
