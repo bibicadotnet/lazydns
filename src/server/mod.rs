@@ -45,6 +45,7 @@ pub use doq::DoqServer;
 #[cfg(feature = "tls")]
 pub use dot::DotServer;
 pub use handler::{DefaultHandler, RequestHandler};
+pub use launcher::ServerLauncher;
 pub use monitoring::MonitoringServer;
 pub use tcp::TcpServer;
 pub use tls::TlsConfig;

@@ -13,7 +13,7 @@
 use clap::Parser;
 use lazydns::config::Config;
 use lazydns::plugin::PluginBuilder;
-use lazydns::server::launcher::ServerLauncher;
+use lazydns::server::ServerLauncher;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
