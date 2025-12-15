@@ -302,6 +302,17 @@ impl PluginBuilder {
                 Arc::new(TcpServerPlugin::new(addr, entry))
             }
 
+            // Accept doh/dot server plugin types at build time so configuration
+            // parsing succeeds. The actual servers are started by the application
+            // runtime (main.rs) when TLS and certs are available. Here we return
+            // a benign plugin instance (AcceptPlugin) so the name is registered
+            // and can be referenced by other plugins.
+            "doh_server" | "dot_server" => {
+                let tag = config.effective_name().to_string();
+                self.server_plugin_tags.push(tag.clone());
+                Arc::new(crate::plugins::AcceptPlugin::new())
+            }
+
             _ => {
                 return Err(Error::Config(format!(
                     "Unknown plugin type: {}",
