@@ -1,8 +1,26 @@
 //! DNS over HTTPS (DoH) server implementation
 //!
-//! Implements RFC 8484 - DNS Queries over HTTPS (DoH)
+//! Implements RFC 8484 — DNS Queries over HTTPS (DoH).
 //!
-//! DoH provides DNS queries over HTTPS, using HTTP/2 for efficiency and privacy.
+//! This module provides a minimal DoH server implementation suitable for
+//! embedding into the test-suite and simple deployments. It supports the
+//! two DoH request styles defined in RFC 8484 Section 4.1:
+//!
+//! - GET: query parameter `dns` containing a base64url (no padding) encoded
+//!   DNS wire-format query. Example: `/dns-query?dns=<base64url>`.
+//! - POST: binary `application/dns-message` request body containing the DNS
+//!   wire-format query.
+//!
+//! The server returns responses with the `application/dns-message` media type
+//! and mirrors common status codes for malformed requests or handler errors
+//! (400 Bad Request, 415 Unsupported Media Type, 500 Internal Server Error).
+//!
+//! Notes:
+//! - This implementation focuses on correctness and testability rather than
+//!   production-grade performance. For a production server, prefer using
+//!   `axum-server`/`hyper` with proper TLS termination and HTTP/2 support.
+//! - Functions in this module accept and return crate-level `Result` values
+//!   for consistent error handling inside the server.
 
 use crate::dns::Message;
 use crate::error::{Error, Result};
@@ -117,7 +135,20 @@ impl DohServer {
     }
 }
 
-/// Handle GET requests (RFC 8484 Section 4.1)
+/// Handle DoH GET requests (RFC 8484 Section 4.1)
+///
+/// Expected behavior:
+/// - Expects a `dns` query parameter which is a base64url (no padding)
+///   encoded DNS wire-format query.
+/// - Returns `200 OK` with `application/dns-message` and the serialized
+///   DNS response on success.
+/// - Returns `400 Bad Request` for missing/invalid parameters or malformed
+///   DNS messages.
+/// - Returns `500 Internal Server Error` when the request handler fails.
+///
+/// This function is intended to be used as an `axum` handler and therefore
+/// takes the `State` and `Query` extracts. It returns an `axum::Response`
+/// so it can map directly to HTTP status codes and body bytes.
 async fn handle_get_query(
     State(handler): State<Arc<dyn RequestHandler>>,
     AxumQuery(params): AxumQuery<HashMap<String, String>>,
@@ -199,7 +230,21 @@ async fn handle_get_query(
         .into_response()
 }
 
-/// Handle POST requests (RFC 8484 Section 4.1)
+/// Handle DoH POST requests (RFC 8484 Section 4.1)
+///
+/// Expected behavior:
+/// - Requires `Content-Type: application/dns-message` header.
+/// - The request body must be the DNS wire-format query bytes.
+/// - Returns `200 OK` with `application/dns-message` and the serialized
+///   DNS response on success.
+/// - Returns `400 Bad Request` when `Content-Type` is missing or when the
+///   DNS message is malformed.
+/// - Returns `415 Unsupported Media Type` when a different content type is
+///   provided.
+/// - Returns `500 Internal Server Error` when the request handler fails.
+///
+/// Like `handle_get_query`, this function is an `axum` handler and returns
+/// an `axum::Response`.
 async fn handle_post_query(
     State(handler): State<Arc<dyn RequestHandler>>,
     headers: HeaderMap,
@@ -263,8 +308,11 @@ async fn handle_post_query(
         .into_response()
 }
 
-/// Parse DNS message from wire format (placeholder)
-/// Parse DNS message from wire format
+/// Parse a DNS message from wire-format bytes
+///
+/// This thin wrapper forwards to the crate's `dns::wire::parse_message`
+/// helper and returns the crate `Result` type. The function is intentionally
+/// small so tests and handlers can rely on a single parse entry point.
 fn parse_dns_message(data: &[u8]) -> Result<Message> {
     crate::dns::wire::parse_message(data)
 }
