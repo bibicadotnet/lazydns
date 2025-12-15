@@ -15,6 +15,8 @@ use lazydns::config::Config;
 use lazydns::plugin::{PluginBuilder, PluginHandler};
 #[cfg(feature = "tls")]
 use lazydns::server::{DohServer, DotServer, TlsConfig};
+#[cfg(feature = "doq")]
+use lazydns::server::DoqServer;
 use lazydns::server::{ServerConfig, TcpServer, UdpServer};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -306,6 +308,44 @@ async fn main() -> anyhow::Result<()> {
                         });
                     } else {
                         tracing::warn!("dot_server plugin configured without cert_file/key_file");
+                    }
+                }
+            }
+        }
+        else if plugin_config.plugin_type == "doq_server" {
+            #[cfg(feature = "doq")]
+            {
+                let args = plugin_config.effective_args();
+                let listen_str = args
+                    .get("listen")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0.0.0.0:784");
+                let listen_parse_str = normalize_listen_addr(listen_str);
+                if let Ok(addr) = listen_parse_str.parse::<SocketAddr>() {
+                    // Expect cert/key paths in args: cert_file, key_file
+                    let cert_path_opt = args.get("cert_file").and_then(|v| v.as_str());
+                    let key_path_opt = args.get("key_file").and_then(|v| v.as_str());
+
+                    if let (Some(cert_path), Some(key_path)) = (cert_path_opt, key_path_opt) {
+                        let entry = args
+                            .get("entry")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("main_sequence")
+                            .to_string();
+
+                        let handler = Arc::new(PluginHandler {
+                            registry: Arc::clone(&registry),
+                            entry,
+                        });
+
+                        let server = DoqServer::new(format!("{}", addr), cert_path, key_path, handler);
+                        tokio::spawn(async move {
+                            if let Err(e) = server.run().await {
+                                error!("DoQ server error: {}", e);
+                            }
+                        });
+                    } else {
+                        tracing::warn!("doq_server plugin configured without cert_file/key_file");
                     }
                 }
             }

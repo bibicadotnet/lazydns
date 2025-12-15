@@ -42,6 +42,9 @@ rustls = "0.23"
 tokio-rustls = "0.26"
 rustls-pemfile = "2.0"
 
+# QUIC / DoQ support (optional)
+quinn = { version = "0.11", optional = true }
+
 # Base64 encoding
 base64 = "0.21"
 
@@ -69,15 +72,16 @@ axum-server = { version = "0.7", optional = true, package = "axum-server", featu
 tokio-test = "0.4"
 tempfile = "3.8"
 rcgen = "0.9"
-# Testing: DoH (test_helpers)
+# Testing: DoH/DoT (test_helpers) - needs rustls v0.20 for tokio-rustls v0.23 compat
 rustls_20 = { package = "rustls", version = "~0.20" }
-# Testing: DoH (test_helpers)
 tokio_rustls_23 = { package = "tokio-rustls", version = "~0.23" }
 
 [features]
-default = []
-# Enable TLS-backed servers (DoH using axum-server + rustls)
+default = ["doq"]
+# Enable TLS-backed (DoH using axum-server + rustls) server implementation
 tls = ["axum-server"]
+# Enable DoQ (QUIC) server implementation
+doq = ["quinn"]
 
 [profile.release]
 opt-level = 3

@@ -307,7 +307,7 @@ impl PluginBuilder {
             // runtime (main.rs) when TLS and certs are available. Here we return
             // a benign plugin instance (AcceptPlugin) so the name is registered
             // and can be referenced by other plugins.
-            "doh_server" | "dot_server" => {
+            "doh_server" | "dot_server" | "doq_server" => {
                 let tag = config.effective_name().to_string();
                 self.server_plugin_tags.push(tag.clone());
                 Arc::new(crate::plugins::AcceptPlugin::new())

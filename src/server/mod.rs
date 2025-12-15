@@ -27,6 +27,8 @@ pub mod config;
 pub mod doh;
 #[cfg(feature = "tls")]
 pub mod dot;
+#[cfg(feature = "doq")]
+pub mod doq;
 pub mod handler;
 pub mod monitoring;
 pub mod tcp;
@@ -39,6 +41,8 @@ pub use config::ServerConfig;
 pub use doh::DohServer;
 #[cfg(feature = "tls")]
 pub use dot::DotServer;
+#[cfg(feature = "doq")]
+pub use doq::DoqServer;
 pub use handler::{DefaultHandler, RequestHandler};
 pub use monitoring::MonitoringServer;
 pub use tcp::TcpServer;
