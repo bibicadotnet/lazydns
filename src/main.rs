@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
     // Change working directory if specified
     if let Some(dir) = &args.dir {
         if let Err(e) = std::env::set_current_dir(dir) {
-            info!("Failed to change working directory to {}: {}", dir, e);
+            error!("Failed to change working directory to {}: {}", dir, e);
             return Err(anyhow::anyhow!("Failed to change working directory"));
         }
         info!("Working directory changed to: {}", dir);
@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
             config
         }
         Err(e) => {
-            info!("Failed to load configuration: {}", e);
+            error!("Failed to load configuration: {}", e);
             info!("Using default configuration");
             Config::default()
         }
@@ -117,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
                 plugin_count += 1;
             }
             Err(e) => {
-                info!(
+                error!(
                     "Failed to load plugin {}: {}",
                     plugin_config.effective_name(),
                     e
@@ -130,7 +130,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Resolve inter-plugin references (e.g., fallback primary/secondary plugin names)
     if let Err(e) = builder.resolve_references(&config.plugins) {
-        info!("Failed to resolve plugin references: {}", e);
+        error!("Failed to resolve plugin references: {}", e);
     }
 
     // Get the plugin registry for servers to use
@@ -176,7 +176,7 @@ async fn main() -> anyhow::Result<()> {
                         });
                     }
                     Err(e) => {
-                        info!("Failed to start UDP server: {}", e);
+                        error!("Failed to start UDP server: {}", e);
                     }
                 }
             }
@@ -237,7 +237,7 @@ async fn main() -> anyhow::Result<()> {
                         let tls = match TlsConfig::from_files(cert_path, key_path) {
                             Ok(t) => t,
                             Err(e) => {
-                                info!("Failed to load TLS config for DoH: {}", e);
+                                error!("Failed to load TLS config for DoH: {}", e);
                                 continue;
                             }
                         };
@@ -282,7 +282,7 @@ async fn main() -> anyhow::Result<()> {
                         let tls = match TlsConfig::from_files(cert_path, key_path) {
                             Ok(t) => t,
                             Err(e) => {
-                                info!("Failed to load TLS config for DoT: {}", e);
+                                error!("Failed to load TLS config for DoT: {}", e);
                                 continue;
                             }
                         };
