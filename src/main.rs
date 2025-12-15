@@ -77,6 +77,9 @@ async fn main() -> anyhow::Result<()> {
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
     info!("Configuration file: {}", args.config);
 
+    // Ensure rustls has a process-level CryptoProvider installed (ring)
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     // Change working directory if specified
     if let Some(dir) = &args.dir {
         if let Err(e) = std::env::set_current_dir(dir) {
