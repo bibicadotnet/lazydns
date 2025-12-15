@@ -1,6 +1,48 @@
 //! Metrics collection and Prometheus exporter
 //!
-//! This module provides Prometheus metrics for DNS server monitoring.
+//! This module provides Prometheus metrics used by the DNS server. It
+//! exposes a small set of well-documented, process-global metrics that are
+//! registered on first use and intended to be scraped by Prometheus (or
+//! inspected by `gather_metrics()` in tests).
+//!
+//! Public metrics offered by this module:
+//! - `dns_queries_total{protocol,query_type}`: counter of queries received,
+//!   labelled by transport protocol (e.g. `udp`, `tcp`, `tls`, `doh`) and DNS
+//!   question type (A/AAAA/etc).
+//! - `dns_responses_total{protocol,status}`: counter of responses sent,
+//!   labelled by protocol and response status (e.g. `NOERROR`, `NXDOMAIN`).
+//! - `dns_query_duration_seconds{protocol}`: histogram of request processing
+//!   latency in seconds, labelled by protocol.
+//! - `dns_cache_hits_total`, `dns_cache_misses_total`: simple counters for the
+//!   cache subsystem.
+//! - `dns_cache_size`: current gauge with number of entries in the cache.
+//! - `dns_upstream_queries_total{upstream,status}` and
+//!   `dns_upstream_duration_seconds{upstream}`: upstream-specific metrics to
+//!   observe health and latency of configured upstream resolvers.
+//! - `dns_active_connections{protocol}`: gauge of active connections by
+//!   protocol.
+//! - `dns_plugin_executions_total{plugin,status}`: counter of plugin
+//!   execution events, labelled by plugin name and status string.
+//!
+//! Example (incrementing metrics from application code):
+//!
+//! ```rust
+//! use lazydns::metrics::{DNS_QUERIES_TOTAL, CACHE_HITS_TOTAL};
+//!
+//! // increment query counter for UDP A queries
+//! DNS_QUERIES_TOTAL.with_label_values(&["udp", "A"]).inc();
+//!
+//! // increment cache hit
+//! CACHE_HITS_TOTAL.inc();
+//! ```
+//!
+//! Example: render Prometheus text exposition (useful for tests):
+//!
+//! ```rust
+//! use lazydns::metrics::gather_metrics;
+//! let text = gather_metrics();
+//! assert!(text.contains("dns_queries_total"));
+//! ```
 
 use once_cell::sync::Lazy;
 use prometheus::{
@@ -8,10 +50,18 @@ use prometheus::{
 };
 use std::sync::Arc;
 
-/// Global metrics registry
+/// Global Prometheus `Registry` used to register process-global metrics.
+///
+/// This registry is created on first access and shared by all metrics in
+/// this module. Prefer using the provided metric helpers rather than
+/// registering new metrics directly into this registry at runtime.
 pub static METRICS_REGISTRY: Lazy<Arc<Registry>> = Lazy::new(|| Arc::new(Registry::new()));
 
-/// DNS query counter by protocol
+/// Counter of DNS queries grouped by transport `protocol` and `query_type`.
+///
+/// Labels:
+/// - `protocol`: transport/protocol where the query was received (e.g. `udp`, `tcp`, `doh`).
+/// - `query_type`: DNS question type label (e.g. `A`, `AAAA`, `TXT`).
 pub static DNS_QUERIES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     let counter = IntCounterVec::new(
         Opts::new("dns_queries_total", "Total number of DNS queries"),
@@ -24,7 +74,11 @@ pub static DNS_QUERIES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     counter
 });
 
-/// DNS response counter by status
+/// Counter of DNS responses grouped by `protocol` and `status`.
+///
+/// Labels:
+/// - `protocol`: transport/protocol used to send the response.
+/// - `status`: textual response code (e.g. `NOERROR`, `NXDOMAIN`).
 pub static DNS_RESPONSES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     let counter = IntCounterVec::new(
         Opts::new("dns_responses_total", "Total number of DNS responses"),
@@ -37,7 +91,10 @@ pub static DNS_RESPONSES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     counter
 });
 
-/// Query duration histogram
+/// Histogram of DNS query processing durations (seconds), labelled by `protocol`.
+///
+/// Use `observe()` with the request handling duration (in seconds) to track
+/// latency distributions for each protocol.
 pub static QUERY_DURATION_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
     let histogram = HistogramVec::new(
         HistogramOpts::new(
@@ -56,7 +113,7 @@ pub static QUERY_DURATION_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
     histogram
 });
 
-/// Cache hit/miss counters
+/// Counter of cache hits observed by the DNS cache subsystem.
 pub static CACHE_HITS_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
     let counter = IntCounter::new("dns_cache_hits_total", "Total number of cache hits")
         .expect("Failed to create cache_hits_total metric");
@@ -66,7 +123,7 @@ pub static CACHE_HITS_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
     counter
 });
 
-/// Total cache misses
+/// Counter of cache misses observed by the DNS cache subsystem.
 pub static CACHE_MISSES_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
     let counter = IntCounter::new("dns_cache_misses_total", "Total number of cache misses")
         .expect("Failed to create cache_misses_total metric");
@@ -76,7 +133,7 @@ pub static CACHE_MISSES_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
     counter
 });
 
-/// Cache size gauge
+/// Gauge exposing the current number of entries in the DNS cache.
 pub static CACHE_SIZE: Lazy<IntGauge> = Lazy::new(|| {
     let gauge = IntGauge::new("dns_cache_size", "Current number of entries in cache")
         .expect("Failed to create cache_size metric");
@@ -86,7 +143,11 @@ pub static CACHE_SIZE: Lazy<IntGauge> = Lazy::new(|| {
     gauge
 });
 
-/// Upstream query counter
+/// Counter of queries sent to upstream resolvers, labelled by `upstream` and `status`.
+///
+/// Labels:
+/// - `upstream`: identifier or address of the upstream resolver.
+/// - `status`: outcome of the upstream query (e.g. `success`, `timeout`, `error`).
 pub static UPSTREAM_QUERIES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     let counter = IntCounterVec::new(
         Opts::new(
@@ -102,7 +163,7 @@ pub static UPSTREAM_QUERIES_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     counter
 });
 
-/// Upstream response time histogram
+/// Histogram of upstream query durations (seconds), labelled by `upstream`.
 pub static UPSTREAM_DURATION_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
     let histogram = HistogramVec::new(
         HistogramOpts::new(
@@ -121,7 +182,7 @@ pub static UPSTREAM_DURATION_SECONDS: Lazy<HistogramVec> = Lazy::new(|| {
     histogram
 });
 
-/// Active connections gauge
+/// Gauge of active connections by `protocol` (e.g. `udp`, `tcp`).
 pub static ACTIVE_CONNECTIONS: Lazy<IntGaugeVec> = Lazy::new(|| {
     let gauge = IntGaugeVec::new(
         Opts::new("dns_active_connections", "Number of active connections"),
@@ -134,7 +195,10 @@ pub static ACTIVE_CONNECTIONS: Lazy<IntGaugeVec> = Lazy::new(|| {
     gauge
 });
 
-/// Plugin execution counter
+/// Counter of plugin execution events, labelled by `plugin` and `status`.
+///
+/// Typical `status` labels are `ok`, `skipped`, `error`, etc., depending on
+/// how the plugin reports its execution result.
 pub static PLUGIN_EXECUTIONS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     let counter = IntCounterVec::new(
         Opts::new(
@@ -150,7 +214,10 @@ pub static PLUGIN_EXECUTIONS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     counter
 });
 
-/// Get metrics as Prometheus text format
+/// Gather the current registry metrics and return the Prometheus text exposition.
+///
+/// This function is primarily useful for tests and health endpoints that want
+/// to render the current metrics as a human- and Prometheus-readable string.
 pub fn gather_metrics() -> String {
     use prometheus::Encoder;
     let encoder = prometheus::TextEncoder::new();
@@ -191,5 +258,40 @@ mod tests {
             .observe(0.015);
         let metrics = gather_metrics();
         assert!(metrics.contains("dns_query_duration_seconds"));
+    }
+
+    #[test]
+    fn test_responses_and_upstream_metrics() {
+        // increment response counter and upstream counters/histogram
+        DNS_RESPONSES_TOTAL.with_label_values(&["udp", "NOERROR"]).inc();
+        UPSTREAM_QUERIES_TOTAL
+            .with_label_values(&["8.8.8.8", "success"]) // label values are strings
+            .inc();
+        UPSTREAM_DURATION_SECONDS
+            .with_label_values(&["8.8.8.8"])
+            .observe(0.05);
+
+        let metrics = gather_metrics();
+        assert!(metrics.contains("dns_responses_total"));
+        assert!(metrics.contains("dns_upstream_queries_total"));
+        assert!(metrics.contains("dns_upstream_duration_seconds"));
+    }
+
+    #[test]
+    fn test_cache_size_active_connections_and_plugin_exec() {
+        // Set gauge and counters and verify exposition contains values and labels
+        CACHE_SIZE.set(42);
+        ACTIVE_CONNECTIONS.with_label_values(&["udp"]).set(3);
+        PLUGIN_EXECUTIONS_TOTAL
+            .with_label_values(&["cache", "ok"])
+            .inc();
+
+        let metrics = gather_metrics();
+        assert!(metrics.contains("dns_cache_size"));
+        assert!(metrics.contains("dns_active_connections"));
+        assert!(metrics.contains("dns_plugin_executions_total"));
+
+        // check specific labelled value appears for active connections
+        assert!(metrics.contains("dns_active_connections{protocol=\"udp\"} 3"));
     }
 }
