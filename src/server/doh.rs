@@ -581,9 +581,9 @@ mod tests {
     #[tokio::test]
     async fn test_doh_server_tls_post() {
         use crate::server::TlsConfig;
-        use tempfile::NamedTempFile;
         use std::io::Write;
         use std::time::Duration;
+        use tempfile::NamedTempFile;
 
         // Generate self-signed cert and key using rcgen and write PEM files
         let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
@@ -616,7 +616,9 @@ mod tests {
         let server = DohServer::new(addr.clone(), tls, handler);
 
         // Spawn server
-        let server_task = tokio::spawn(async move { let _ = server.run().await; });
+        let server_task = tokio::spawn(async move {
+            let _ = server.run().await;
+        });
 
         // Give server a moment to start
         tokio::time::sleep(Duration::from_millis(200)).await;
