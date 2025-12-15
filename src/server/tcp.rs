@@ -1,19 +1,20 @@
-//! TCP DNS server implementation
-//!
-//! Provides a DNS server that listens on TCP for larger responses.
-
-use crate::dns::Message;
-use crate::server::{RequestHandler, ServerConfig};
-use crate::{Error, Result};
-use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info};
-
 /// TCP DNS server
 ///
-/// Handles DNS queries over TCP protocol. TCP is used when responses
-/// are too large for UDP (>512 bytes) or when reliable delivery is required.
+/// Handles DNS queries over TCP. TCP is used when responses are larger than
+/// the UDP path can support (>512 bytes) or when a stream-oriented,
+/// connection-based transport is desired.
+///
+/// The server accepts TCP connections, reads a single length-prefixed DNS
+/// message from the connection, dispatches it to the configured
+/// `RequestHandler`, and writes a length-prefixed DNS response back to the
+/// client. Each connection is handled on a spawned task so multiple clients
+/// can be served concurrently.
+///
+/// Notes:
+/// - DNS over TCP uses a 2-byte big-endian length prefix for each message.
+/// - `handle_connection` encapsulates the read/parse/handle/serialize/write
+///   flow and is suitable for unit testing without running the full accept
+///   loop.
 ///
 /// # Example
 ///
@@ -25,10 +26,18 @@ use tracing::{debug, error, info};
 /// let config = ServerConfig::default();
 /// let handler = Arc::new(DefaultHandler::default());
 /// let server = TcpServer::new(config, handler).await?;
-/// server.run().await?;
+/// // `server.run().await` runs indefinitely; execute it in a background task.
 /// # Ok(())
 /// # }
 /// ```
+use crate::dns::Message;
+use crate::server::{RequestHandler, ServerConfig};
+use crate::{Error, Result};
+use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tracing::{debug, error, info};
+
 pub struct TcpServer {
     listener: TcpListener,
     handler: Arc<dyn RequestHandler>,
@@ -98,7 +107,14 @@ impl TcpServer {
 
     /// Handle a single TCP connection
     ///
-    /// TCP DNS messages are prefixed with a 2-byte length field.
+    /// Reads a single length-prefixed DNS request from `stream`, calls the
+    /// provided `handler` to obtain a response, and writes a length-prefixed
+    /// response back to the client. If the incoming message length exceeds
+    /// `max_size`, the function returns an error.
+    ///
+    /// The function consumes the `TcpStream` so the connection is closed when
+    /// the call returns. It is intended to be spawned as a task from the
+    /// accept loop.
     async fn handle_connection(
         mut stream: TcpStream,
         handler: Arc<dyn RequestHandler>,
@@ -161,14 +177,19 @@ impl TcpServer {
 
     /// Parse DNS request from wire format
     ///
-    /// Parses binary DNS wire format according to RFC 1035 using hickory-proto.
+    /// Thin wrapper around `dns::wire::parse_message` that converts a byte
+    /// slice into a `Message` structure. Returns an error on invalid input.
     fn parse_request(data: &[u8]) -> Result<Message> {
         crate::dns::wire::parse_message(data)
     }
 
     /// Serialize DNS response to wire format
     ///
-    /// Serializes to binary DNS wire format according to RFC 1035 using hickory-proto.
+    /// Serialize DNS response to wire format
+    ///
+    /// Wrapper around `dns::wire::serialize_message` which converts a
+    /// `Message` into a DNS wire-format byte vector suitable for sending over
+    /// the TCP connection.
     fn serialize_response(message: &Message) -> Result<Vec<u8>> {
         crate::dns::wire::serialize_message(message)
     }

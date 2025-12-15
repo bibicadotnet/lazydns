@@ -43,6 +43,7 @@ pub mod plugin;
 pub mod plugins;
 
 /// Test helpers used by crate unit tests (only compiled under `cfg(test)`).
+#[cfg(test)]
 pub mod test_helpers;
 
 /// Configuration loading and validation
