@@ -81,18 +81,19 @@ pub async fn spawn_doh_https_server(response_ip: &str) -> (String, JoinHandle<()
     use crate::dns::types::{RecordClass, RecordType};
     use crate::dns::{RData, ResourceRecord};
     use rcgen::generate_simple_self_signed;
-    use rustls_20::{Certificate, PrivateKey, ServerConfig};
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    use rustls::ServerConfig;
     use std::sync::Arc;
-    use tokio_rustls_23::TlsAcceptor;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_rustls::TlsAcceptor;
 
     let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let cert_der = cert.serialize_der().unwrap();
     let key_der = cert.get_key_pair().serialize_der();
 
-    let certs = vec![Certificate(cert_der.clone())];
-    let priv_key = PrivateKey(key_der.clone());
+    let certs = vec![CertificateDer::from(cert_der.clone())];
+    let priv_key = PrivateKeyDer::Pkcs8(key_der.clone().into());
     let server_config = ServerConfig::builder()
-        .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(certs, priv_key)
         .unwrap();

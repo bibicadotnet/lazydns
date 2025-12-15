@@ -1,7 +1,52 @@
 #![cfg(feature = "tls")]
 
+use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{ClientConfig, SignatureScheme};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+/// Custom certificate verifier that accepts any certificate (for testing only)
+#[derive(Debug)]
+struct NoCertificateVerification;
+
+impl ServerCertVerifier for NoCertificateVerification {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        vec![
+            SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+        ]
+    }
+}
 
 #[tokio::test]
 async fn integration_doh_tls_post() {
@@ -93,18 +138,18 @@ async fn spawn_dot_single_accept(
     use lazydns::dns::types::{RecordClass, RecordType};
     use lazydns::dns::{RData, ResourceRecord};
     use rcgen::generate_simple_self_signed;
-    use rustls_20::{Certificate, PrivateKey, ServerConfig};
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    use rustls::ServerConfig;
     use std::sync::Arc;
-    use tokio_rustls_23::TlsAcceptor;
+    use tokio_rustls::TlsAcceptor;
 
     let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let cert_der = cert.serialize_der().unwrap();
     let key_der = cert.get_key_pair().serialize_der();
 
-    let certs = vec![Certificate(cert_der.clone())];
-    let priv_key = PrivateKey(key_der.clone());
+    let certs = vec![CertificateDer::from(cert_der.clone())];
+    let priv_key = PrivateKeyDer::Pkcs8(key_der.clone().into());
     let server_config = ServerConfig::builder()
-        .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(certs, priv_key)
         .unwrap();
@@ -155,24 +200,19 @@ async fn spawn_dot_single_accept(
 
 #[tokio::test]
 async fn integration_dot_tls_exchange() {
-    use tokio_rustls_23::rustls::{
-        client::ServerName as ServerName23, Certificate as RCert, RootCertStore,
-    };
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let (addr, cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
+    let (addr, _cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
 
-    let mut root_store = RootCertStore::empty();
-    root_store.add(&RCert(cert_der.clone())).unwrap();
-
-    let client_cfg = tokio_rustls_23::rustls::ClientConfig::builder()
-        .with_safe_defaults()
-        .with_root_certificates(root_store)
+    let client_cfg = ClientConfig::builder()
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
         .with_no_client_auth();
 
-    let connector = tokio_rustls_23::TlsConnector::from(Arc::new(client_cfg));
+    let connector = tokio_rustls::TlsConnector::from(Arc::new(client_cfg));
 
     let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
-    let server_name = ServerName23::try_from("localhost").unwrap();
+    let server_name = ServerName::try_from("localhost").unwrap();
     let mut tls_stream = connector.connect(server_name, stream).await.unwrap();
 
     let mut req = lazydns::dns::Message::new();
@@ -206,10 +246,9 @@ async fn integration_dot_tls_exchange() {
 
 #[tokio::test]
 async fn integration_dot_concurrent_clients() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     use tokio::time::{sleep, Duration};
-    use tokio_rustls_23::rustls::{
-        client::ServerName as ServerName23, Certificate as RCert, RootCertStore,
-    };
 
     async fn connect_tcp_retry(addr: std::net::SocketAddr) -> tokio::net::TcpStream {
         for _ in 0..20u8 {
@@ -225,22 +264,19 @@ async fn integration_dot_concurrent_clients() {
     let mut server_handles = Vec::new();
 
     for i in 0..8u16 {
-        let (addr, cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
+        let (addr, _cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
         server_handles.push(server_handle);
 
         let handle = tokio::spawn(async move {
-            let mut root_store = RootCertStore::empty();
-            root_store.add(&RCert(cert_der)).unwrap();
-
-            let client_cfg = tokio_rustls_23::rustls::ClientConfig::builder()
-                .with_safe_defaults()
-                .with_root_certificates(root_store)
+            let client_cfg = ClientConfig::builder()
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
                 .with_no_client_auth();
 
-            let connector = tokio_rustls_23::TlsConnector::from(std::sync::Arc::new(client_cfg));
+            let connector = tokio_rustls::TlsConnector::from(Arc::new(client_cfg));
 
             let stream = connect_tcp_retry(addr).await;
-            let server_name = ServerName23::try_from("localhost").unwrap();
+            let server_name = ServerName::try_from("localhost").unwrap();
             let mut tls_stream = connector.connect(server_name, stream).await.unwrap();
 
             let mut req = lazydns::dns::Message::new();
@@ -283,10 +319,9 @@ async fn integration_dot_concurrent_clients() {
 
 #[tokio::test]
 async fn integration_dot_malformed_frames() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     use tokio::time::{sleep, Duration};
-    use tokio_rustls_23::rustls::{
-        client::ServerName as ServerName23, Certificate as RCert, RootCertStore,
-    };
 
     async fn connect_tcp_retry(addr: std::net::SocketAddr) -> tokio::net::TcpStream {
         for _ in 0..20u8 {
@@ -300,16 +335,14 @@ async fn integration_dot_malformed_frames() {
 
     // Case 1: zero-length frame
     {
-        let (addr, cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
-        let mut root_store = RootCertStore::empty();
-        root_store.add(&RCert(cert_der.clone())).unwrap();
-        let client_cfg = tokio_rustls_23::rustls::ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(root_store)
+        let (addr, _cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
+        let client_cfg = ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
             .with_no_client_auth();
-        let connector = tokio_rustls_23::TlsConnector::from(std::sync::Arc::new(client_cfg));
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(client_cfg));
         let stream = connect_tcp_retry(addr).await;
-        let server_name = ServerName23::try_from("localhost").unwrap();
+        let server_name = ServerName::try_from("localhost").unwrap();
         let mut tls_stream = connector.connect(server_name, stream).await.unwrap();
 
         tls_stream.write_all(&[0u8, 0u8]).await.unwrap();
@@ -321,16 +354,14 @@ async fn integration_dot_malformed_frames() {
 
     // Case 2: truncated payload
     {
-        let (addr, cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
-        let mut root_store = RootCertStore::empty();
-        root_store.add(&RCert(cert_der.clone())).unwrap();
-        let client_cfg = tokio_rustls_23::rustls::ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(root_store)
+        let (addr, _cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
+        let client_cfg = ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
             .with_no_client_auth();
-        let connector = tokio_rustls_23::TlsConnector::from(std::sync::Arc::new(client_cfg));
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(client_cfg));
         let stream = connect_tcp_retry(addr).await;
-        let server_name = ServerName23::try_from("localhost").unwrap();
+        let server_name = ServerName::try_from("localhost").unwrap();
         let mut tls_stream = connector.connect(server_name, stream).await.unwrap();
 
         tls_stream.write_all(&10u16.to_be_bytes()).await.unwrap();
@@ -344,16 +375,14 @@ async fn integration_dot_malformed_frames() {
 
     // Case 3: no length prefix
     {
-        let (addr, cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
-        let mut root_store = RootCertStore::empty();
-        root_store.add(&RCert(cert_der.clone())).unwrap();
-        let client_cfg = tokio_rustls_23::rustls::ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(root_store)
+        let (addr, _cert_der, server_handle) = spawn_dot_single_accept("127.0.0.1").await;
+        let client_cfg = ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
             .with_no_client_auth();
-        let connector = tokio_rustls_23::TlsConnector::from(std::sync::Arc::new(client_cfg));
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(client_cfg));
         let stream = connect_tcp_retry(addr).await;
-        let server_name = ServerName23::try_from("localhost").unwrap();
+        let server_name = ServerName::try_from("localhost").unwrap();
         let mut tls_stream = connector.connect(server_name, stream).await.unwrap();
 
         let raw = vec![0u8; 12];
@@ -368,22 +397,19 @@ async fn integration_dot_malformed_frames() {
 
 #[tokio::test]
 async fn integration_dot_timeout_behavior() {
-    use tokio::time::{timeout, Duration};
-    use tokio_rustls_23::rustls::{
-        client::ServerName as ServerName23, Certificate as RCert, RootCertStore,
-    };
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let (addr, cert_der, _server_handle) = spawn_dot_single_accept("127.0.0.1").await;
-    let mut root_store = RootCertStore::empty();
-    root_store.add(&RCert(cert_der)).unwrap();
-    let client_cfg = tokio_rustls_23::rustls::ClientConfig::builder()
-        .with_safe_defaults()
-        .with_root_certificates(root_store)
+    use tokio::time::{timeout, Duration};
+
+    let (addr, _cert_der, _server_handle) = spawn_dot_single_accept("127.0.0.1").await;
+    let client_cfg = ClientConfig::builder()
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(NoCertificateVerification))
         .with_no_client_auth();
-    let connector = tokio_rustls_23::TlsConnector::from(std::sync::Arc::new(client_cfg));
+    let connector = tokio_rustls::TlsConnector::from(Arc::new(client_cfg));
 
     let stream = tokio::net::TcpStream::connect(addr).await.unwrap();
-    let server_name = ServerName23::try_from("localhost").unwrap();
+    let server_name = ServerName::try_from("localhost").unwrap();
     let mut tls_stream = connector.connect(server_name, stream).await.unwrap();
 
     let mut len_buf = [0u8; 2];

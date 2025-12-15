@@ -72,9 +72,6 @@ axum-server = { version = "0.7", optional = true, package = "axum-server", featu
 tokio-test = "0.4"
 tempfile = "3.8"
 rcgen = "0.9"
-# Testing: DoH/DoT (test_helpers) - needs rustls v0.20 for tokio-rustls v0.23 compat
-rustls_20 = { package = "rustls", version = "~0.20" }
-tokio_rustls_23 = { package = "tokio-rustls", version = "~0.23" }
 
 [features]
 default = ["doq"]

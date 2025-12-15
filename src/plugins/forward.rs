@@ -1196,11 +1196,15 @@ mod tests {
         use crate::dns::types::{RecordClass, RecordType};
         use crate::dns::{Message, Question, RData, ResourceRecord};
         use rcgen::generate_simple_self_signed;
-        use rustls_20::{Certificate, PrivateKey, ServerConfig};
+        use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+        use rustls::ServerConfig;
         use std::sync::Arc;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::TcpListener;
-        use tokio_rustls_23::TlsAcceptor;
+        use tokio_rustls::TlsAcceptor;
+
+        // Ensure rustls has a process-level CryptoProvider installed
+        let _ = rustls::crypto::ring::default_provider().install_default();
 
         // Generate a self-signed certificate for "localhost"
         let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
@@ -1208,10 +1212,9 @@ mod tests {
         let key_der = cert.get_key_pair().serialize_der();
 
         // Build rustls server config
-        let certs = vec![Certificate(cert_der.clone())];
-        let priv_key = PrivateKey(key_der.clone());
+        let certs = vec![CertificateDer::from(cert_der.clone())];
+        let priv_key = PrivateKeyDer::Pkcs8(key_der.clone().into());
         let server_config = ServerConfig::builder()
-            .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certs, priv_key)
             .unwrap();
