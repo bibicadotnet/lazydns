@@ -1,6 +1,52 @@
 //! Forward plugin
 //!
-//! Forwards DNS queries to upstream DNS servers.
+//! Forwarding layer that sends DNS queries to one or more upstream
+//! resolvers and returns the first valid response. This module implements
+//! both classic socket-based forwarding (UDP/TCP to `ip:port`) and
+//! DNS-over-HTTPS (DoH) via HTTP POST (`application/dns-message`).
+//!
+//! Features
+//! - Multiple upstreams with configurable load-balancing strategies:
+//!   round-robin, random, and `Fastest` (based on locally recorded
+//!   response times).
+//! - Local per-upstream health tracking (queries, successes, failures,
+//!   average response time) which can be enabled via the builder.
+//! - Optional concurrent (race) mode which sends parallel queries to
+//!   all upstreams and returns the fastest successful response.
+//! - DoH support for upstreams that are supplied as HTTP(S) URLs.
+//! - Prometheus metrics reporting (see `crate::metrics`) for upstream
+//!   success/failure counts and response duration observations when
+//!   health checks are enabled.
+//!
+//! Usage
+//! - Use `ForwardPlugin::builder()` to construct an instance. Add
+//!   upstreams with `add_upstream("ip:port")` or a DoH endpoint
+//!   `add_upstream("https://dns.example/dns-query")`.
+//! - Call `enable_health_checks(true)` to collect health metrics and
+//!   enable richer selection for the `Fastest` strategy.
+//! - Use `concurrent_queries(true)` to enable race-mode for lower
+//!   latency at the cost of extra upstream load.
+//!
+//! Notes
+//! - When providing an upstream with an associated tag use
+//!   `add_upstream_with_tag(upstream, tag)`; tags are stored alongside
+//!   upstream entries and can be used by higher layers to refer to
+//!   upstreams without relying on raw addresses.
+//! - Prometheus label cardinality: the code currently labels metrics
+//!   by upstream address. If your deployment has high cardinality
+//!   upstream identifiers, prefer tagging or adjust metrics labeling
+//!   accordingly.
+//!
+//! Example
+//! ```rust
+//! let plugin = lazydns::plugins::ForwardPlugin::builder()
+//!     .add_upstream("8.8.8.8:53")
+//!     .add_upstream("https://dns.example/dns-query")
+//!     .strategy(lazydns::plugins::LoadBalanceStrategy::Fastest)
+//!     .enable_health_checks(true)
+//!     .concurrent_queries(false)
+//!     .build();
+//! ```
 
 use crate::dns::Message;
 use crate::plugin::{Context, Plugin};
@@ -182,7 +228,17 @@ pub struct ForwardPluginBuilder {
 }
 
 impl ForwardPluginBuilder {
-    /// Create a new builder
+    /// Create a new `ForwardPluginBuilder` with sensible defaults.
+    ///
+    /// Defaults:
+    /// - `timeout`: 5s
+    /// - `strategy`: `RoundRobin`
+    /// - `health_checks_enabled`: false
+    /// - `max_attempts`: 3
+    /// - `concurrent_queries`: false
+    ///
+    /// Use the builder methods to customize upstreams and behavior before
+    /// calling `build()`.
     pub fn new() -> Self {
         Self {
             upstreams: Vec::new(),
@@ -194,13 +250,21 @@ impl ForwardPluginBuilder {
         }
     }
 
-    /// Add an upstream server
+    /// Add an upstream server by address (e.g. `8.8.8.8:53`).
+    ///
+    /// This accepts either a plain socket address (`ip:port`) or a DoH URL
+    /// (`https://dns.example/dns-query`). The upstream will be contacted
+    /// when the `ForwardPlugin` forwards queries.
     pub fn add_upstream(mut self, upstream: impl Into<String>) -> Self {
         self.upstreams.push(upstream.into());
         self
     }
 
-    /// Add an upstream with a tag for quick lookup
+    /// Add an upstream with an associated `tag`.
+    ///
+    /// The `tag` is a small identifier stored alongside the upstream entry
+    /// and can be used by higher-level logic to refer to specific upstreams
+    /// without relying on the full `addr` string.
     pub fn add_upstream_with_tag(
         mut self,
         upstream: impl Into<String>,
@@ -211,40 +275,56 @@ impl ForwardPluginBuilder {
         self
     }
 
-    /// Set query timeout
+    /// Set the per-upstream query `timeout` used for network requests.
+    ///
+    /// Example: `.timeout(Duration::from_secs(2))`.
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
-    /// Set load balancing strategy
+    /// Set the `LoadBalanceStrategy` used for selecting upstreams.
+    ///
+    /// Options include round-robin, random, or selecting the fastest based
+    /// on locally collected health stats.
     pub fn strategy(mut self, strategy: LoadBalanceStrategy) -> Self {
         self.strategy = strategy;
         self
     }
 
-    /// Enable or disable health checks
+    /// Enable or disable local health checks and tracking.
+    ///
+    /// When enabled the plugin records success/failure counts and response
+    /// times per upstream which influence selection (e.g. `Fastest`).
     pub fn enable_health_checks(mut self, enabled: bool) -> Self {
         self.health_checks_enabled = enabled;
         self
     }
 
-    /// Set maximum failover attempts
+    /// Set the maximum number of failover attempts when forwarding a query.
+    ///
+    /// The plugin will try up to `max` different upstreams before returning
+    /// an error. This limits the amount of work spent retrying.
     pub fn max_attempts(mut self, max: usize) -> Self {
         self.max_attempts = max;
         self
     }
 
-    /// Enable concurrent queries (race all upstreams, return fastest)
+    /// Enable concurrent (race) queries across all upstreams.
     ///
-    /// When enabled, queries all upstreams simultaneously and returns
-    /// the first successful response. Improves latency but increases load.
+    /// When enabled the plugin sends the same query to all upstreams and
+    /// returns the first successful response. This reduces latency at the
+    /// cost of increased upstream load.
     pub fn concurrent_queries(mut self, enabled: bool) -> Self {
         self.concurrent_queries = enabled;
         self
     }
 
-    /// Build the ForwardPlugin
+    /// Consume the builder and create a configured `ForwardPlugin`.
+    ///
+    /// After `build()` the plugin is ready to be inserted into the plugin
+    /// chain; the upstream list and settings are immutable on the returned
+    /// `ForwardPlugin` instance.
     pub fn build(self) -> ForwardPlugin {
         let upstreams = self
             .upstreams
@@ -401,7 +481,7 @@ impl ForwardPlugin {
                 if self.health_checks_enabled {
                     upstream.health.record_success(elapsed);
                     // Report to Prometheus metrics for observability
-                    let _ = (|| {
+                    let _ = {
                         use crate::metrics::{UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL};
                         UPSTREAM_QUERIES_TOTAL
                             .with_label_values(&[&upstream.addr, "success"])
@@ -410,7 +490,7 @@ impl ForwardPlugin {
                             .with_label_values(&[&upstream.addr])
                             .observe(elapsed.as_secs_f64());
                         Ok::<(), ()>(())
-                    })();
+                    };
                 }
                 // Structured log with current counters
                 let (queries, successes, failures) = upstream.health.counters();
@@ -440,13 +520,13 @@ impl ForwardPlugin {
                 if self.health_checks_enabled {
                     upstream.health.record_failure();
                     // Report failure to Prometheus metrics
-                    let _ = (|| {
+                    let _ = {
                         use crate::metrics::UPSTREAM_QUERIES_TOTAL;
                         UPSTREAM_QUERIES_TOTAL
                             .with_label_values(&[&upstream.addr, "error"])
                             .inc();
                         Ok::<(), ()>(())
-                    })();
+                    };
                 }
                 let (queries, successes, failures) = upstream.health.counters();
                 warn!(
