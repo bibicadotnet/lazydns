@@ -263,7 +263,9 @@ mod tests {
     #[test]
     fn test_responses_and_upstream_metrics() {
         // increment response counter and upstream counters/histogram
-        DNS_RESPONSES_TOTAL.with_label_values(&["udp", "NOERROR"]).inc();
+        DNS_RESPONSES_TOTAL
+            .with_label_values(&["udp", "NOERROR"])
+            .inc();
         UPSTREAM_QUERIES_TOTAL
             .with_label_values(&["8.8.8.8", "success"]) // label values are strings
             .inc();

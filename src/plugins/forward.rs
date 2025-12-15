@@ -400,6 +400,17 @@ impl ForwardPlugin {
                 let elapsed = start.elapsed();
                 if self.health_checks_enabled {
                     upstream.health.record_success(elapsed);
+                    // Report to Prometheus metrics for observability
+                    let _ = (|| {
+                        use crate::metrics::{UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL};
+                        UPSTREAM_QUERIES_TOTAL
+                            .with_label_values(&[&upstream.addr, "success"])
+                            .inc();
+                        UPSTREAM_DURATION_SECONDS
+                            .with_label_values(&[&upstream.addr])
+                            .observe(elapsed.as_secs_f64());
+                        Ok::<(), ()>(())
+                    })();
                 }
                 // Structured log with current counters
                 let (queries, successes, failures) = upstream.health.counters();
@@ -428,6 +439,14 @@ impl ForwardPlugin {
             Err(e) => {
                 if self.health_checks_enabled {
                     upstream.health.record_failure();
+                    // Report failure to Prometheus metrics
+                    let _ = (|| {
+                        use crate::metrics::UPSTREAM_QUERIES_TOTAL;
+                        UPSTREAM_QUERIES_TOTAL
+                            .with_label_values(&[&upstream.addr, "error"])
+                            .inc();
+                        Ok::<(), ()>(())
+                    })();
                 }
                 let (queries, successes, failures) = upstream.health.counters();
                 warn!(
