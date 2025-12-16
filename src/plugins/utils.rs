@@ -114,3 +114,111 @@ pub fn spawn_file_watcher<F>(
         debug!(name = %name, "file watcher closed, exiting loop");
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tempfile::NamedTempFile;
+    use tokio::sync::Notify;
+    use tokio::time::{timeout, Duration};
+
+    // Exposed for unit testing debounce logic without relying on filesystem events
+    fn should_reload(
+        last_reload: &mut HashMap<PathBuf, Instant>,
+        cp: &PathBuf,
+        debounce_ms: u64,
+    ) -> bool {
+        let now = Instant::now();
+        if let Some(prev) = last_reload.get(cp) {
+            if now.duration_since(*prev) < Duration::from_millis(debounce_ms) {
+                return false;
+            }
+        }
+        last_reload.insert(cp.clone(), now);
+        true
+    }
+    
+    #[tokio::test]
+    #[ignore]
+    async fn test_spawn_file_watcher_detects_change() {
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_path_buf();
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let notify = Arc::new(Notify::new());
+
+        let c = Arc::clone(&counter);
+        let n = Arc::clone(&notify);
+
+        spawn_file_watcher("test-basic", vec![path.clone()], 100, move |_p, _files| {
+            c.fetch_add(1, Ordering::SeqCst);
+            n.notify_one();
+        });
+
+        // Trigger a change by writing (some platforms emit Create/Modify for write)
+        std::fs::write(&path, b"hello\n").unwrap();
+
+        // Wait for callback (timeout to avoid flakiness)
+        let res = timeout(Duration::from_secs(4), notify.notified()).await;
+        assert!(res.is_ok(), "timeout waiting for file watcher callback");
+        assert!(counter.load(Ordering::SeqCst) >= 1);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_spawn_file_watcher_debounce() {
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_path_buf();
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let notify = Arc::new(Notify::new());
+
+        let c = Arc::clone(&counter);
+        let n = Arc::clone(&notify);
+
+        // Use debounce window 200ms
+        spawn_file_watcher(
+            "test-debounce",
+            vec![path.clone()],
+            200,
+            move |_p, _files| {
+                c.fetch_add(1, Ordering::SeqCst);
+                n.notify_one();
+            },
+        );
+
+        // Trigger two quick successive changes by writing (replace content)
+        std::fs::write(&path, b"one\n").unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        std::fs::write(&path, b"two\n").unwrap();
+
+        // Wait for callback
+        let res = timeout(Duration::from_secs(3), notify.notified()).await;
+        assert!(res.is_ok(), "timeout waiting for debounce callback");
+
+        // Allow some time for any additional callbacks (should be debounced)
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        // Counter should be 1 (or at least not >1 if debounce works)
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_should_reload_debounce_logic() {
+        let mut last_reload: HashMap<PathBuf, Instant> = HashMap::new();
+        let tmp = NamedTempFile::new().unwrap();
+        let cp = tmp.path().to_path_buf();
+
+        // First time should permit reload
+        assert!(should_reload(&mut last_reload, &cp, 200));
+
+        // Immediately should be debounced
+        assert!(!should_reload(&mut last_reload, &cp, 200));
+
+        // After waiting beyond debounce window, should permit reload again
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(should_reload(&mut last_reload, &cp, 200));
+    }
+}

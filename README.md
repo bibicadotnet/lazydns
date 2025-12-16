@@ -24,7 +24,7 @@ Implement a Rust version of mosdns with **100% feature parity or better**, featu
 
 ## 🏃 Current Status:
 
-- [x] DNS Protocol & Servers (UDP/TCP/DoT/DoH)
+- [x] DNS Protocol & Servers (UDP/TCP/DoT/DoH/DoQ)
 - [x] Plugin System & Core Plugins
 - [x] Caching with LRU eviction
 - [x] 30+ Matching Plugins (Hosts, Domain, IP, GeoIP, GeoSite ...)
