@@ -29,7 +29,6 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
-# Replace chrono with the lighter `time` crate for formatting/offsets
 time = { version = "0.3", features = ["formatting", "parsing", "local-offset"] }
 
 # Async utilities
@@ -71,8 +70,6 @@ rand = "0.8"
 axum-server = { version = "0.7", optional = true, package = "axum-server", features = ["tls-rustls-no-provider"] }
 
 [dev-dependencies]
-# Testing
-tokio-test = "0.4"
 tempfile = "3.8"
 rcgen = "0.9"
 
