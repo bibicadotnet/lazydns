@@ -174,8 +174,10 @@ mod tests {
     #[test]
     fn rust_log_overrides_config_level() {
         std::env::set_var("RUST_LOG", "trace");
-        let mut cfg = LogConfig::default();
-        cfg.level = "info".to_string();
+        let cfg = LogConfig {
+            level: "info".to_string(),
+            ..Default::default()
+        };
 
         assert_eq!(effective_log_spec(&cfg), "trace");
 
@@ -185,8 +187,10 @@ mod tests {
     #[test]
     fn cfg_level_used_when_no_rust_log() {
         std::env::remove_var("RUST_LOG");
-        let mut cfg = LogConfig::default();
-        cfg.level = "warn".to_string();
+        let cfg = LogConfig {
+            level: "warn".to_string(),
+            ..Default::default()
+        };
 
         assert_eq!(effective_log_spec(&cfg), "warn");
     }
