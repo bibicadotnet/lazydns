@@ -33,7 +33,8 @@ impl PluginBuilder {
 
     /// Build a plugin from configuration
     pub fn build(&mut self, config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
-        let plugin_type = &config.plugin_type;
+        // Normalize plugin type for more forgiving parsing (trim and lowercase)
+        let plugin_type = config.plugin_type.trim().to_lowercase();
 
         let plugin: Arc<dyn Plugin> = match plugin_type.as_str() {
             "cache" => {
@@ -877,6 +878,28 @@ mod tests {
             .qname()
             .to_string();
         assert_eq!(got, "bar.example");
+    }
+
+    #[test]
+    fn test_build_plugin_type_case_insensitive() {
+        let mut builder = PluginBuilder::new();
+        let mut args_map = Mapping::new();
+        args_map.insert(
+            Value::String("rules".to_string()),
+            Value::Sequence(vec![Value::String("a b".to_string())]),
+        );
+
+        let config = PluginConfig {
+            tag: Some("redirect_upper".to_string()),
+            plugin_type: "Redirect".to_string(),
+            args: Value::Mapping(args_map),
+            name: None,
+            priority: 100,
+            config: HashMap::new(),
+        };
+
+        let plugin = builder.build(&config).expect("build redirect plugin");
+        assert_eq!(plugin.name(), "redirect");
     }
 }
 
