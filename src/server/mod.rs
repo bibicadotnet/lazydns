@@ -22,8 +22,10 @@
 //! # }
 //! ```
 
+#[cfg(feature = "admin")]
 pub mod admin;
 pub mod config;
+#[cfg(feature = "tls")]
 pub mod doh;
 #[cfg(feature = "doq")]
 pub mod doq;
@@ -31,14 +33,18 @@ pub mod doq;
 pub mod dot;
 pub mod handler;
 pub mod launcher;
+#[cfg(feature = "admin")]
 pub mod monitoring;
 pub mod tcp;
+#[cfg(feature = "tls")]
 pub mod tls;
 pub mod udp;
 
 // Re-export commonly used types
+#[cfg(feature = "admin")]
 pub use admin::{AdminServer, AdminState};
 pub use config::ServerConfig;
+#[cfg(feature = "tls")]
 pub use doh::DohServer;
 #[cfg(feature = "doq")]
 pub use doq::DoqServer;
@@ -46,8 +52,10 @@ pub use doq::DoqServer;
 pub use dot::DotServer;
 pub use handler::{DefaultHandler, RequestHandler};
 pub use launcher::ServerLauncher;
+#[cfg(feature = "admin")]
 pub use monitoring::MonitoringServer;
 pub use tcp::TcpServer;
+#[cfg(feature = "tls")]
 pub use tls::TlsConfig;
 pub use udp::UdpServer;
 
@@ -79,6 +87,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "admin")]
     fn test_admin_state_creation() {
         use crate::config::Config;
         use std::sync::Arc;
@@ -92,6 +101,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "tls")]
     fn test_tls_config_accessible() {
         // Verify TlsConfig type is accessible and has non-zero size
         assert!(std::mem::size_of::<TlsConfig>() > 0);
@@ -108,10 +118,13 @@ mod tests {
         // Verify all server types exist by checking their sizes
         assert!(std::mem::size_of::<UdpServer>() > 0);
         assert!(std::mem::size_of::<TcpServer>() > 0);
+        #[cfg(feature = "tls")]
         assert!(std::mem::size_of::<DohServer>() > 0);
         #[cfg(feature = "tls")]
         assert!(std::mem::size_of::<DotServer>() > 0);
+        #[cfg(feature = "admin")]
         assert!(std::mem::size_of::<AdminServer>() > 0);
+        #[cfg(feature = "admin")]
         assert!(std::mem::size_of::<MonitoringServer>() > 0);
     }
 }

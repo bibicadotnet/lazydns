@@ -11,7 +11,7 @@ keywords = ["dns", "server", "mosdns", "doh", "dot"]
 categories = ["network-programming"]
 
 [dependencies]
-tokio = { version = "1.35", features = ["rt", "signal"] }
+tokio = { version = "1.35", features = ["rt", "signal", "macros"] }
 
 # DNS protocol
 hickory-proto = "0.24"
@@ -39,10 +39,10 @@ dashmap = "5.5"
 parking_lot = "0.12"
 
 # Networking
-axum = { version = "0.7", default-features = false, features = ["json", "query", "tokio", "macros", "http2"] }
+axum = { version = "0.7", default-features = false, features = ["json", "query", "tokio", "macros", "http2"], optional = true }
 rustls = { version = "0.23", features = ["ring"] }
 tokio-rustls = "0.26"
-rustls-pemfile = "2.0"
+rustls-pemfile = { version = "2.0", optional = true }
 
 # QUIC / DoQ support (optional)
 quinn = { version = "0.11", optional = true }
@@ -71,16 +71,17 @@ axum-server = { version = "0.7", optional = true, package = "axum-server", featu
 
 [dev-dependencies]
 # Testing
-tokio-test = "0.4"
+# tokio-test = "0.4"
 tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = ["doq", "tls"]
+default = []
 # Enable TLS-backed (DoH using axum-server + rustls) server implementation
-tls = ["axum-server"]
+tls = ["axum-server", "rustls-pemfile"]
 # Enable DoQ (QUIC) server implementation
 doq = ["quinn"]
+admin = ["axum"]
 
 [profile.release]
 opt-level = 3
