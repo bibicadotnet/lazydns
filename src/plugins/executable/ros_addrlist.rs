@@ -5,6 +5,7 @@
 use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
+
 use reqwest::StatusCode;
 use serde_json::json;
 use std::fmt;
@@ -214,33 +215,20 @@ impl Plugin for RosAddrListPlugin {
         let ips = self.extract_ips(ctx);
 
         if !ips.is_empty() {
-            info!(
-                list_name = %self.list_name,
-                ip_count = ips.len(),
-                ips = ?ips,
-                "RouterOS address list: would add IPs (stub implementation)"
-            );
-
-            // In a full implementation, this would:
-            // 1. Connect to RouterOS API
-            // 2. Add IPs to the specified address list
-            // 3. Handle errors and retries
-
-            // For now, just log the operation
-            for ip in &ips {
-                debug!(
-                    list_name = %self.list_name,
-                    ip = %ip,
-                    "Would add IP to RouterOS address list"
-                );
-            }
-
             // If server is configured, notify helper endpoint (include query domain in comment)
             let domain = if let Some(question) = ctx.request().questions().first() {
                 question.qname().trim_end_matches('.').to_string()
             } else {
                 "".to_string()
             };
+
+            info!(
+                list_name = %self.list_name,
+                domain = %domain,
+                ip_count = ips.len(),
+                ips = ?ips,
+                "RouterOS address list: add IPs"
+            );
 
             if let Err(e) = self.notify_server(&ips, &domain).await {
                 error!(error = %e, domain = %domain, "Failed to notify RouterOS helper server");
