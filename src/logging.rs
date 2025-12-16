@@ -1,8 +1,11 @@
 use crate::config::LogConfig;
 use anyhow::Result;
-use time::{format_description::well_known::Rfc3339, format_description::parse as parse_format, OffsetDateTime};
 use once_cell::sync::OnceCell;
 use std::fmt;
+use time::{
+    format_description::parse as parse_format, format_description::well_known::Rfc3339,
+    OffsetDateTime,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 static FILE_GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
@@ -66,42 +69,51 @@ impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
             }
         };
 
-        // Normalize fractional seconds to fixed width (milliseconds, 3 digits) so logs
-        // have consistent subsecond precision, e.g. ".926487" -> ".926" and
-        // ".9266" -> ".926", while no fractional part becomes ".000".
-        fn normalize_subsec(mut s: String, digits: usize) -> String {
-            // Find 'T' to locate time part
-            if let Some(tpos) = s.find('T') {
-                // Search for timezone indicator ('+' or '-' or 'Z') after the 'T'
-                let rest = &s[tpos..];
-                let tz_rel = rest.find('+').or_else(|| rest.find('-')).or_else(|| rest.find('Z'));
-                if let Some(tz_rel) = tz_rel {
-                    let tz_idx = tpos + tz_rel;
-                    if let Some(dot_rel) = s[tpos..tz_idx].find('.') {
-                        let dot_idx = tpos + dot_rel;
-                        let frac = &s[dot_idx + 1..tz_idx];
-                        let mut frac_owned = frac.to_string();
-                        if frac_owned.len() > digits {
-                            frac_owned.truncate(digits);
-                        } else {
-                            while frac_owned.len() < digits {
-                                frac_owned.push('0');
-                            }
-                        }
-                        s.replace_range(dot_idx + 1..tz_idx, &frac_owned);
-                    } else {
-                        // No fractional part: insert .000... before tz
-                        let zeros = "0".repeat(digits);
-                        s.insert_str(tz_idx, &format!(".{}", zeros));
-                    }
-                }
-            }
-            s
-        }
-
-        s = normalize_subsec(s, 3);
+        // Normalize fractional seconds to fixed width (milliseconds, 3 digits)
+        // by delegating to the module-level helper `normalize_subsec`.
+        s = normalize_subsec(&s, 3);
         w.write_str(&s)
     }
+}
+
+/// Normalize fractional seconds in an RFC3339-like timestamp string to `digits`
+/// precision (truncating or padding as necessary). If no fractional part is
+/// present it will insert `.000...` with `digits` zeros. This helper is
+/// extracted to make the behavior testable.
+fn normalize_subsec(s: &str, digits: usize) -> String {
+    let mut s = s.to_string();
+
+    // Find 'T' to locate time part
+    if let Some(tpos) = s.find('T') {
+        // Search for timezone indicator ('+' or '-' or 'Z') after the 'T'
+        let rest = &s[tpos..];
+        let tz_rel = rest
+            .find('+')
+            .or_else(|| rest.find('-'))
+            .or_else(|| rest.find('Z'));
+        if let Some(tz_rel) = tz_rel {
+            let tz_idx = tpos + tz_rel;
+            if let Some(dot_rel) = s[tpos..tz_idx].find('.') {
+                let dot_idx = tpos + dot_rel;
+                let frac = &s[dot_idx + 1..tz_idx];
+                let mut frac_owned = frac.to_string();
+                if frac_owned.len() > digits {
+                    frac_owned.truncate(digits);
+                } else {
+                    while frac_owned.len() < digits {
+                        frac_owned.push('0');
+                    }
+                }
+                s.replace_range(dot_idx + 1..tz_idx, &frac_owned);
+            } else {
+                // No fractional part: insert .000... before tz
+                let zeros = "0".repeat(digits);
+                s.insert_str(tz_idx, &format!(".{}", zeros));
+            }
+        }
+    }
+
+    s
 }
 
 /// Initialize tracing/logging according to `LogConfig`.
@@ -253,5 +265,32 @@ mod tests {
         };
 
         assert_eq!(effective_log_spec(&cfg), "warn");
+    }
+
+    #[test]
+    fn normalize_subsec_truncates_and_pads() {
+        // Truncate to 3 digits
+        let s = "2025-12-16T22:39:35.926487+08:00";
+        assert_eq!(normalize_subsec(s, 3), "2025-12-16T22:39:35.926+08:00");
+
+        // Truncate shorter fractional part
+        let s2 = "2025-12-16T22:39:35.9266+08:00";
+        assert_eq!(normalize_subsec(s2, 3), "2025-12-16T22:39:35.926+08:00");
+
+        // Pad when too short
+        let s3 = "2025-12-16T22:39:35.9+08:00";
+        assert_eq!(normalize_subsec(s3, 3), "2025-12-16T22:39:35.900+08:00");
+
+        // Insert when no fractional part
+        let s4 = "2025-12-16T22:39:35+08:00";
+        assert_eq!(normalize_subsec(s4, 3), "2025-12-16T22:39:35.000+08:00");
+
+        // Works with 'Z' timezone
+        let s5 = "2025-12-16T22:39:35.9Z";
+        assert_eq!(normalize_subsec(s5, 3), "2025-12-16T22:39:35.900Z");
+
+        // Unchanged if no 'T' time separator
+        let s6 = "not-a-timestamp";
+        assert_eq!(normalize_subsec(s6, 3), "not-a-timestamp");
     }
 }
