@@ -10,8 +10,8 @@
 //! - GeoIP/GeoSite support
 //! - Full test and documentation coverage
 
-use clap::CommandFactory;
-use clap::Parser;
+mod cli;
+use crate::cli::parse_args;
 use lazydns::config::Config;
 use lazydns::logging;
 use lazydns::plugin::PluginBuilder;
@@ -19,39 +19,15 @@ use lazydns::server::ServerLauncher;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
-/// lazydns command line arguments
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Configuration file path
-    #[arg(short, long, default_value = "config.yaml")]
-    config: String,
-
-    /// Working directory
-    #[arg(short, long)]
-    dir: Option<String>,
-
-    /// Log level (trace, debug, info, warn, error)
-    #[arg(short, long, default_value = "info")]
-    log_level: String,
-
-    /// Enable verbose output
-    #[arg(short, long)]
-    verbose: bool,
-}
+// Command-line arguments are parsed in `src/cli.rs` using `pico-args`.
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // If no arguments were provided (only program name), print help and exit.
-    let raw_args: Vec<String> = std::env::args().collect();
-    if raw_args.len() <= 1 {
-        let _ = Args::command().print_help();
-        println!();
-        return Ok(());
-    }
-
-    // Parse command line arguments
-    let args = Args::parse();
+    // Parse command line arguments (prints help and returns early if requested)
+    let args = match parse_args() {
+        Some(a) => a,
+        None => return Ok(()),
+    };
 
     // Change working directory if specified (do this before loading config so relative
     // paths inside the config file behave as expected)
