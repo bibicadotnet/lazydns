@@ -53,6 +53,7 @@ pub mod logging;
 /// Metrics collection and Prometheus exporter
 ///
 /// Provides monitoring metrics for DNS server operations.
+#[cfg(feature = "admin")]
 pub mod metrics;
 
 /// Error types and handling

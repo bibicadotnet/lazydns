@@ -470,6 +470,7 @@ impl ForwardPlugin {
                 if self.health_checks_enabled {
                     upstream.health.record_success(elapsed);
                     // Report to Prometheus metrics for observability
+                    #[cfg(feature = "admin")]
                     let _ = {
                         use crate::metrics::{UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL};
                         UPSTREAM_QUERIES_TOTAL
@@ -509,6 +510,7 @@ impl ForwardPlugin {
                 if self.health_checks_enabled {
                     upstream.health.record_failure();
                     // Report failure to Prometheus metrics
+                    #[cfg(feature = "admin")]
                     let _ = {
                         use crate::metrics::UPSTREAM_QUERIES_TOTAL;
                         UPSTREAM_QUERIES_TOTAL

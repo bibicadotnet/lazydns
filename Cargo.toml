@@ -51,7 +51,7 @@ quinn = { version = "0.11", optional = true }
 base64 = "0.21"
 
 # Metrics
-prometheus = "0.13"
+prometheus = { version = "0.13", optional = true }
 
 # File watching for hot reload
 notify = "6.1"
@@ -81,12 +81,14 @@ default = []
 tls = ["axum-server", "rustls-pemfile"]
 # Enable DoQ (QUIC) server implementation
 doq = ["quinn"]
-admin = ["axum"]
+admin = ["axum", "prometheus"]
 
 [profile.release]
 opt-level = 3
 lto = true
+debug = false
 codegen-units = 1
+split-debuginfo = "off"
 strip = true
 
 [profile.dev]
@@ -97,6 +99,7 @@ opt-level = 1
 
 [profile.minimal]
 inherits = "release"
+panic = "abort"
 opt-level = "z"
 
 [[bin]]
