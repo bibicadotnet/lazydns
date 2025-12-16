@@ -23,14 +23,23 @@ pub fn print_help() {
 
 /// Parse CLI arguments using `pico-args`.
 /// Returns `None` if help was printed and the caller should exit gracefully.
+/// Parse CLI arguments using `pico-args` from the current process args.
+/// Returns `None` if help was printed and the caller should exit gracefully.
 pub fn parse_args() -> Option<Args> {
     let raw_args: Vec<String> = std::env::args().collect();
+    parse_args_from_vec(raw_args)
+}
+
+/// Helper variant that accepts an explicit `Vec<String>` for easier testing.
+pub fn parse_args_from_vec(raw_args: Vec<String>) -> Option<Args> {
     if raw_args.len() <= 1 {
         print_help();
         return None;
     }
 
-    let mut pargs = Arguments::from_env();
+    let os_args: Vec<std::ffi::OsString> =
+        raw_args.into_iter().map(std::ffi::OsString::from).collect();
+    let mut pargs = Arguments::from_vec(os_args);
     if pargs.contains(["-h", "--help"]) {
         print_help();
         return None;
@@ -59,4 +68,56 @@ pub fn parse_args() -> Option<Args> {
         log_level,
         verbose,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn returns_none_and_prints_help_with_no_args() {
+        let args = vec!["lazydns".to_string()];
+        let res = parse_args_from_vec(args);
+        assert!(res.is_none());
+    }
+
+    #[test]
+    fn returns_none_on_help_flag() {
+        let args = vec!["lazydns".to_string(), "--help".to_string()];
+        let res = parse_args_from_vec(args);
+        assert!(res.is_none());
+    }
+
+    #[test]
+    fn parses_all_options() {
+        let args = vec![
+            "lazydns".to_string(),
+            "-c".to_string(),
+            "myconf.yaml".to_string(),
+            "-d".to_string(),
+            "/tmp".to_string(),
+            "-l".to_string(),
+            "debug".to_string(),
+            "-v".to_string(),
+        ];
+
+        let res = parse_args_from_vec(args).expect("should parse args");
+        assert_eq!(res.config, "myconf.yaml");
+        assert_eq!(res.dir.as_deref(), Some("/tmp"));
+        assert_eq!(res.log_level, "debug");
+        assert!(res.verbose);
+    }
+
+    #[test]
+    fn uses_defaults_when_options_missing() {
+        let args = vec![
+            "lazydns".to_string(),
+            "-c".to_string(),
+            "cfg.yml".to_string(),
+        ];
+        let res = parse_args_from_vec(args).expect("should parse");
+        assert_eq!(res.config, "cfg.yml");
+        assert_eq!(res.log_level, "info");
+        assert!(!res.verbose);
+    }
 }
