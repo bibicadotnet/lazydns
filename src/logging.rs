@@ -1,0 +1,83 @@
+use crate::config::LogConfig;
+use anyhow::Result;
+use chrono::{DateTime, Utc};
+use once_cell::sync::OnceCell;
+use std::fmt;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+static FILE_GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
+
+/// Custom formatter for time using `time_format` from config.
+struct TimeFormatter {
+    fmt: String,
+}
+
+impl TimeFormatter {
+    fn new(fmt: impl Into<String>) -> Self {
+        Self { fmt: fmt.into() }
+    }
+}
+
+impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
+    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> fmt::Result {
+        let now: DateTime<Utc> = Utc::now();
+
+        let s = if self.fmt == "iso8601" {
+            now.to_rfc3339()
+        } else if self.fmt == "timestamp" {
+            now.timestamp().to_string()
+        } else if let Some(rest) = self.fmt.strip_prefix("custom:") {
+            now.format(rest).to_string()
+        } else {
+            now.to_rfc3339()
+        };
+
+        w.write_str(&s)
+    }
+}
+
+/// Initialize tracing/logging according to `LogConfig`.
+pub fn init_logging(cfg: &LogConfig) -> Result<()> {
+    // EnvFilter: set from cfg.level
+    let filter = EnvFilter::try_new(cfg.level.clone())?;
+
+    let registry = tracing_subscriber::registry().with(filter);
+
+    if cfg.format == "json" {
+        let layer = tracing_subscriber::fmt::layer()
+            .json()
+            .with_timer(TimeFormatter::new(cfg.time_format.clone()));
+
+        if let Some(path) = &cfg.file {
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
+
+            let (non_blocking, guard) = tracing_appender::non_blocking(file);
+            let _ = FILE_GUARD.set(guard);
+
+            registry.with(layer.with_writer(non_blocking)).init();
+        } else {
+            registry.with(layer).init();
+        }
+    } else {
+        let layer = tracing_subscriber::fmt::layer().with_timer(TimeFormatter::new(cfg.time_format.clone()));
+
+        if let Some(path) = &cfg.file {
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
+
+            let (non_blocking, guard) = tracing_appender::non_blocking(file);
+            let _ = FILE_GUARD.set(guard);
+
+            registry.with(layer.with_writer(non_blocking)).init();
+        } else {
+            registry.with(layer).init();
+        }
+    }
+
+    Ok(())
+}

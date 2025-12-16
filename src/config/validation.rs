@@ -17,8 +17,10 @@ use crate::{Error, Result};
 ///
 /// Returns an error if validation fails.
 pub fn validate_config(config: &Config) -> Result<()> {
-    // Validate log level
-    validate_log_level(&config.log_level)?;
+    // Validate logging configuration
+    validate_log_level(&config.log.level)?;
+    validate_log_format(&config.log.format)?;
+    validate_time_format(&config.log.time_format)?;
 
     // Validate server configuration
     validate_server(&config.server)?;
@@ -42,6 +44,29 @@ fn validate_log_level(level: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn validate_log_format(format: &str) -> Result<()> {
+    let valid = ["text", "json"];
+    if !valid.contains(&format) {
+        return Err(Error::Config(format!(
+            "Invalid log format '{}'. Must be one of: {}",
+            format,
+            valid.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+fn validate_time_format(fmt: &str) -> Result<()> {
+    if fmt == "iso8601" || fmt == "timestamp" || fmt.starts_with("custom:") {
+        Ok(())
+    } else {
+        Err(Error::Config(format!(
+            "Invalid time_format '{}'. Must be 'iso8601', 'timestamp' or 'custom:<fmt>'",
+            fmt
+        )))
+    }
 }
 
 /// Validate server configuration

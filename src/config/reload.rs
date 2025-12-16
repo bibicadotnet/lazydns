@@ -141,7 +141,8 @@ mod tests {
     async fn test_manual_reload() {
         let mut temp_file = NamedTempFile::new().unwrap();
         let config_content = r#"
-log_level: info
+log:
+  level: info
 server:
   timeout_secs: 5
 "#;
@@ -157,7 +158,7 @@ server:
 
         // Check config was updated
         let config_guard = config.read().await;
-        assert_eq!(config_guard.log_level, "info");
+        assert_eq!(config_guard.log.level, "info");
     }
 
     #[tokio::test]

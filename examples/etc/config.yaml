@@ -1,7 +1,8 @@
 log:
-  level: trace
-  production: true
-  time_format: iso8601
+  level: trace            # trace|debug|info|warn|error
+  file: test.log          # optional
+  format: text            # text|json
+  time_format: iso8601    # iso8601|timestamp|custom:<fmt>
 
 plugins:
   # 缓存

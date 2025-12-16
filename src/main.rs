@@ -12,11 +12,11 @@
 
 use clap::Parser;
 use lazydns::config::Config;
+use lazydns::logging;
 use lazydns::plugin::PluginBuilder;
 use lazydns::server::ServerLauncher;
 use std::sync::Arc;
 use tracing::{debug, error, info};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// lazydns command line arguments
 #[derive(Parser, Debug)]
@@ -44,29 +44,8 @@ async fn main() -> anyhow::Result<()> {
     // Parse command line arguments
     let args = Args::parse();
 
-    // Initialize tracing/logging
-    let log_level = if args.verbose {
-        "debug"
-    } else {
-        &args.log_level
-    };
-
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| log_level.into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
-    info!("lazydns starting...");
-    info!("Version: {}", env!("CARGO_PKG_VERSION"));
-    info!("Configuration file: {}", args.config);
-
-    // Ensure rustls has a process-level CryptoProvider installed (ring)
-    let _ = rustls::crypto::ring::default_provider().install_default();
-
-    // Change working directory if specified
+    // Change working directory if specified (do this before loading config so relative
+    // paths inside the config file behave as expected)
     if let Some(dir) = &args.dir {
         if let Err(e) = std::env::set_current_dir(dir) {
             error!("Failed to change working directory to {}: {}", dir, e);
@@ -75,23 +54,44 @@ async fn main() -> anyhow::Result<()> {
         info!("Working directory changed to: {}", dir);
     }
 
-    // Load configuration
+
+    // Load configuration (before initializing logging so config can control logs)
     let config = match Config::from_file(&args.config) {
         Ok(config) => {
-            info!("Configuration loaded successfully");
+            println!("Configuration loaded successfully");
             config
         }
         Err(e) => {
-            error!("Failed to load configuration: {}", e);
-            info!("Using default configuration");
+            eprintln!("Failed to load configuration: {}", e);
+            println!("Using default configuration");
             Config::default()
         }
     };
 
     // Validate configuration
     if let Err(e) = config.validate() {
-        info!("Configuration validation warning: {}", e);
+        eprintln!("Configuration validation warning: {}", e);
     }
+
+    // Determine final logging configuration, CLI overrides config
+    let mut final_log = config.log.clone();
+    if args.verbose {
+        final_log.level = "debug".to_string();
+    } else if !args.log_level.is_empty() {
+        final_log.level = args.log_level.clone();
+    }
+
+    // Initialize logging
+    if let Err(e) = crate::logging::init_logging(&final_log) {
+        eprintln!("Failed to initialize logging: {}", e);
+    }
+
+    info!("lazydns starting...");
+    info!("Version: {}", env!("CARGO_PKG_VERSION"));
+    info!("Configuration file: {}", args.config);
+
+    // Ensure rustls has a process-level CryptoProvider installed (ring)
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
     // Build plugins from configuration
     let mut builder = PluginBuilder::new();
