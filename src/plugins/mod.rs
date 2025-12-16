@@ -45,6 +45,7 @@ pub mod mark;
 pub mod matcher;
 pub mod ratelimit;
 pub mod server;
+pub mod utils;
 
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};

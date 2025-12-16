@@ -33,16 +33,14 @@ use crate::dns::{Message, Question, RData, RecordType, ResourceRecord};
 use crate::error::Error;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
-use notify::{Event, EventKind, RecursiveMode, Watcher};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fmt;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+
+use tracing::{debug, info, warn};
 
 /// Hosts file plugin for local DNS resolution
 ///
@@ -274,143 +272,56 @@ impl HostsPlugin {
             "file auto-reload status"
         );
 
-        tokio::spawn(async move {
-            let (tx, mut rx) = mpsc::channel(100);
+        const DEBOUNCE_MS: u64 = 200;
 
-            let mut watcher =
-                match notify::recommended_watcher(move |res: notify::Result<Event>| match res {
-                    Ok(event) => {
-                        if matches!(
-                            event.kind,
-                            EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
-                        ) {
-                            let _ = tx.blocking_send(event);
-                        }
-                    }
-                    Err(e) => {
-                        error!("file watcher error: {:?}", e);
-                    }
-                }) {
-                    Ok(w) => w,
-                    Err(e) => {
-                        error!(error = %e, "failed to create file watcher");
-                        return;
-                    }
-                };
+        crate::plugins::utils::spawn_file_watcher(
+            "hosts",
+            files.clone(),
+            DEBOUNCE_MS,
+            move |path, files| {
+                let file_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
 
-            // Canonicalize file paths for accurate comparison with event paths
-            let canonical_files: Vec<PathBuf> =
-                files.iter().filter_map(|p| p.canonicalize().ok()).collect();
+                // Reload hosts (same logic as previous implementation)
+                let start = std::time::Instant::now();
+                let mut all_hosts = HashMap::new();
 
-            // Track last reload times to debounce rapid successive events
-            let mut last_reload: HashMap<PathBuf, Instant> = HashMap::new();
-            const DEBOUNCE_MS: u64 = 200;
-
-            // Watch all files
-            for file_path in &files {
-                debug!(file = ?file_path, "start watching file");
-                if let Err(e) = watcher.watch(file_path, RecursiveMode::NonRecursive) {
-                    warn!(file = ?file_path, error = %e, "failed to watch file");
-                }
-            }
-
-            info!("file watcher started successfully");
-            debug!("file watcher loop started");
-
-            // Process file change events
-            while let Some(event) = rx.recv().await {
-                for path in &event.paths {
-                    // Compare with canonical paths
-                    let canonical_path = path.canonicalize().ok();
-                    if canonical_path
-                        .as_ref()
-                        .is_some_and(|cp| canonical_files.contains(cp))
-                    {
-                        let file_name = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("unknown");
-
-                        // Debounce rapid reloads per-file
-                        let now = Instant::now();
-                        if let Some(cp) = canonical_path.as_ref() {
-                            if let Some(prev) = last_reload.get(cp) {
-                                if now.duration_since(*prev) < Duration::from_millis(DEBOUNCE_MS) {
-                                    debug!(file = file_name, "skipping reload due to debounce");
-                                    continue;
-                                }
+                for file_path in files {
+                    if let Ok(content) = std::fs::read_to_string(file_path) {
+                        for line in content.lines() {
+                            let line = line.trim();
+                            if line.is_empty() || line.starts_with('#') {
+                                continue;
                             }
-                            last_reload.insert(cp.clone(), now);
-                        }
 
-                        // Handle file removal/rename
-                        if matches!(event.kind, EventKind::Remove(_)) {
-                            info!(
-                                file = file_name,
-                                "file removed or renamed, attempting to re-watch"
-                            );
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            if parts.len() < 2 {
+                                continue;
+                            }
 
-                            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                            if path.exists() {
-                                if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
-                                    warn!(file = file_name, error = %e, "failed to re-watch file");
-                                } else {
-                                    info!(
-                                        file = file_name,
-                                        "successfully re-added file to watch list"
-                                    );
+                            if let Ok(ip) = parts[0].parse::<IpAddr>() {
+                                for hostname in &parts[1..] {
+                                    let domain_lower = hostname.to_lowercase();
+                                    all_hosts
+                                        .entry(domain_lower)
+                                        .or_insert_with(Vec::new)
+                                        .push(ip);
                                 }
                             }
                         }
-
-                        // Reload hosts
-                        info!(file = file_name, "scheduled reload: invoking callback");
-
-                        let start = std::time::Instant::now();
-                        let mut all_hosts = HashMap::new();
-
-                        for file_path in &files {
-                            if let Ok(content) = std::fs::read_to_string(file_path) {
-                                for line in content.lines() {
-                                    let line = line.trim();
-                                    if line.is_empty() || line.starts_with('#') {
-                                        continue;
-                                    }
-
-                                    let parts: Vec<&str> = line.split_whitespace().collect();
-                                    if parts.len() < 2 {
-                                        continue;
-                                    }
-
-                                    if let Ok(ip) = parts[0].parse::<IpAddr>() {
-                                        for hostname in &parts[1..] {
-                                            let domain_lower = hostname.to_lowercase();
-                                            all_hosts
-                                                .entry(domain_lower)
-                                                .or_insert_with(Vec::new)
-                                                .push(ip);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        *hosts.write() = all_hosts;
-                        let duration = start.elapsed();
-
-                        info!(
-                            filename = file_name,
-                            duration = ?duration,
-                            "scheduled auto-reload completed"
-                        );
-
-                        break;
+                    } else {
+                        warn!(file = ?file_path, "Failed to read hosts file");
                     }
                 }
-            }
 
-            debug!("file watcher closed, exiting loop");
-        });
+                *hosts.write() = all_hosts;
+                let duration = start.elapsed();
+
+                info!(filename = file_name, duration = ?duration, "scheduled auto-reload completed");
+            },
+        );
     }
 
     /// Create a DNS response with the given IPs

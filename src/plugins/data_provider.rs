@@ -8,17 +8,14 @@ use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use ipnet::IpNet;
-use notify::{Event, EventKind, RecursiveMode, Watcher};
 use parking_lot::RwLock;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Domain set data provider plugin
 ///
@@ -91,145 +88,47 @@ impl DomainSetPlugin {
             "enabling file auto-reload"
         );
 
-        tokio::spawn(async move {
-            let (tx, mut rx) = mpsc::channel(100);
+        const DEBOUNCE_MS: u64 = 200;
 
-            // Create a watcher
-            let mut watcher =
-                match notify::recommended_watcher(move |res: notify::Result<Event>| match res {
-                    Ok(event) => {
-                        if matches!(
-                            event.kind,
-                            EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
-                        ) {
-                            let _ = tx.blocking_send(event);
-                        }
-                    }
-                    Err(e) => {
-                        error!("file watcher error: {:?}", e);
-                    }
-                }) {
-                    Ok(w) => w,
-                    Err(e) => {
-                        error!(name = %name, error = %e, "failed to create file watcher");
-                        return;
-                    }
-                };
+        crate::plugins::utils::spawn_file_watcher(
+            name.clone(),
+            files.clone(),
+            DEBOUNCE_MS,
+            move |path, files| {
+                let file_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
 
-            // Canonicalize file paths for accurate comparison with event paths
-            let canonical_files: Vec<PathBuf> =
-                files.iter().filter_map(|p| p.canonicalize().ok()).collect();
+                // Reload the domains (same logic as previous implementation)
+                let start = std::time::Instant::now();
+                let mut new_domains = HashSet::new();
 
-            // Track last reload times to debounce rapid successive events
-            let mut last_reload: HashMap<PathBuf, Instant> = HashMap::new();
-            const DEBOUNCE_MS: u64 = 200;
-
-            // Watch all files
-            for file_path in &files {
-                debug!(name = %name, file = ?file_path, "start watching file");
-                if let Err(e) = watcher.watch(file_path, RecursiveMode::NonRecursive) {
-                    warn!(name = %name, file = ?file_path, error = %e, "failed to watch file");
-                }
-            }
-
-            info!(name = %name, "file watcher started successfully");
-            debug!(name = %name, "file watcher loop started");
-
-            // Process file change events
-            while let Some(event) = rx.recv().await {
-                for path in &event.paths {
-                    // Compare with canonical paths
-                    let canonical_path = path.canonicalize().ok();
-                    if canonical_path
-                        .as_ref()
-                        .is_some_and(|cp| canonical_files.contains(cp))
-                    {
-                        let file_name = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("unknown");
-
-                        // Debounce rapid reloads per-file
-                        let now = Instant::now();
-                        if let Some(cp) = canonical_path.as_ref() {
-                            if let Some(prev) = last_reload.get(cp) {
-                                if now.duration_since(*prev) < Duration::from_millis(DEBOUNCE_MS) {
-                                    debug!(name = %name, file = file_name, "skipping reload due to debounce");
-                                    continue;
-                                }
+                for file_path in files {
+                    if let Ok(content) = fs::read_to_string(file_path) {
+                        for line in content.lines() {
+                            let line = line.trim();
+                            if line.is_empty() || line.starts_with('#') {
+                                continue;
                             }
-                            last_reload.insert(cp.clone(), now);
+
+                            let domain = if let Some(colon_pos) = line.find(':') {
+                                &line[colon_pos + 1..]
+                            } else {
+                                line
+                            };
+
+                            new_domains.insert(domain.trim().to_lowercase());
                         }
-
-                        // Debounce rapid reloads per-file
-                        let now = Instant::now();
-                        if let Some(cp) = canonical_path.as_ref() {
-                            if let Some(prev) = last_reload.get(cp) {
-                                if now.duration_since(*prev) < Duration::from_millis(DEBOUNCE_MS) {
-                                    debug!(name = %name, file = file_name, "skipping reload due to debounce");
-                                    continue;
-                                }
-                            }
-                            last_reload.insert(cp.clone(), now);
-                        }
-
-                        // Handle file removal/rename
-                        if matches!(event.kind, EventKind::Remove(_)) {
-                            info!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
-
-                            // Try to re-add the file to watch list after a short delay
-                            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                            if path.exists() {
-                                if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
-                                    warn!(name = %name, file = file_name, error = %e, "failed to re-watch file");
-                                } else {
-                                    info!(name = %name, file = file_name, "successfully re-added file to watch list");
-                                }
-                            }
-                        }
-
-                        // Reload the domains
-                        info!(name = %name, file = file_name, "scheduled reload: invoking callback");
-
-                        let start = std::time::Instant::now();
-                        let mut new_domains = HashSet::new();
-
-                        for file_path in &files {
-                            if let Ok(content) = fs::read_to_string(file_path) {
-                                for line in content.lines() {
-                                    let line = line.trim();
-                                    if line.is_empty() || line.starts_with('#') {
-                                        continue;
-                                    }
-
-                                    let domain = if let Some(colon_pos) = line.find(':') {
-                                        &line[colon_pos + 1..]
-                                    } else {
-                                        line
-                                    };
-
-                                    new_domains.insert(domain.trim().to_lowercase());
-                                }
-                            }
-                        }
-
-                        *domains.write() = new_domains;
-                        let duration = start.elapsed();
-
-                        info!(
-                            name = %name,
-                            filename = file_name,
-                            duration = ?duration,
-                            "scheduled auto-reload completed"
-                        );
-
-                        break; // Only reload once per event batch
                     }
                 }
-            }
 
-            debug!(name = %name, "file watcher closed, exiting loop");
-        });
+                *domains.write() = new_domains;
+                let duration = start.elapsed();
+
+                info!(name = %name, filename = file_name, duration = ?duration, "scheduled auto-reload completed");
+            },
+        );
     }
 
     /// Load domains from all configured files
@@ -436,135 +335,67 @@ impl IpSetPlugin {
             "file auto-reload status"
         );
 
-        tokio::spawn(async move {
-            let (tx, mut rx) = mpsc::channel(100);
+        const DEBOUNCE_MS: u64 = 200;
 
-            // Create a watcher
-            let mut watcher =
-                match notify::recommended_watcher(move |res: notify::Result<Event>| match res {
-                    Ok(event) => {
-                        if matches!(
-                            event.kind,
-                            EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
-                        ) {
-                            let _ = tx.blocking_send(event);
-                        }
-                    }
-                    Err(e) => {
-                        error!("file watcher error: {:?}", e);
-                    }
-                }) {
-                    Ok(w) => w,
-                    Err(e) => {
-                        error!(name = %name, error = %e, "failed to create file watcher");
-                        return;
-                    }
-                };
+        crate::plugins::utils::spawn_file_watcher(
+            name.clone(),
+            files.clone(),
+            DEBOUNCE_MS,
+            move |path, files| {
+                let file_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
 
-            // Canonicalize file paths for accurate comparison with event paths
-            let canonical_files: Vec<PathBuf> =
-                files.iter().filter_map(|p| p.canonicalize().ok()).collect();
+                // Reload the IP networks
+                info!(name = %name, file = file_name, "scheduled reload: invoking callback");
 
-            // Watch all files
-            for file_path in &files {
-                debug!(name = %name, file = ?file_path, "start watching file");
-                if let Err(e) = watcher.watch(file_path, RecursiveMode::NonRecursive) {
-                    warn!(name = %name, file = ?file_path, error = %e, "failed to watch file");
-                }
-            }
+                let start = std::time::Instant::now();
+                let mut new_networks = Vec::new();
 
-            info!(name = %name, "file watcher started successfully");
-            debug!(name = %name, "file watcher loop started");
-
-            // Process file change events
-            while let Some(event) = rx.recv().await {
-                for path in &event.paths {
-                    // Compare with canonical paths
-                    let canonical_path = path.canonicalize().ok();
-                    if canonical_path
-                        .as_ref()
-                        .is_some_and(|cp| canonical_files.contains(cp))
-                    {
-                        let file_name = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("unknown");
-
-                        // Handle file removal/rename
-                        if matches!(event.kind, EventKind::Remove(_)) {
-                            info!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
-
-                            // Try to re-add the file to watch list after a short delay
-                            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                            if path.exists() {
-                                if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
-                                    warn!(name = %name, file = file_name, error = %e, "failed to re-watch file");
-                                } else {
-                                    info!(name = %name, file = file_name, "successfully re-added file to watch list");
-                                }
+                for file_path in files {
+                    if let Ok(content) = fs::read_to_string(file_path) {
+                        for line in content.lines() {
+                            let line = line.trim();
+                            if line.is_empty() || line.starts_with('#') {
+                                continue;
                             }
-                        }
 
-                        // Reload the IP networks
-                        info!(name = %name, file = file_name, "scheduled reload: invoking callback");
-
-                        let start = std::time::Instant::now();
-                        let mut new_networks = Vec::new();
-
-                        for file_path in &files {
-                            if let Ok(content) = fs::read_to_string(file_path) {
-                                for line in content.lines() {
-                                    let line = line.trim();
-                                    if line.is_empty() || line.starts_with('#') {
-                                        continue;
-                                    }
-
-                                    match line.parse::<IpNet>() {
-                                        Ok(net) => new_networks.push(net),
-                                        Err(_) => {
-                                            if let Ok(ip) = line.parse::<IpAddr>() {
-                                                let net = match ip {
-                                                    IpAddr::V4(addr) => {
-                                                        IpNet::new(addr.into(), 32).unwrap()
-                                                    }
-                                                    IpAddr::V6(addr) => {
-                                                        IpNet::new(addr.into(), 128).unwrap()
-                                                    }
-                                                };
-                                                new_networks.push(net);
+                            match line.parse::<IpNet>() {
+                                Ok(net) => new_networks.push(net),
+                                Err(_) => {
+                                    if let Ok(ip) = line.parse::<IpAddr>() {
+                                        let net = match ip {
+                                            IpAddr::V4(addr) => {
+                                                IpNet::new(addr.into(), 32).unwrap()
                                             }
-                                        }
+                                            IpAddr::V6(addr) => {
+                                                IpNet::new(addr.into(), 128).unwrap()
+                                            }
+                                        };
+                                        new_networks.push(net);
                                     }
                                 }
                             }
                         }
-
-                        let count = new_networks.len();
-                        *networks.write() = new_networks;
-                        let duration = start.elapsed();
-
-                        info!(
-                            name = %name,
-                            IPs = 0,
-                            files = files.len(),
-                            netlist = count,
-                            "successfully loaded IPs and files"
-                        );
-
-                        info!(
-                            name = %name,
-                            filename = file_name,
-                            duration = ?duration,
-                            "scheduled auto-reload completed"
-                        );
-
-                        break; // Only reload once per event batch
                     }
                 }
-            }
 
-            debug!(name = %name, "file watcher closed, exiting loop");
-        });
+                let count = new_networks.len();
+                *networks.write() = new_networks;
+                let duration = start.elapsed();
+
+                info!(
+                    name = %name,
+                    IPs = 0,
+                    files = files.len(),
+                    netlist = count,
+                    "successfully loaded IPs and files"
+                );
+
+                info!(name = %name, filename = file_name, duration = ?duration, "scheduled auto-reload completed");
+            },
+        );
     }
 
     /// Load IP networks from all configured files
