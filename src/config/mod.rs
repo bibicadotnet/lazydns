@@ -30,6 +30,63 @@ pub use reload::ConfigReloader;
 pub use server::ServerConfig;
 pub use types::{ListenerConfig, PluginConfig};
 
+/// Logging configuration
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct LogConfig {
+    /// Log level: trace|debug|info|warn|error
+    #[serde(default = "default_log_level")]
+    pub level: String,
+
+    /// Optional file to write logs to (path)
+    #[serde(default)]
+    pub file: Option<String>,
+
+    /// Log output format: text|json
+    #[serde(default = "default_log_format")]
+    pub format: String,
+
+    /// Time format for the `ts` field: iso8601 | timestamp | local | custom:<fmt> | custom_local:<fmt>
+    #[serde(default = "default_time_format")]
+    pub time_format: String,
+
+    /// Log rotation policy: "never" | "daily" | "hourly"
+    #[serde(default = "default_rotate")]
+    pub rotate: String,
+
+    /// Optional directory to place rotated logs (overrides parent of `file` if provided)
+    #[serde(default)]
+    pub rotate_dir: Option<String>,
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
+}
+
+fn default_log_format() -> String {
+    "text".to_string()
+}
+
+fn default_time_format() -> String {
+    "iso8601".to_string()
+}
+
+fn default_rotate() -> String {
+    "never".to_string()
+}
+
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self {
+            level: default_log_level(),
+            file: None,
+            format: default_log_format(),
+            time_format: default_time_format(),
+            rotate: default_rotate(),
+            rotate_dir: None,
+        }
+    }
+}
+
 /// Main configuration structure
 ///
 /// This is the root configuration object that contains all settings
@@ -44,13 +101,13 @@ pub struct Config {
     #[serde(default)]
     pub plugins: Vec<PluginConfig>,
 
-    /// Log level
-    #[serde(default = "default_log_level")]
-    pub log_level: String,
+    /// Logging configuration
+    #[serde(default = "default_log_config")]
+    pub log: LogConfig,
 }
 
-fn default_log_level() -> String {
-    "info".to_string()
+fn default_log_config() -> LogConfig {
+    LogConfig::default()
 }
 
 impl Default for Config {
@@ -58,7 +115,9 @@ impl Default for Config {
         Self {
             server: ServerConfig::default(),
             plugins: Vec::new(),
-            log_level: default_log_level(),
+            log: default_log_config(),
+            // rotation disabled by default
+            // `rotate_dir` defaults to None which means use parent dir of `file` if provided
         }
     }
 }
@@ -136,29 +195,30 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.log_level, "info");
+        assert_eq!(config.log.level, "info");
         assert!(config.plugins.is_empty());
     }
 
     #[test]
     fn test_new_config() {
         let config = Config::new();
-        assert_eq!(config.log_level, "info");
+        assert_eq!(config.log.level, "info");
     }
 
     #[test]
     fn test_from_yaml_minimal() {
         let yaml = r#"
-log_level: debug
+log:
+  level: debug
 "#;
         let config = Config::from_yaml(yaml).unwrap();
-        assert_eq!(config.log_level, "debug");
+        assert_eq!(config.log.level, "debug");
     }
 
     #[test]
     fn test_to_yaml() {
         let config = Config::new();
         let yaml = config.to_yaml().unwrap();
-        assert!(yaml.contains("log_level"));
+        assert!(yaml.contains("log:"));
     }
 }

@@ -47,6 +47,9 @@ pub mod plugins;
 /// Supports YAML configuration files with validation.
 pub mod config;
 
+/// Logging initialization utilities
+pub mod logging;
+
 /// Metrics collection and Prometheus exporter
 ///
 /// Provides monitoring metrics for DNS server operations.

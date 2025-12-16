@@ -19,6 +19,7 @@ cobertura.xml
 
 # Logs
 *.log
+*.log.*
 
 # Config (local overrides)
 config.local.yaml

@@ -188,16 +188,19 @@ mod tests {
     #[test]
     fn test_load_from_yaml_minimal() {
         let yaml = r#"
-log_level: debug
+log:
+  level: debug
 "#;
         let config = load_from_yaml(yaml).unwrap();
-        assert_eq!(config.log_level, "debug");
+        assert_eq!(config.log.level, "debug");
     }
 
     #[test]
     fn test_load_from_yaml_full() {
         let yaml = r#"
-log_level: info
+log:
+  level: info
+  rotate: daily
 server:
   timeout_secs: 10
   max_connections: 500
@@ -206,7 +209,8 @@ plugins:
     priority: 100
 "#;
         let config = load_from_yaml(yaml).unwrap();
-        assert_eq!(config.log_level, "info");
+        assert_eq!(config.log.level, "info");
+        assert_eq!(config.log.rotate, "daily");
         assert_eq!(config.server.timeout_secs, 10);
         assert_eq!(config.server.max_connections, 500);
         assert_eq!(config.plugins.len(), 1);
@@ -224,7 +228,7 @@ plugins:
         let config = Config::new();
         let yaml = to_yaml(&config).unwrap();
 
-        assert!(yaml.contains("log_level"));
+        assert!(yaml.contains("log:"));
         assert!(yaml.contains("server"));
     }
 
@@ -242,7 +246,7 @@ plugins:
         // Load it back
         let loaded = load_from_file(&path).unwrap();
 
-        assert_eq!(config.log_level, loaded.log_level);
+        assert_eq!(config.log, loaded.log);
     }
 
     #[test]
@@ -257,7 +261,7 @@ plugins:
         let yaml = to_yaml(&original).unwrap();
         let loaded = load_from_yaml(&yaml).unwrap();
 
-        assert_eq!(original.log_level, loaded.log_level);
+        assert_eq!(original.log, loaded.log);
         assert_eq!(original.server.timeout_secs, loaded.server.timeout_secs);
     }
 

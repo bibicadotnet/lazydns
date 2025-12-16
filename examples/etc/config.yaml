@@ -1,7 +1,10 @@
 log:
-  level: trace
-  production: true
-  time_format: iso8601
+  level: trace            # trace | debug | info |warn | error
+  format: text            # text|json
+  time_format: local      # local | iso8601 | timestamp | custom:<fmt> | custom_local:<fmt>
+  # file: test.log          # optional
+  # rotate: daily           # daily | hourly | never (by default)
+  # rotate_dir: /var/log/lazydns  # optional; overrides parent dir of `file`
 
 plugins:
   # 缓存
