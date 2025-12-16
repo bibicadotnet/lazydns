@@ -31,7 +31,7 @@ impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
         // Support local timezone formats:
         // - "local" -> local time in iso8601 with offset
         // - "custom_local:<fmt>" -> custom fmt applied to local time
-        let s = if self.fmt == "iso8601" {
+        let mut s = if self.fmt == "iso8601" {
             fmt_rfc3339(&now_utc)
         } else if self.fmt == "timestamp" {
             now_utc.unix_timestamp().to_string()
@@ -66,6 +66,40 @@ impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
             }
         };
 
+        // Normalize fractional seconds to fixed width (milliseconds, 3 digits) so logs
+        // have consistent subsecond precision, e.g. ".926487" -> ".926" and
+        // ".9266" -> ".926", while no fractional part becomes ".000".
+        fn normalize_subsec(mut s: String, digits: usize) -> String {
+            // Find 'T' to locate time part
+            if let Some(tpos) = s.find('T') {
+                // Search for timezone indicator ('+' or '-' or 'Z') after the 'T'
+                let rest = &s[tpos..];
+                let tz_rel = rest.find('+').or_else(|| rest.find('-')).or_else(|| rest.find('Z'));
+                if let Some(tz_rel) = tz_rel {
+                    let tz_idx = tpos + tz_rel;
+                    if let Some(dot_rel) = s[tpos..tz_idx].find('.') {
+                        let dot_idx = tpos + dot_rel;
+                        let frac = &s[dot_idx + 1..tz_idx];
+                        let mut frac_owned = frac.to_string();
+                        if frac_owned.len() > digits {
+                            frac_owned.truncate(digits);
+                        } else {
+                            while frac_owned.len() < digits {
+                                frac_owned.push('0');
+                            }
+                        }
+                        s.replace_range(dot_idx + 1..tz_idx, &frac_owned);
+                    } else {
+                        // No fractional part: insert .000... before tz
+                        let zeros = "0".repeat(digits);
+                        s.insert_str(tz_idx, &format!(".{}", zeros));
+                    }
+                }
+            }
+            s
+        }
+
+        s = normalize_subsec(s, 3);
         w.write_str(&s)
     }
 }
