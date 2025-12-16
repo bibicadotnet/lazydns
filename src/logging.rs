@@ -45,9 +45,20 @@ impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
 }
 
 /// Initialize tracing/logging according to `LogConfig`.
+/// Determine the effective log spec string used to build an `EnvFilter`.
+///
+/// Precedence: `RUST_LOG` env var (when set and non-empty) overrides the
+/// provided `cfg.level` (which may already reflect a CLI `--log-level`).
+pub(crate) fn effective_log_spec(cfg: &LogConfig) -> String {
+    match std::env::var("RUST_LOG") {
+        Ok(v) if !v.is_empty() => v,
+        _ => cfg.level.clone(),
+    }
+}
+
 pub fn init_logging(cfg: &LogConfig) -> Result<()> {
-    // EnvFilter: set from cfg.level
-    let filter = EnvFilter::try_new(cfg.level.clone())?;
+    // Build EnvFilter from effective spec
+    let filter = EnvFilter::try_new(effective_log_spec(cfg))?;
 
     let registry = tracing_subscriber::registry().with(filter);
 
@@ -153,4 +164,30 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::LogConfig;
+
+    #[test]
+    fn rust_log_overrides_config_level() {
+        std::env::set_var("RUST_LOG", "trace");
+        let mut cfg = LogConfig::default();
+        cfg.level = "info".to_string();
+
+        assert_eq!(effective_log_spec(&cfg), "trace");
+
+        std::env::remove_var("RUST_LOG");
+    }
+
+    #[test]
+    fn cfg_level_used_when_no_rust_log() {
+        std::env::remove_var("RUST_LOG");
+        let mut cfg = LogConfig::default();
+        cfg.level = "warn".to_string();
+
+        assert_eq!(effective_log_spec(&cfg), "warn");
+    }
 }
