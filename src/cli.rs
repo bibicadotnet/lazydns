@@ -1,13 +1,34 @@
+//! Lightweight command-line parsing helpers for lazydns.
+//!
+//! This module provides a minimal CLI parser implemented with `pico-args`.
+//! It exposes `parse_args()` for normal execution (reading the process
+//! arguments) and `parse_args_from_vec()` which accepts an explicit
+//! `Vec<String>` for easier unit testing.
+
 use pico_args::Arguments;
 
-/// Parsed command-line options
+/// Parsed command-line options.
+///
+/// This structure contains the small set of options used by the
+/// `lazydns` binary. Fields are public for easy access from `main`.
 pub struct Args {
+    /// Path to configuration file (default: `config.yaml`).
     pub config: String,
+
+    /// Optional working directory to `chdir` into before startup.
     pub dir: Option<String>,
+
+    /// Desired logging level (e.g. `info`, `debug`).
     pub log_level: String,
+
+    /// Whether verbose mode is enabled (sets log level to `debug`).
     pub verbose: bool,
 }
 
+/// Print a short help text to stdout.
+///
+/// This is intentionally minimal to avoid pulling a heavy CLI help
+/// generation dependency into the binary.
 pub fn print_help() {
     println!("lazydns {}\n", env!("CARGO_PKG_VERSION"));
     println!("Usage: lazydns [OPTIONS]\n");
@@ -21,16 +42,18 @@ pub fn print_help() {
     println!("  -h, --help                Print this help message");
 }
 
-/// Parse CLI arguments using `pico-args`.
-/// Returns `None` if help was printed and the caller should exit gracefully.
 /// Parse CLI arguments using `pico-args` from the current process args.
-/// Returns `None` if help was printed and the caller should exit gracefully.
+///
+/// Returns `None` when help was printed (caller should exit gracefully).
 pub fn parse_args() -> Option<Args> {
     let raw_args: Vec<String> = std::env::args().collect();
     parse_args_from_vec(raw_args)
 }
 
 /// Helper variant that accepts an explicit `Vec<String>` for easier testing.
+///
+/// The provided vector should mimic `std::env::args()` output where the
+/// first element is the program name.
 pub fn parse_args_from_vec(raw_args: Vec<String>) -> Option<Args> {
     if raw_args.len() <= 1 {
         print_help();
