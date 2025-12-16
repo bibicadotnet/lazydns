@@ -1,9 +1,4 @@
-// Deprecated: utilities moved to `crate::utils` (src/utils.rs).
-// This file is intentionally left as a shim with a compile-time error to
-// prevent accidental usage. Please use `crate::utils::spawn_file_watcher`.
-
-compile_error!("`plugins::utils` was moved to `crate::utils`. Update references to `crate::utils`");
-
+use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};

@@ -90,7 +90,7 @@ impl DomainSetPlugin {
 
         const DEBOUNCE_MS: u64 = 200;
 
-        crate::plugins::utils::spawn_file_watcher(
+        crate::utils::spawn_file_watcher(
             name.clone(),
             files.clone(),
             DEBOUNCE_MS,
@@ -337,7 +337,7 @@ impl IpSetPlugin {
 
         const DEBOUNCE_MS: u64 = 200;
 
-        crate::plugins::utils::spawn_file_watcher(
+        crate::utils::spawn_file_watcher(
             name.clone(),
             files.clone(),
             DEBOUNCE_MS,

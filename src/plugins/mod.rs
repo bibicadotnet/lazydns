@@ -45,7 +45,7 @@ pub mod mark;
 pub mod matcher;
 pub mod ratelimit;
 pub mod server;
-pub mod utils;
+// utils module moved to crate-level `src/utils.rs`
 
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};

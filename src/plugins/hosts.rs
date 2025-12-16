@@ -274,7 +274,7 @@ impl HostsPlugin {
 
         const DEBOUNCE_MS: u64 = 200;
 
-        crate::plugins::utils::spawn_file_watcher(
+        crate::utils::spawn_file_watcher(
             "hosts",
             files.clone(),
             DEBOUNCE_MS,

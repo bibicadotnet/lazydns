@@ -42,6 +42,9 @@ pub mod plugin;
 /// Includes forward, cache, hosts, domain matching, and other plugins.
 pub mod plugins;
 
+/// Utility helpers shared across the crate
+pub mod utils;
+
 /// Configuration loading and validation
 ///
 /// Supports YAML configuration files with validation.

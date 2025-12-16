@@ -55,7 +55,7 @@ impl ConfigReloader {
         let path = self.config_path.clone();
         let config = Arc::clone(&self.config);
 
-        crate::plugins::utils::spawn_file_watcher(
+        crate::utils::spawn_file_watcher(
             format!("config-reloader:{}", path.display()),
             vec![path.clone()],
             500, // debounce in ms
@@ -175,20 +175,14 @@ server:
         // Brief delay to allow watcher task to start
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        // Prepare new content and atomically replace the file (simulate editor save)
+        // Prepare new content and write to the same file (Modify event)
         let new_content = r#"
 log:
   level: debug
 server:
   timeout_secs: 5
 "#;
-        let dir = temp_file.path().parent().unwrap();
-        let mut replace = NamedTempFile::new_in(dir).unwrap();
-        write!(replace, "{}", new_content).unwrap();
-        replace.flush().unwrap();
-
-        // Atomic rename to trigger replace/rename events (handled by watcher)
-        std::fs::rename(replace.path(), temp_file.path()).unwrap();
+        std::fs::write(temp_file.path(), new_content).unwrap();
 
         // Wait for the watcher to detect change and reload the config (timeout to avoid flakiness)
         let config_clone = Arc::clone(&config);
