@@ -65,7 +65,8 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
             match cfg.rotate.as_str() {
                 "daily" | "hourly" => {
                     let rotation_dir = cfg
-                        .rotate_dir.as_deref()
+                        .rotate_dir
+                        .as_deref()
                         .or_else(|| std::path::Path::new(path).parent().and_then(|p| p.to_str()))
                         .unwrap_or(".");
 
@@ -113,7 +114,8 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
             match cfg.rotate.as_str() {
                 "daily" | "hourly" => {
                     let rotation_dir = cfg
-                        .rotate_dir.as_deref()
+                        .rotate_dir
+                        .as_deref()
                         .or_else(|| std::path::Path::new(path).parent().and_then(|p| p.to_str()))
                         .unwrap_or(".");
 
