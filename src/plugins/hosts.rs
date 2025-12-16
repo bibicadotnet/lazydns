@@ -102,7 +102,7 @@ impl HostsPlugin {
     /// hosts.add_host("example.com".to_string(), Ipv4Addr::new(93, 184, 216, 34).into());
     /// ```
     pub fn add_host(&mut self, domain: String, ip: IpAddr) {
-        let domain_lower = domain.to_lowercase();
+        let domain_lower = domain.trim_end_matches('.').to_lowercase();
         self.hosts.write().entry(domain_lower).or_default().push(ip);
     }
 
@@ -112,7 +112,7 @@ impl HostsPlugin {
     ///
     /// * `domain` - Domain name to remove
     pub fn remove_host(&mut self, domain: &str) -> bool {
-        let domain_lower = domain.to_lowercase();
+        let domain_lower = domain.trim_end_matches('.').to_lowercase();
         self.hosts.write().remove(&domain_lower).is_some()
     }
 
@@ -122,7 +122,7 @@ impl HostsPlugin {
     ///
     /// * `domain` - Domain name to lookup
     pub fn get_ips(&self, domain: &str) -> Option<Vec<IpAddr>> {
-        let domain_lower = domain.to_lowercase();
+        let domain_lower = domain.trim_end_matches('.').to_lowercase();
         self.hosts.read().get(&domain_lower).cloned()
     }
 
@@ -172,23 +172,40 @@ impl HostsPlugin {
                 continue;
             }
 
-            // Parse line: <ip> <hostname1> [hostname2] ...
+            // Parse line: supports both formats:
+            // - <ip> <hostname1> [hostname2] ...
+            // - <hostname1> [hostname2] ... <ip>
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() < 2 {
                 continue; // Skip malformed lines
             }
 
-            let ip: IpAddr = parts[0]
-                .parse()
-                .map_err(|_| Error::Config(format!("Invalid IP address: {}", parts[0])))?;
+            // Collect all IP tokens and hostname tokens regardless of order.
+            let mut ips: Vec<IpAddr> = Vec::new();
+            let mut hostnames: Vec<&str> = Vec::new();
 
-            // Add all hostnames for this IP
-            for hostname in &parts[1..] {
+            for &token in &parts {
+                if let Ok(ip) = token.parse::<IpAddr>() {
+                    ips.push(ip);
+                } else {
+                    hostnames.push(token);
+                }
+            }
+
+            if ips.is_empty() {
+                return Err(Error::Config(format!(
+                    "No valid IP found in hosts line: {}",
+                    line
+                )));
+            }
+
+            // Map every hostname to all discovered IPs on this line
+            for &hostname in &hostnames {
                 let domain_lower = hostname.to_lowercase();
                 new_hosts
                     .entry(domain_lower)
                     .or_insert_with(Vec::new)
-                    .push(ip);
+                    .extend(ips.iter().cloned());
             }
         }
 
@@ -233,13 +250,25 @@ impl HostsPlugin {
                         continue;
                     }
 
-                    if let Ok(ip) = parts[0].parse::<IpAddr>() {
-                        for hostname in &parts[1..] {
+                    // Collect all IP tokens and hostname tokens regardless of order.
+                    let mut ips: Vec<IpAddr> = Vec::new();
+                    let mut hostnames: Vec<&str> = Vec::new();
+
+                    for &token in &parts {
+                        if let Ok(ip) = token.parse::<IpAddr>() {
+                            ips.push(ip);
+                        } else {
+                            hostnames.push(token);
+                        }
+                    }
+
+                    if !ips.is_empty() {
+                        for hostname in hostnames {
                             let domain_lower = hostname.to_lowercase();
                             all_hosts
                                 .entry(domain_lower)
                                 .or_insert_with(Vec::new)
-                                .push(ip);
+                                .extend(ips.iter().cloned());
                         }
                     }
                 }
@@ -468,6 +497,8 @@ mod tests {
         assert!(hosts.get_ips("example.com").is_some());
         assert!(hosts.get_ips("EXAMPLE.COM").is_some());
         assert!(hosts.get_ips("Example.Com").is_some());
+        // Trailing dot should be tolerated
+        assert!(hosts.get_ips("Example.Com.").is_some());
     }
 
     #[test]
@@ -541,6 +572,27 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_load_from_string_hostname_first() {
+        let mut hosts = HostsPlugin::new();
+        let content = r#"
+# hostname-first format
+localhost 127.0.0.1
+example.com www.example.com 93.184.216.34 2606:50c0:8001::154
+"#;
+
+        hosts.load_from_string(content).unwrap();
+
+        assert!(!hosts.is_empty());
+        assert!(hosts.get_ips("localhost").is_some());
+        assert!(hosts.get_ips("example.com").is_some());
+        assert!(hosts.get_ips("www.example.com").is_some());
+
+        // Ensure IPv6 was parsed as well
+        let ips = hosts.get_ips("example.com").unwrap();
+        assert!(ips.iter().any(|ip| matches!(ip, IpAddr::V6(_))));
+    }
+
     #[tokio::test]
     async fn test_hosts_plugin_a_query() {
         let mut hosts = HostsPlugin::new();
@@ -587,6 +639,39 @@ mod tests {
         let response = response.unwrap();
         assert_eq!(response.answers().len(), 1);
         assert_eq!(response.answers()[0].rtype(), RecordType::AAAA);
+    }
+
+    #[tokio::test]
+    async fn test_hosts_plugin_hostname_first_ipv4_and_ipv6() {
+        let mut hosts = HostsPlugin::new();
+        let content = "media.githubusercontent.com 185.199.108.133 2606:50c0:8001::154";
+        hosts.load_from_string(content).unwrap();
+
+        // A query
+        let mut request_a = Message::new();
+        request_a.add_question(Question::new(
+            "media.githubusercontent.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let mut ctx_a = Context::new(request_a);
+        hosts.execute(&mut ctx_a).await.unwrap();
+        let resp_a = ctx_a.response().unwrap();
+        assert_eq!(resp_a.answers().len(), 1);
+        assert_eq!(resp_a.answers()[0].rtype(), RecordType::A);
+
+        // AAAA query
+        let mut request_aaaa = Message::new();
+        request_aaaa.add_question(Question::new(
+            "media.githubusercontent.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+        let mut ctx_aaaa = Context::new(request_aaaa);
+        hosts.execute(&mut ctx_aaaa).await.unwrap();
+        let resp_aaaa = ctx_aaaa.response().unwrap();
+        assert_eq!(resp_aaaa.answers().len(), 1);
+        assert_eq!(resp_aaaa.answers()[0].rtype(), RecordType::AAAA);
     }
 
     #[tokio::test]
