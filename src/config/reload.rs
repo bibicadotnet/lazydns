@@ -3,8 +3,7 @@
 //! Provides the ability to reload configuration without restarting the server.
 
 use crate::config::Config;
-use crate::{Error, Result};
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use crate::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -52,50 +51,27 @@ impl ConfigReloader {
     /// This function starts a background task that monitors the configuration
     /// file for changes and automatically reloads it.
     pub async fn start_watching(self) -> Result<()> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+        // Use the shared file watcher utility to avoid duplicating logic (debounce, re-watch, etc.)
+        let path = self.config_path.clone();
+        let config = Arc::clone(&self.config);
 
-        // Create file watcher
-        let mut watcher: RecommendedWatcher = Watcher::new(
-            move |res: notify::Result<Event>| {
-                if let Ok(event) = res {
-                    if matches!(
-                        event.kind,
-                        notify::EventKind::Modify(_) | notify::EventKind::Create(_)
-                    ) {
-                        let _ = tx.blocking_send(());
+        crate::plugins::utils::spawn_file_watcher(
+            format!("config-reloader:{}", path.display()),
+            vec![path.clone()],
+            500, // debounce in ms
+            move |p, _files| {
+                let p = p.to_path_buf();
+                let config = Arc::clone(&config);
+                // Spawn an async task to perform reload
+                tokio::spawn(async move {
+                    info!("Config file changed ({:?}), reloading...", p);
+                    match ConfigReloader::reload_config(&p, &config).await {
+                        Ok(()) => info!("Configuration reloaded successfully"),
+                        Err(e) => error!("Failed to reload configuration: {}", e),
                     }
-                }
+                });
             },
-            notify::Config::default(),
-        )
-        .map_err(|e| Error::Config(format!("Failed to create file watcher: {}", e)))?;
-
-        // Watch the config file
-        watcher
-            .watch(&self.config_path, RecursiveMode::NonRecursive)
-            .map_err(|e| Error::Config(format!("Failed to watch config file: {}", e)))?;
-
-        info!("Started watching config file: {:?}", self.config_path);
-
-        // Spawn background task to handle reload events
-        tokio::spawn(async move {
-            // Keep watcher alive
-            let _watcher = watcher;
-
-            while rx.recv().await.is_some() {
-                // Debounce: wait a bit to avoid multiple rapid reloads
-                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-                // Drain any additional events
-                while rx.try_recv().is_ok() {}
-
-                info!("Config file changed, reloading...");
-                match Self::reload_config(&self.config_path, &self.config).await {
-                    Ok(()) => info!("Configuration reloaded successfully"),
-                    Err(e) => error!("Failed to reload configuration: {}", e),
-                }
-            }
-        });
+        );
 
         Ok(())
     }
@@ -173,5 +149,66 @@ server:
         // Reload should fail with invalid YAML
         let result = reloader.reload().await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_start_watching_detects_change() {
+        use tokio::time::{timeout, Duration};
+
+        // Create a temp file with an initial valid config
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let initial = r#"
+log:
+  level: info
+server:
+  timeout_secs: 5
+"#;
+        write!(temp_file, "{}", initial).unwrap();
+        temp_file.flush().unwrap();
+
+        let config = Arc::new(RwLock::new(Config::new()));
+
+        // Start the reloader which will spawn the watcher task
+        let reloader = ConfigReloader::new(temp_file.path(), Arc::clone(&config));
+        reloader.start_watching().await.unwrap();
+
+        // Brief delay to allow watcher task to start
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Prepare new content and atomically replace the file (simulate editor save)
+        let new_content = r#"
+log:
+  level: debug
+server:
+  timeout_secs: 5
+"#;
+        let dir = temp_file.path().parent().unwrap();
+        let mut replace = NamedTempFile::new_in(dir).unwrap();
+        write!(replace, "{}", new_content).unwrap();
+        replace.flush().unwrap();
+
+        // Atomic rename to trigger replace/rename events (handled by watcher)
+        std::fs::rename(replace.path(), temp_file.path()).unwrap();
+
+        // Wait for the watcher to detect change and reload the config (timeout to avoid flakiness)
+        let config_clone = Arc::clone(&config);
+        let res = timeout(Duration::from_secs(10), async move {
+            loop {
+                {
+                    let guard = config_clone.read().await;
+                    if guard.log.level == "debug" {
+                        return;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await;
+
+        assert!(res.is_ok(), "timeout waiting for config reload");
+
+        // Verify the in-memory config was updated
+        let guard = config.read().await;
+        assert_eq!(guard.log.level, "debug");
     }
 }
