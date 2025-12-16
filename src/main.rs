@@ -10,8 +10,8 @@
 //! - GeoIP/GeoSite support
 //! - Full test and documentation coverage
 
-use clap::Parser;
 use clap::CommandFactory;
+use clap::Parser;
 use lazydns::config::Config;
 use lazydns::logging;
 use lazydns::plugin::PluginBuilder;
