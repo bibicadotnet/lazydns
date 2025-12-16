@@ -1,6 +1,6 @@
 use crate::config::LogConfig;
 use anyhow::Result;
-use chrono::{DateTime, Local, Utc};
+use time::{format_description::well_known::Rfc3339, format_description::parse as parse_format, OffsetDateTime};
 use once_cell::sync::OnceCell;
 use std::fmt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -20,24 +20,50 @@ impl TimeFormatter {
 
 impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> fmt::Result {
-        let now: DateTime<Utc> = Utc::now();
+        let now_utc = OffsetDateTime::now_utc();
+
+        // Helper to format an OffsetDateTime with RFC3339
+        let fmt_rfc3339 = |dt: &OffsetDateTime| match dt.format(&Rfc3339) {
+            Ok(s) => s,
+            Err(_) => "".to_string(),
+        };
 
         // Support local timezone formats:
         // - "local" -> local time in iso8601 with offset
         // - "custom_local:<fmt>" -> custom fmt applied to local time
         let s = if self.fmt == "iso8601" {
-            now.to_rfc3339()
+            fmt_rfc3339(&now_utc)
         } else if self.fmt == "timestamp" {
-            now.timestamp().to_string()
+            now_utc.unix_timestamp().to_string()
         } else if self.fmt == "local" {
-            // Use local timezone iso8601 representation
-            Local::now().to_rfc3339()
+            match OffsetDateTime::now_local() {
+                Ok(local) => fmt_rfc3339(&local),
+                Err(_) => fmt_rfc3339(&now_utc),
+            }
         } else if let Some(rest) = self.fmt.strip_prefix("custom_local:") {
-            Local::now().format(rest).to_string()
+            match OffsetDateTime::now_local() {
+                Ok(local) => match parse_format(rest) {
+                    Ok(desc) => match local.format(&desc) {
+                        Ok(s) => s,
+                        Err(_) => fmt_rfc3339(&local),
+                    },
+                    Err(_) => fmt_rfc3339(&local),
+                },
+                Err(_) => fmt_rfc3339(&now_utc),
+            }
         } else if let Some(rest) = self.fmt.strip_prefix("custom:") {
-            now.format(rest).to_string()
+            match parse_format(rest) {
+                Ok(desc) => match now_utc.format(&desc) {
+                    Ok(s) => s,
+                    Err(_) => fmt_rfc3339(&now_utc),
+                },
+                Err(_) => fmt_rfc3339(&now_utc),
+            }
         } else {
-            Local::now().to_rfc3339()
+            match OffsetDateTime::now_local() {
+                Ok(local) => fmt_rfc3339(&local),
+                Err(_) => fmt_rfc3339(&now_utc),
+            }
         };
 
         w.write_str(&s)
