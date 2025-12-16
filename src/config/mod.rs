@@ -10,14 +10,13 @@
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let config = Config::from_file("config.yaml")?;
-//! println!("Server listening on: {:?}", config.server.listen_addrs);
+//! println!("Configured plugins: {:?}", config.plugins);
 //! # Ok(())
 //! # }
 //! ```
 
 pub mod loader;
 pub mod reload;
-pub mod server;
 pub mod types;
 pub mod validation;
 
@@ -27,8 +26,7 @@ use std::path::Path;
 
 // Re-export commonly used types
 pub use reload::ConfigReloader;
-pub use server::ServerConfig;
-pub use types::{ListenerConfig, PluginConfig};
+pub use types::PluginConfig;
 
 /// Logging configuration
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -89,14 +87,11 @@ impl Default for LogConfig {
 
 /// Main configuration structure
 ///
-/// This is the root configuration object that contains all settings
-/// for the DNS server and plugins.
+/// This is the root configuration object that contains settings for
+/// plugins and logging. The legacy `server` configuration section has
+/// been removed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Server configuration
-    #[serde(default)]
-    pub server: ServerConfig,
-
     /// Plugin configurations
     #[serde(default)]
     pub plugins: Vec<PluginConfig>,
@@ -113,7 +108,6 @@ fn default_log_config() -> LogConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            server: ServerConfig::default(),
             plugins: Vec::new(),
             log: default_log_config(),
             // rotation disabled by default
