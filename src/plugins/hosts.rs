@@ -40,6 +40,7 @@ use std::fmt;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
@@ -301,6 +302,10 @@ impl HostsPlugin {
             let canonical_files: Vec<PathBuf> =
                 files.iter().filter_map(|p| p.canonicalize().ok()).collect();
 
+            // Track last reload times to debounce rapid successive events
+            let mut last_reload: HashMap<PathBuf, Instant> = HashMap::new();
+            const DEBOUNCE_MS: u64 = 200;
+
             // Watch all files
             for file_path in &files {
                 debug!(file = ?file_path, "start watching file");
@@ -325,6 +330,18 @@ impl HostsPlugin {
                             .file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown");
+
+                        // Debounce rapid reloads per-file
+                        let now = Instant::now();
+                        if let Some(cp) = canonical_path.as_ref() {
+                            if let Some(prev) = last_reload.get(cp) {
+                                if now.duration_since(*prev) < Duration::from_millis(DEBOUNCE_MS) {
+                                    debug!(file = file_name, "skipping reload due to debounce");
+                                    continue;
+                                }
+                            }
+                            last_reload.insert(cp.clone(), now);
+                        }
 
                         // Handle file removal/rename
                         if matches!(event.kind, EventKind::Remove(_)) {

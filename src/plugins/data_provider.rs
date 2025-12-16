@@ -10,12 +10,13 @@ use async_trait::async_trait;
 use ipnet::IpNet;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use parking_lot::RwLock;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
@@ -119,6 +120,10 @@ impl DomainSetPlugin {
             let canonical_files: Vec<PathBuf> =
                 files.iter().filter_map(|p| p.canonicalize().ok()).collect();
 
+            // Track last reload times to debounce rapid successive events
+            let mut last_reload: HashMap<PathBuf, Instant> = HashMap::new();
+            const DEBOUNCE_MS: u64 = 200;
+
             // Watch all files
             for file_path in &files {
                 debug!(name = %name, file = ?file_path, "start watching file");
@@ -143,6 +148,30 @@ impl DomainSetPlugin {
                             .file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown");
+
+                        // Debounce rapid reloads per-file
+                        let now = Instant::now();
+                        if let Some(cp) = canonical_path.as_ref() {
+                            if let Some(prev) = last_reload.get(cp) {
+                                if now.duration_since(*prev) < Duration::from_millis(DEBOUNCE_MS) {
+                                    debug!(name = %name, file = file_name, "skipping reload due to debounce");
+                                    continue;
+                                }
+                            }
+                            last_reload.insert(cp.clone(), now);
+                        }
+
+                        // Debounce rapid reloads per-file
+                        let now = Instant::now();
+                        if let Some(cp) = canonical_path.as_ref() {
+                            if let Some(prev) = last_reload.get(cp) {
+                                if now.duration_since(*prev) < Duration::from_millis(DEBOUNCE_MS) {
+                                    debug!(name = %name, file = file_name, "skipping reload due to debounce");
+                                    continue;
+                                }
+                            }
+                            last_reload.insert(cp.clone(), now);
+                        }
 
                         // Handle file removal/rename
                         if matches!(event.kind, EventKind::Remove(_)) {
