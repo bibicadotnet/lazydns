@@ -139,7 +139,7 @@ mod tests {
         last_reload.insert(cp.clone(), now);
         true
     }
-    
+
     #[tokio::test]
     #[ignore]
     async fn test_spawn_file_watcher_detects_change() {
