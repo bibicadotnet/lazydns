@@ -15,11 +15,11 @@ plugins:
       lazy_cache_ttl: 86400
 
   # 重定向域名
-  # - tag: redirect
-  #   type: redirect
-  #   args:
-  #     rules:
-  #       - www.cnbeta.com www.cnbeta.com.cdn.cloudflare.net
+  - tag: redirect
+    type: redirect
+    args:
+      rules:
+        - www.cnbeta.com www.cnbeta.com.cdn.cloudflare.net
 
   # 转发至国内DNS, 并发查询
   - tag: forward_local

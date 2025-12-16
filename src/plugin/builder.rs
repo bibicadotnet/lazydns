@@ -251,6 +251,60 @@ impl PluginBuilder {
 
             "black_hole" | "blackhole" => Arc::new(BlackholePlugin),
 
+            "redirect" => {
+                let args = &config.effective_args();
+                // Expect `rules` to be an array. Each entry can be a simple string
+                // like "from to" or a mapping with `from`/`to` keys. We'll use
+                // the first rule if multiple are provided.
+                if let Some(Value::Sequence(seq)) = args.get("rules") {
+                    if seq.is_empty() {
+                        return Err(Error::Config(
+                            "redirect requires at least one rule".to_string(),
+                        ));
+                    }
+
+                    let first = &seq[0];
+                    if let Value::String(s) = first {
+                        let parts: Vec<&str> = s.split_whitespace().collect();
+                        if parts.len() == 2 {
+                            Arc::new(crate::plugins::executable::RedirectPlugin::new(
+                                parts[0].to_string(),
+                                parts[1].to_string(),
+                            ))
+                        } else {
+                            return Err(Error::Config(
+                                "redirect rule must be 'from to'".to_string(),
+                            ));
+                        }
+                    } else if let Value::Mapping(map) = first {
+                        let from = map
+                            .get(Value::String("from".to_string()))
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| {
+                                Error::Config("redirect rule mapping missing 'from'".to_string())
+                            })?;
+                        let to = map
+                            .get(Value::String("to".to_string()))
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| {
+                                Error::Config("redirect rule mapping missing 'to'".to_string())
+                            })?;
+                        Arc::new(crate::plugins::executable::RedirectPlugin::new(
+                            from.to_string(),
+                            to.to_string(),
+                        ))
+                    } else {
+                        return Err(Error::Config(
+                            "unsupported redirect rule format".to_string(),
+                        ));
+                    }
+                } else {
+                    return Err(Error::Config(
+                        "redirect plugin requires 'rules' array".to_string(),
+                    ));
+                }
+            }
+
             "prefer_ipv4" => Arc::new(PreferIpv4Plugin::new()),
             "prefer_ipv6" => Arc::new(PreferIpv6Plugin::new()),
 
@@ -728,6 +782,101 @@ mod tests {
 
         let plugin = builder.build(&config).unwrap();
         assert_eq!(plugin.name(), "tcp_server");
+    }
+
+    #[tokio::test]
+    async fn test_build_redirect_from_string_rule_executes() {
+        let mut builder = PluginBuilder::new();
+        let mut args_map = Mapping::new();
+        args_map.insert(
+            Value::String("rules".to_string()),
+            Value::Sequence(vec![Value::String("example.com example.net".to_string())]),
+        );
+
+        let config = PluginConfig {
+            tag: Some("redirect_str".to_string()),
+            plugin_type: "redirect".to_string(),
+            args: Value::Mapping(args_map),
+            name: None,
+            priority: 100,
+            config: HashMap::new(),
+        };
+
+        let plugin = builder.build(&config).expect("build redirect plugin");
+        assert_eq!(plugin.name(), "redirect");
+
+        // Execute plugin and verify it rewrites the qname
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(request);
+
+        plugin.execute(&mut ctx).await.expect("execute");
+
+        let got = ctx
+            .request()
+            .questions()
+            .first()
+            .unwrap()
+            .qname()
+            .to_string();
+        assert_eq!(got, "example.net");
+    }
+
+    #[tokio::test]
+    async fn test_build_redirect_from_mapping_rule_executes() {
+        let mut builder = PluginBuilder::new();
+        let mut args_map = Mapping::new();
+
+        let mut rule_map = Mapping::new();
+        rule_map.insert(
+            Value::String("from".to_string()),
+            Value::String("foo.example".to_string()),
+        );
+        rule_map.insert(
+            Value::String("to".to_string()),
+            Value::String("bar.example".to_string()),
+        );
+
+        args_map.insert(
+            Value::String("rules".to_string()),
+            Value::Sequence(vec![Value::Mapping(rule_map)]),
+        );
+
+        let config = PluginConfig {
+            tag: Some("redirect_map".to_string()),
+            plugin_type: "redirect".to_string(),
+            args: Value::Mapping(args_map),
+            name: None,
+            priority: 100,
+            config: HashMap::new(),
+        };
+
+        let plugin = builder.build(&config).expect("build redirect plugin");
+        assert_eq!(plugin.name(), "redirect");
+
+        // Execute plugin and verify it rewrites the qname
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "foo.example".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(request);
+
+        plugin.execute(&mut ctx).await.expect("execute");
+
+        let got = ctx
+            .request()
+            .questions()
+            .first()
+            .unwrap()
+            .qname()
+            .to_string();
+        assert_eq!(got, "bar.example");
     }
 }
 
