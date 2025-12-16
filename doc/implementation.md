@@ -21,7 +21,7 @@ Status: IMPLEMENTED (core parsing and record support).
 - DoQ (DNS over QUIC): implemented (`src/server/doq.rs`).
 - Multi-listen, concurrency, connection handling: Implemented via `tokio`-based servers (`src/server/*`).
 
-Status: PARTIAL — UDP/TCP/DoH/DoT/DoQ present, but not all feature.
+Status: PARTIAL — UDP/TCP/DoH/DoT/DoQ present, not all features.
 
 ## 3. Plugin system
 

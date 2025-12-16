@@ -9,16 +9,36 @@
 # Log configuration
 log:
   level: info
-  format: text  # or json
+  format: text
 
 # Plugin execution flow
-# plugins:
-#   - tag: forward
-#     type: forward
-#     args:
-#       upstreams:
-#         - addr: "8.8.8.8:53"
-#         - addr: "1.1.1.1:53"
+plugins:
+  # Forward to upstream DNS servers
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
 
-# Note: This is a placeholder configuration
-# The actual configuration format will be finalized during Phase 4 (Configuration System)
+  # Simple sequence that forwards all queries
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: accept
+
+  # UDP server listening on :5356
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: ":5356"
+
+  # TCP server listening on :5356
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: ":5356"

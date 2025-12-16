@@ -23,8 +23,6 @@ pub fn validate_config(config: &Config) -> Result<()> {
     validate_time_format(&config.log.time_format)?;
     validate_log_rotation(&config.log.rotate)?;
 
-    // Validate server configuration
-
     // Validate plugins
     validate_plugins(&config.plugins)?;
 
@@ -85,8 +83,6 @@ fn validate_log_rotation(rot: &str) -> Result<()> {
     }
     Ok(())
 }
-
-// Note: legacy `server` configuration validation has been removed.
 
 /// Validate plugins
 fn validate_plugins(plugins: &[crate::config::PluginConfig]) -> Result<()> {
