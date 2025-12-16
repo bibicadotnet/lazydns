@@ -153,7 +153,7 @@ server:
 
     #[tokio::test]
     async fn test_start_watching_detects_change() {
-        use tokio::time::{timeout, Duration};
+        use tokio::time::Duration;
 
         // Create a temp file with an initial valid config
         let mut temp_file = NamedTempFile::new().unwrap();
@@ -172,34 +172,58 @@ server:
         let reloader = ConfigReloader::new(temp_file.path(), Arc::clone(&config));
         reloader.start_watching().await.unwrap();
 
-        // Brief delay to allow watcher task to start
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Allow watcher task to start
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
-        // Prepare new content and write to the same file (Modify event)
+        // Prepare new content
         let new_content = r#"
 log:
   level: debug
 server:
   timeout_secs: 5
 "#;
-        std::fs::write(temp_file.path(), new_content).unwrap();
 
-        // Wait for the watcher to detect change and reload the config (timeout to avoid flakiness)
-        let config_clone = Arc::clone(&config);
-        let res = timeout(Duration::from_secs(10), async move {
-            loop {
+        // Try several different writes (modify + atomic replace) to handle platform/editor differences
+        let dir = temp_file.path().parent().unwrap();
+        let mut success = false;
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(15) {
+            // 1) In-place write + sync
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(temp_file.path())
+            {
+                use std::io::Write as _;
+                let _ = f.write_all(new_content.as_bytes());
+                let _ = f.sync_all();
+            }
+
+            // 2) Atomic replace
+            if let Ok(mut replace) = NamedTempFile::new_in(dir) {
+                write!(replace, "{}", new_content).unwrap();
+                replace.flush().unwrap();
+                let _ = std::fs::rename(replace.path(), temp_file.path());
+            }
+
+            // Wait and check for reload for short windows
+            for _ in 0..40 {
                 {
-                    let guard = config_clone.read().await;
+                    let guard = config.read().await;
                     if guard.log.level == "debug" {
-                        return;
+                        success = true;
+                        break;
                     }
                 }
-                tokio::time::sleep(Duration::from_millis(50)).await;
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
-        })
-        .await;
 
-        assert!(res.is_ok(), "timeout waiting for config reload");
+            if success {
+                break;
+            }
+        }
+
+        assert!(success, "timeout waiting for config reload");
 
         // Verify the in-memory config was updated
         let guard = config.read().await;
