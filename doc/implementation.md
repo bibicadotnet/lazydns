@@ -18,10 +18,10 @@ Status: IMPLEMENTED (core parsing and record support).
 - UDP and TCP servers: Implemented (`src/server/udp.rs`, `src/server/tcp.rs`).
 - DoT (DNS over TLS): Implemented (`src/server/dot.rs`, `src/server/tls.rs`).
 - DoH (DNS over HTTPS): Implemented (`src/server/doh.rs`).
-- DoQ (DNS over QUIC): Not implemented (no QUIC/DoQ server module present).
-- Multi-listen, concurrency, connection handling: Implemented via `tokio`-based servers and `ServerConfig` (`src/server/*`).
+- DoQ (DNS over QUIC): implemented (`src/server/doq.rs`).
+- Multi-listen, concurrency, connection handling: Implemented via `tokio`-based servers (`src/server/*`).
 
-Status: PARTIAL — UDP/TCP/DoH/DoT present; DoQ missing.
+Status: PARTIAL — UDP/TCP/DoH/DoT/DoQ present, but not all feature.
 
 ## 3. Plugin system
 

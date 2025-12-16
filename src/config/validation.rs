@@ -24,7 +24,6 @@ pub fn validate_config(config: &Config) -> Result<()> {
     validate_log_rotation(&config.log.rotate)?;
 
     // Validate server configuration
-    validate_server(&config.server)?;
 
     // Validate plugins
     validate_plugins(&config.plugins)?;
@@ -87,52 +86,7 @@ fn validate_log_rotation(rot: &str) -> Result<()> {
     Ok(())
 }
 
-/// Validate server configuration
-fn validate_server(server: &crate::config::ServerConfig) -> Result<()> {
-    // Check that we have at least one listener
-    if server.listen_addrs.is_empty() {
-        return Err(Error::Config(
-            "Server must have at least one listener".to_string(),
-        ));
-    }
-
-    // Validate listener protocols
-    for listener in &server.listen_addrs {
-        if listener.protocol != "udp" && listener.protocol != "tcp" {
-            return Err(Error::Config(format!(
-                "Invalid listener protocol '{}'. Must be 'udp' or 'tcp'",
-                listener.protocol
-            )));
-        }
-    }
-
-    // Validate timeout
-    if server.timeout_secs == 0 {
-        return Err(Error::Config("Timeout must be greater than 0".to_string()));
-    }
-
-    // Validate max connections
-    if server.max_connections == 0 {
-        return Err(Error::Config(
-            "Max connections must be greater than 0".to_string(),
-        ));
-    }
-
-    // Validate packet sizes
-    if server.max_udp_size == 0 {
-        return Err(Error::Config(
-            "Max UDP size must be greater than 0".to_string(),
-        ));
-    }
-
-    if server.max_tcp_size == 0 {
-        return Err(Error::Config(
-            "Max TCP size must be greater than 0".to_string(),
-        ));
-    }
-
-    Ok(())
-}
+// Note: legacy `server` configuration validation has been removed.
 
 /// Validate plugins
 fn validate_plugins(plugins: &[crate::config::PluginConfig]) -> Result<()> {
@@ -160,7 +114,7 @@ fn validate_plugins(plugins: &[crate::config::PluginConfig]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ListenerConfig, PluginConfig, ServerConfig};
+    use crate::config::PluginConfig;
 
     #[test]
     fn test_validate_valid_config() {
@@ -203,50 +157,6 @@ mod tests {
         assert!(validate_log_rotation("hourly").is_ok());
 
         let result = validate_log_rotation("weekly");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_server_no_listeners() {
-        let mut server = ServerConfig::default();
-        server.listen_addrs.clear();
-
-        let result = validate_server(&server);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_server_invalid_protocol() {
-        let mut server = ServerConfig::default();
-        server.listen_addrs.clear();
-        server.listen_addrs.push(ListenerConfig {
-            protocol: "http".to_string(),
-            addr: "127.0.0.1:5353".parse().unwrap(),
-        });
-
-        let result = validate_server(&server);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_server_zero_timeout() {
-        let server = ServerConfig {
-            timeout_secs: 0,
-            ..Default::default()
-        };
-
-        let result = validate_server(&server);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_server_zero_max_connections() {
-        let server = ServerConfig {
-            max_connections: 0,
-            ..Default::default()
-        };
-
-        let result = validate_server(&server);
         assert!(result.is_err());
     }
 

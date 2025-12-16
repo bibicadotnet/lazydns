@@ -201,9 +201,6 @@ log:
 log:
   level: info
   rotate: daily
-server:
-  timeout_secs: 10
-  max_connections: 500
 plugins:
   - plugin_type: forward
     priority: 100
@@ -211,8 +208,6 @@ plugins:
         let config = load_from_yaml(yaml).unwrap();
         assert_eq!(config.log.level, "info");
         assert_eq!(config.log.rotate, "daily");
-        assert_eq!(config.server.timeout_secs, 10);
-        assert_eq!(config.server.max_connections, 500);
         assert_eq!(config.plugins.len(), 1);
     }
 
@@ -229,7 +224,6 @@ plugins:
         let yaml = to_yaml(&config).unwrap();
 
         assert!(yaml.contains("log:"));
-        assert!(yaml.contains("server"));
     }
 
     #[test]
@@ -262,7 +256,6 @@ plugins:
         let loaded = load_from_yaml(&yaml).unwrap();
 
         assert_eq!(original.log, loaded.log);
-        assert_eq!(original.server.timeout_secs, loaded.server.timeout_secs);
     }
 
     #[test]

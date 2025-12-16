@@ -2,24 +2,9 @@
 # This is a work-in-progress configuration format
 # Full configuration documentation will be available as implementation progresses
 
-# Server configuration
-server:
-  # Listeners
-  listeners:
-    - protocol: udp
-      addr: "0.0.0.0:53"
-    - protocol: tcp
-      addr: "0.0.0.0:53"
-
-  # You may also use a shorthand address like ":5353" which is equivalent to
-  # "0.0.0.0:5353" for binding on all interfaces.
-    
-  # DoH listener (DNS over HTTPS)
-  # - protocol: doh
-  #   addr: "0.0.0.0:443"
-  #   tls:
-  #     cert: "/path/to/cert.pem"
-  #     key: "/path/to/key.pem"
+# NOTE: The legacy `server` configuration section has been removed.
+# Server listeners and runtime server configuration are now managed via
+# the server launcher and runtime settings (see `src/server/*` for details).
 
 # Log configuration
 log:
