@@ -297,6 +297,12 @@ impl HostsPlugin {
                     }
                 };
 
+            // Canonicalize file paths for accurate comparison with event paths
+            let canonical_files: Vec<PathBuf> = files
+                .iter()
+                .filter_map(|p| p.canonicalize().ok())
+                .collect();
+
             // Watch all files
             for file_path in &files {
                 debug!(file = ?file_path, "start watching file");
@@ -311,7 +317,9 @@ impl HostsPlugin {
             // Process file change events
             while let Some(event) = rx.recv().await {
                 for path in &event.paths {
-                    if files.contains(path) {
+                    // Compare with canonical paths
+                    let canonical_path = path.canonicalize().ok();
+                    if canonical_path.as_ref().map_or(false, |cp| canonical_files.contains(cp)) {
                         let file_name = path
                             .file_name()
                             .and_then(|n| n.to_str())
