@@ -1446,6 +1446,14 @@ mod tests {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio_rustls::TlsAcceptor;
 
+        // Ensure rustls has a process-level CryptoProvider installed for tests
+        // This avoids failures constructing ServerConfig when running tests in isolation.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        // For tests using our self-signed DoH server, accept invalid certs on the
+        // client side so the client won't reject the server's self-signed cert.
+        std::env::set_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT", "1");
+
         let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
         let cert_der = cert.serialize_der().unwrap();
         let key_der = cert.get_key_pair().serialize_der();

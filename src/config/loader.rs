@@ -200,6 +200,7 @@ log:
         let yaml = r#"
 log:
   level: info
+  rotate: daily
 server:
   timeout_secs: 10
   max_connections: 500
@@ -209,6 +210,7 @@ plugins:
 "#;
         let config = load_from_yaml(yaml).unwrap();
         assert_eq!(config.log.level, "info");
+        assert_eq!(config.log.rotate, "daily");
         assert_eq!(config.server.timeout_secs, 10);
         assert_eq!(config.server.max_connections, 500);
         assert_eq!(config.plugins.len(), 1);

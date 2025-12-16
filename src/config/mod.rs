@@ -48,6 +48,14 @@ pub struct LogConfig {
     /// Time format for the `ts` field: iso8601 | timestamp | local | custom:<fmt> | custom_local:<fmt>
     #[serde(default = "default_time_format")]
     pub time_format: String,
+
+    /// Log rotation policy: "never" | "daily" | "hourly"
+    #[serde(default = "default_rotate")]
+    pub rotate: String,
+
+    /// Optional directory to place rotated logs (overrides parent of `file` if provided)
+    #[serde(default)]
+    pub rotate_dir: Option<String>,
 }
 
 fn default_log_level() -> String {
@@ -62,6 +70,10 @@ fn default_time_format() -> String {
     "iso8601".to_string()
 }
 
+fn default_rotate() -> String {
+    "never".to_string()
+}
+
 impl Default for LogConfig {
     fn default() -> Self {
         Self {
@@ -69,6 +81,8 @@ impl Default for LogConfig {
             file: None,
             format: default_log_format(),
             time_format: default_time_format(),
+            rotate: default_rotate(),
+            rotate_dir: None,
         }
     }
 }
@@ -102,6 +116,8 @@ impl Default for Config {
             server: ServerConfig::default(),
             plugins: Vec::new(),
             log: default_log_config(),
+            // rotation disabled by default
+            // `rotate_dir` defaults to None which means use parent dir of `file` if provided
         }
     }
 }

@@ -21,6 +21,7 @@ pub fn validate_config(config: &Config) -> Result<()> {
     validate_log_level(&config.log.level)?;
     validate_log_format(&config.log.format)?;
     validate_time_format(&config.log.time_format)?;
+    validate_log_rotation(&config.log.rotate)?;
 
     // Validate server configuration
     validate_server(&config.server)?;
@@ -72,6 +73,18 @@ fn validate_time_format(fmt: &str) -> Result<()> {
             fmt
         )))
     }
+}
+
+fn validate_log_rotation(rot: &str) -> Result<()> {
+    let valid = ["never", "daily", "hourly"];
+    if !valid.contains(&rot) {
+        return Err(Error::Config(format!(
+            "Invalid rotate '{}'. Must be one of: {}",
+            rot,
+            valid.join(", ")
+        )));
+    }
+    Ok(())
 }
 
 /// Validate server configuration
@@ -180,6 +193,16 @@ mod tests {
     #[test]
     fn test_validate_time_format_invalid() {
         let result = validate_time_format("weirdfmt");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_log_rotation() {
+        assert!(validate_log_rotation("never").is_ok());
+        assert!(validate_log_rotation("daily").is_ok());
+        assert!(validate_log_rotation("hourly").is_ok());
+
+        let result = validate_log_rotation("weekly");
         assert!(result.is_err());
     }
 

@@ -57,15 +57,43 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
             .with_timer(TimeFormatter::new(cfg.time_format.clone()));
 
         if let Some(path) = &cfg.file {
-            let file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)?;
+            match cfg.rotate.as_str() {
+                "daily" | "hourly" => {
+                    let rotation_dir = cfg
+                        .rotate_dir
+                        .as_ref()
+                        .map(|s| s.as_str())
+                        .or_else(|| std::path::Path::new(path).parent().and_then(|p| p.to_str()))
+                        .unwrap_or(".");
 
-            let (non_blocking, guard) = tracing_appender::non_blocking(file);
-            let _ = FILE_GUARD.set(guard);
+                    let file_name = std::path::Path::new(path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("log");
 
-            registry.with(layer.with_writer(non_blocking)).init();
+                    let rolling = if cfg.rotate == "daily" {
+                        tracing_appender::rolling::daily(rotation_dir, file_name)
+                    } else {
+                        tracing_appender::rolling::hourly(rotation_dir, file_name)
+                    };
+
+                    let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
+
+                    let _ = FILE_GUARD.set(guard);
+                    registry.with(layer.with_writer(non_blocking)).init();
+                }
+                _ => {
+                    let file = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(path)?;
+
+                    let (non_blocking, guard) = tracing_appender::non_blocking(file);
+                    let _ = FILE_GUARD.set(guard);
+
+                    registry.with(layer.with_writer(non_blocking)).init();
+                }
+            }
         } else {
             registry.with(layer).init();
         }
@@ -73,15 +101,43 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
         let layer = tracing_subscriber::fmt::layer().with_timer(TimeFormatter::new(cfg.time_format.clone()));
 
         if let Some(path) = &cfg.file {
-            let file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)?;
+            match cfg.rotate.as_str() {
+                "daily" | "hourly" => {
+                    let rotation_dir = cfg
+                        .rotate_dir
+                        .as_ref()
+                        .map(|s| s.as_str())
+                        .or_else(|| std::path::Path::new(path).parent().and_then(|p| p.to_str()))
+                        .unwrap_or(".");
 
-            let (non_blocking, guard) = tracing_appender::non_blocking(file);
-            let _ = FILE_GUARD.set(guard);
+                    let file_name = std::path::Path::new(path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("log");
 
-            registry.with(layer.with_writer(non_blocking)).init();
+                    let rolling = if cfg.rotate == "daily" {
+                        tracing_appender::rolling::daily(rotation_dir, file_name)
+                    } else {
+                        tracing_appender::rolling::hourly(rotation_dir, file_name)
+                    };
+
+                    let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
+
+                    let _ = FILE_GUARD.set(guard);
+                    registry.with(layer.with_writer(non_blocking)).init();
+                }
+                _ => {
+                    let file = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(path)?;
+
+                    let (non_blocking, guard) = tracing_appender::non_blocking(file);
+                    let _ = FILE_GUARD.set(guard);
+
+                    registry.with(layer.with_writer(non_blocking)).init();
+                }
+            }
         } else {
             registry.with(layer).init();
         }
