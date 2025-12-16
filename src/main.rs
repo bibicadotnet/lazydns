@@ -11,6 +11,7 @@
 //! - Full test and documentation coverage
 
 use clap::Parser;
+use clap::CommandFactory;
 use lazydns::config::Config;
 use lazydns::logging;
 use lazydns::plugin::PluginBuilder;
@@ -41,6 +42,14 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // If no arguments were provided (only program name), print help and exit.
+    let raw_args: Vec<String> = std::env::args().collect();
+    if raw_args.len() <= 1 {
+        let _ = Args::command().print_help();
+        println!();
+        return Ok(());
+    }
+
     // Parse command line arguments
     let args = Args::parse();
 
@@ -62,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Err(e) => {
             eprintln!("Failed to load configuration: {}", e);
-            println!("Using default configuration");
+            eprintln!("Using default configuration");
             Config::default()
         }
     };
