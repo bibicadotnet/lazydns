@@ -45,7 +45,7 @@ pub struct LogConfig {
     #[serde(default = "default_log_format")]
     pub format: String,
 
-    /// Time format for the `ts` field: iso8601 | timestamp | local | custom:<fmt> | custom_local:<fmt>
+    /// Time format for the `ts` field: iso8601 | timestamp | local | `custom:<fmt>` | `custom_local:<fmt>`
     #[serde(default = "default_time_format")]
     pub time_format: String,
 
