@@ -85,7 +85,7 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
                     let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
 
                     let _ = FILE_GUARD.set(guard);
-                    registry.with(layer.with_writer(non_blocking)).init();
+                    let _ = registry.with(layer.with_writer(non_blocking)).try_init();
                 }
                 _ => {
                     let file = std::fs::OpenOptions::new()
@@ -96,14 +96,15 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
                     let (non_blocking, guard) = tracing_appender::non_blocking(file);
                     let _ = FILE_GUARD.set(guard);
 
-                    registry.with(layer.with_writer(non_blocking)).init();
+                    let _ = registry.with(layer.with_writer(non_blocking)).try_init();
                 }
             }
         } else {
-            registry.with(layer).init();
+            let _ = registry.with(layer).try_init();
         }
     } else {
-        let mut layer = tracing_subscriber::fmt::layer().with_timer(TimeFormatter::new(cfg.time_format.clone()));
+        let mut layer = tracing_subscriber::fmt::layer()
+            .with_timer(TimeFormatter::new(cfg.time_format.clone()));
 
         // When writing to a file, disable ANSI color codes
         if cfg.file.is_some() {
@@ -134,7 +135,7 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
                     let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
 
                     let _ = FILE_GUARD.set(guard);
-                    registry.with(layer.with_writer(non_blocking)).init();
+                    let _ = registry.with(layer.with_writer(non_blocking)).try_init();
                 }
                 _ => {
                     let file = std::fs::OpenOptions::new()
@@ -145,11 +146,11 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
                     let (non_blocking, guard) = tracing_appender::non_blocking(file);
                     let _ = FILE_GUARD.set(guard);
 
-                    registry.with(layer.with_writer(non_blocking)).init();
+                    let _ = registry.with(layer.with_writer(non_blocking)).try_init();
                 }
             }
         } else {
-            registry.with(layer).init();
+            let _ = registry.with(layer).try_init();
         }
     }
 
