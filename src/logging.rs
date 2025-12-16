@@ -52,9 +52,14 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
     let registry = tracing_subscriber::registry().with(filter);
 
     if cfg.format == "json" {
-        let layer = tracing_subscriber::fmt::layer()
+        let mut layer = tracing_subscriber::fmt::layer()
             .json()
             .with_timer(TimeFormatter::new(cfg.time_format.clone()));
+
+        // When writing to a file, disable ANSI color codes
+        if cfg.file.is_some() {
+            layer = layer.with_ansi(false);
+        }
 
         if let Some(path) = &cfg.file {
             match cfg.rotate.as_str() {
@@ -98,7 +103,12 @@ pub fn init_logging(cfg: &LogConfig) -> Result<()> {
             registry.with(layer).init();
         }
     } else {
-        let layer = tracing_subscriber::fmt::layer().with_timer(TimeFormatter::new(cfg.time_format.clone()));
+        let mut layer = tracing_subscriber::fmt::layer().with_timer(TimeFormatter::new(cfg.time_format.clone()));
+
+        // When writing to a file, disable ANSI color codes
+        if cfg.file.is_some() {
+            layer = layer.with_ansi(false);
+        }
 
         if let Some(path) = &cfg.file {
             match cfg.rotate.as_str() {
