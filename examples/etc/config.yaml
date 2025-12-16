@@ -2,7 +2,7 @@ log:
   level: trace            # trace|debug|info|warn|error
   file: test.log          # optional
   format: text            # text|json
-  time_format: iso8601    # iso8601|timestamp|custom:<fmt>
+  time_format: local      # iso8601 | timestamp | local | custom:<fmt> | custom_local:<fmt>
 
 plugins:
   # 缓存

@@ -1,6 +1,6 @@
 use crate::config::LogConfig;
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use once_cell::sync::OnceCell;
 use std::fmt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -22,14 +22,22 @@ impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> fmt::Result {
         let now: DateTime<Utc> = Utc::now();
 
+        // Support local timezone formats:
+        // - "local" -> local time in iso8601 with offset
+        // - "custom_local:<fmt>" -> custom fmt applied to local time
         let s = if self.fmt == "iso8601" {
             now.to_rfc3339()
         } else if self.fmt == "timestamp" {
             now.timestamp().to_string()
+        } else if self.fmt == "local" {
+            // Use local timezone iso8601 representation
+            Local::now().to_rfc3339()
+        } else if let Some(rest) = self.fmt.strip_prefix("custom_local:") {
+            Local::now().format(rest).to_string()
         } else if let Some(rest) = self.fmt.strip_prefix("custom:") {
             now.format(rest).to_string()
         } else {
-            now.to_rfc3339()
+            Local::now().to_rfc3339()
         };
 
         w.write_str(&s)

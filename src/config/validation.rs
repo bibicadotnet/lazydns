@@ -59,11 +59,16 @@ fn validate_log_format(format: &str) -> Result<()> {
 }
 
 fn validate_time_format(fmt: &str) -> Result<()> {
-    if fmt == "iso8601" || fmt == "timestamp" || fmt.starts_with("custom:") {
+    if fmt == "iso8601"
+        || fmt == "timestamp"
+        || fmt == "local"
+        || fmt.starts_with("custom:")
+        || fmt.starts_with("custom_local:")
+    {
         Ok(())
     } else {
         Err(Error::Config(format!(
-            "Invalid time_format '{}'. Must be 'iso8601', 'timestamp' or 'custom:<fmt>'",
+            "Invalid time_format '{}'. Must be 'iso8601', 'timestamp', 'local', 'custom:<fmt>', or 'custom_local:<fmt>'",
             fmt
         )))
     }
@@ -162,6 +167,19 @@ mod tests {
     #[test]
     fn test_validate_log_level_invalid() {
         let result = validate_log_level("invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_time_format_valid_local() {
+        assert!(validate_time_format("local").is_ok());
+        assert!(validate_time_format("custom_local:%Y-%m-%d %H:%M:%S").is_ok());
+        assert!(validate_time_format("custom:%Y-%m-%d").is_ok());
+    }
+
+    #[test]
+    fn test_validate_time_format_invalid() {
+        let result = validate_time_format("weirdfmt");
         assert!(result.is_err());
     }
 
