@@ -54,7 +54,6 @@ async fn main() -> anyhow::Result<()> {
         info!("Working directory changed to: {}", dir);
     }
 
-
     // Load configuration (before initializing logging so config can control logs)
     let config = match Config::from_file(&args.config) {
         Ok(config) => {
