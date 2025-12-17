@@ -34,7 +34,7 @@ pub use ipset::IpSetPlugin;
 pub use nftset::NftSetPlugin;
 pub use query_summary::QuerySummaryPlugin;
 pub use redirect::RedirectPlugin;
-pub use reverse_lookup::ReverseLookup;
+pub use reverse_lookup::ReverseLookupPlugin;
 pub use ros_addrlist::RosAddrListPlugin;
 pub use sequence::SequencePlugin;
 pub use sequence::SequenceStep;

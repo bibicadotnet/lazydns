@@ -8,6 +8,15 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Configuration arguments for `ReverseLookupPlugin`.
+///
+/// - `size`: approximate capacity for the in-memory reverse cache (unused
+///   beyond documentation parity with upstream implementations).
+/// - `handle_ptr`: whether the plugin should attempt to answer PTR queries
+///   directly from the cache.
+/// - `ttl`: maximum TTL (in seconds) to honor when storing answers from
+///   responses; saved entries will use the minimum of record TTL and this
+///   configured value.
 #[derive(Debug, Clone)]
 pub struct ReverseLookupArgs {
     pub size: usize,
@@ -25,16 +34,22 @@ impl Default for ReverseLookupArgs {
     }
 }
 
-/// Simple reverse lookup cache entry: fqdn + expiration
+/// Cache entry stored in the reverse lookup table: `(fqdn, expiration)`.
 type Entry = (String, Instant);
 
-/// Reverse lookup plugin: collect A/AAAA answers and serve PTR from cache
-pub struct ReverseLookup {
+/// Reverse lookup plugin.
+///
+/// The plugin collects A/AAAA answers from responses (via `save_ips_after`)
+/// and keeps a small in-memory mapping from IP -> owner name. When a PTR
+/// query is received and `handle_ptr` is enabled, the plugin will attempt to
+/// translate the reverse name into an IP and reply from the cache if a valid
+/// (non-expired) entry exists.
+pub struct ReverseLookupPlugin {
     cache: Arc<DashMap<String, Entry>>,
     args: ReverseLookupArgs,
 }
 
-impl ReverseLookup {
+impl ReverseLookupPlugin {
     pub fn new(args: ReverseLookupArgs) -> Self {
         Self {
             cache: Arc::new(DashMap::new()),
@@ -42,6 +57,12 @@ impl ReverseLookup {
         }
     }
 
+    /// Parse a PTR-style qname into an `IpAddr`.
+    ///
+    /// Supports IPv4 reverse names under `in-addr.arpa` and IPv6 nibble
+    /// reverse names under `ip6.arpa`. Returns `None` if parsing fails.
+    ///
+    /// This is a helper used by `execute` to detect the query target.
     fn parse_ptr(qname: &str) -> Option<IpAddr> {
         let s = qname.trim_end_matches('.').to_ascii_lowercase();
         if s.ends_with(".in-addr.arpa") {
@@ -131,14 +152,27 @@ impl ReverseLookup {
     }
 }
 
-impl fmt::Debug for ReverseLookup {
+/// Public API and helpers for `ReverseLookupPlugin`.
+impl ReverseLookupPlugin {
+    /// Save any A/AAAA answers from a response into the internal cache.
+    ///
+    /// This is a convenience wrapper around `save_from_response` intended for
+    /// callers that manage the sequence execution and want to record names for
+    /// later PTR responses.
+    #[allow(dead_code)]
+    pub fn save_response(&self, req: &Message, resp: &Message) {
+        self.save_from_response(req, resp);
+    }
+}
+
+impl fmt::Debug for ReverseLookupPlugin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ReverseLookup").finish()
     }
 }
 
 #[async_trait]
-impl Plugin for ReverseLookup {
+impl Plugin for ReverseLookupPlugin {
     fn name(&self) -> &str {
         "reverse_lookup"
     }
@@ -180,18 +214,26 @@ impl Plugin for ReverseLookup {
     }
 }
 
-impl ReverseLookup {
+impl ReverseLookupPlugin {
     /// Helper to be called by sequence runner after response is populated.
+    ///
+    /// This method extracts A/AAAA answers from `resp` and records mappings
+    /// from IP -> owner name in the internal cache. It is intended to be
+    /// invoked by higher-level executors after the response is available.
     pub fn save_ips_after(&self, req: &Message, resp: &Message) {
         self.save_from_response(req, resp);
     }
 
-    /// Expose lookup for tests: return the cached fqdn for an IP if present
+    /// Expose lookup for tests: return the cached fqdn for an IP if present.
+    ///
+    /// Returns `Some(fqdn)` when the entry exists and has not yet expired.
     pub fn lookup_cached(&self, ip: &IpAddr) -> Option<String> {
         self.lookup(ip)
     }
 
-    /// Create quick setup similar to upstream: size only
+    /// Create a quick-setup instance from a size string (upstream-compatible
+    /// helper). If `s` parses as a positive integer it will be used as the
+    /// cache size; otherwise defaults are applied.
     pub fn quick_setup(s: &str) -> Self {
         let mut args = ReverseLookupArgs::default();
         if !s.is_empty() {
@@ -211,7 +253,7 @@ mod tests {
     #[tokio::test]
     async fn test_parse_ipv4_ptr() {
         let s = "1.2.3.4.in-addr.arpa.";
-        let ip = ReverseLookup::parse_ptr(s).unwrap();
+        let ip = ReverseLookupPlugin::parse_ptr(s).unwrap();
         assert_eq!(ip.to_string(), "4.3.2.1");
     }
 
@@ -238,7 +280,7 @@ mod tests {
             RData::A(Ipv4Addr::new(1, 2, 3, 4)),
         ));
 
-        let rl = ReverseLookup::new(ReverseLookupArgs::default());
+        let rl = ReverseLookupPlugin::new(ReverseLookupArgs::default());
 
         // Ensure no entry initially
         let ip = std::net::IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4));
@@ -250,5 +292,42 @@ mod tests {
         // Now the lookup should return the fqdn from the request
         let got = rl.lookup_cached(&ip).expect("expected cached name");
         assert_eq!(got, "example.com");
+    }
+
+    #[tokio::test]
+    async fn test_reverse_lookup_answers_ptr() {
+        use crate::dns::{Question, RecordClass, RecordType};
+        use std::time::Duration;
+        use std::time::Instant;
+
+        // Create plugin and pre-fill its cache for IP 10.0.0.1 -> example.com
+        let args = ReverseLookupArgs::default();
+        let plugin = ReverseLookupPlugin::new(args);
+
+        // insert entry for 10.0.0.1
+        let key = "10.0.0.1".to_string();
+        let entry: (String, Instant) = (
+            "example.com".to_string(),
+            Instant::now() + Duration::from_secs(60),
+        );
+        plugin.cache.insert(key.clone(), entry);
+
+        // Build a PTR question for the corresponding reverse name
+        let mut msg = Message::new();
+        msg.add_question(Question::new(
+            "1.0.0.10.in-addr.arpa".to_string(),
+            RecordType::PTR,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(msg);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answer_count(), 1);
+        assert_eq!(
+            resp.answers()[0].rdata(),
+            &RData::PTR("example.com".to_string())
+        );
     }
 }

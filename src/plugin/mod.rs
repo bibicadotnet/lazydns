@@ -105,7 +105,7 @@ impl RequestHandler for PluginHandler {
                             if let Some(rl) =
                                 p.as_ref()
                                     .as_any()
-                                    .downcast_ref::<crate::plugins::executable::ReverseLookup>()
+                                    .downcast_ref::<crate::plugins::executable::ReverseLookupPlugin>()
                             {
                                 rl.save_ips_after(ctx.request(), resp);
                             }

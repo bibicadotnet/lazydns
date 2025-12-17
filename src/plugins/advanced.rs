@@ -9,7 +9,7 @@ use crate::dns::{Message, RData, RecordClass, RecordType, ResourceRecord};
 use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use crate::Result;
 use async_trait::async_trait;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -542,61 +542,6 @@ impl Plugin for MetricsCollectorPlugin {
     }
 }
 
-/// Reverse lookup plugin: answers PTR queries from an in-memory map.
-#[derive(Debug, Clone)]
-pub struct ReverseLookupPlugin {
-    records: HashMap<String, String>,
-    ttl: u32,
-}
-
-impl ReverseLookupPlugin {
-    /// Create a new reverse lookup plugin.
-    pub fn new(records: HashMap<String, String>, ttl: u32) -> Self {
-        Self { records, ttl }
-    }
-}
-
-#[async_trait]
-impl Plugin for ReverseLookupPlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        if ctx.has_response() {
-            return Ok(());
-        }
-
-        let Some(question) = ctx.request().questions().first() else {
-            return Ok(());
-        };
-
-        if question.qtype() != RecordType::PTR {
-            return Ok(());
-        }
-
-        if let Some(target) = self.records.get(question.qname()) {
-            if target.is_empty() {
-                return Ok(());
-            }
-            let mut response = Message::new();
-            response.set_id(ctx.request().id());
-            response.set_response(true);
-            response.add_question(question.clone());
-            response.add_answer(ResourceRecord::new(
-                question.qname().to_string(),
-                RecordType::PTR,
-                question.qclass(),
-                self.ttl,
-                RData::PTR(target.clone()),
-            ));
-            ctx.set_response(Some(response));
-        }
-
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "reverse_lookup"
-    }
-}
-
 /// Convenience constructor for an arbitrary A/AAAA response.
 #[derive(Debug, Clone)]
 pub struct ArbitraryRecordBuilder {
@@ -862,30 +807,4 @@ mod tests {
         assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 
-    #[tokio::test]
-    async fn test_reverse_lookup_answers_ptr() {
-        let mut records = HashMap::new();
-        records.insert(
-            "1.0.0.10.in-addr.arpa".to_string(),
-            "example.com".to_string(),
-        );
-        let plugin = ReverseLookupPlugin::new(records, 30);
-
-        let mut msg = Message::new();
-        msg.add_question(Question::new(
-            "1.0.0.10.in-addr.arpa".to_string(),
-            RecordType::PTR,
-            RecordClass::IN,
-        ));
-
-        let mut ctx = Context::new(msg);
-        plugin.execute(&mut ctx).await.unwrap();
-
-        let resp = ctx.response().unwrap();
-        assert_eq!(resp.answer_count(), 1);
-        assert_eq!(
-            resp.answers()[0].rdata(),
-            &RData::PTR("example.com".to_string())
-        );
-    }
 }

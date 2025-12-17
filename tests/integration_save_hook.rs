@@ -7,7 +7,7 @@ async fn integration_sequence_save_hook() {
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
     use lazydns::plugin::Context;
     use lazydns::plugin::PluginBuilder;
-    use lazydns::plugins::executable::ReverseLookup;
+    use lazydns::plugins::executable::ReverseLookupPlugin;
     use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
     // Use examples/etc as working directory and load its config
@@ -25,7 +25,7 @@ async fn integration_sequence_save_hook() {
 
     // Get registry and register a ReverseLookup instance for testing
     let mut registry = builder.get_registry();
-    let rl = Arc::new(ReverseLookup::quick_setup("64"));
+    let rl = Arc::new(ReverseLookupPlugin::quick_setup("64"));
     registry.register_replace_with_name("reverse_lookup", rl.clone());
 
     // Create an arbitrary response message that contains an A answer for example.com
@@ -74,7 +74,8 @@ async fn integration_sequence_save_hook() {
         for name in registry.plugin_names() {
             if let Some(p) = registry.get(&name) {
                 if p.name() == "reverse_lookup" {
-                    if let Some(rldown) = p.as_ref().as_any().downcast_ref::<ReverseLookup>() {
+                    if let Some(rldown) = p.as_ref().as_any().downcast_ref::<ReverseLookupPlugin>()
+                    {
                         rldown.save_ips_after(ctx.request(), resp_ref);
                     }
                 }
