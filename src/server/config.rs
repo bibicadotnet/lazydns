@@ -1,14 +1,33 @@
 //! Server configuration
 //!
-//! Defines configuration structures for DNS servers
+//! Types and helpers for configuring the DNS servers used by lazydns.
+//!
+//! The `ServerConfig` encapsulates listen addresses, timeouts, limits,
+//! and other runtime parameters. It provides a builder-style API for
+//! convenient construction and modification.
+//!
+//! # Examples
+//!
+//! Construct a default configuration and override the UDP address:
+//!
+//! ```rust
+//! use std::str::FromStr;
+//! use lazydns::server::config::ServerConfig;
+//! let cfg = ServerConfig::default().with_udp_addr(FromStr::from_str("192.0.2.1:53").unwrap());
+//! ```
 
 use std::net::SocketAddr;
 use std::time::Duration;
 
 /// DNS server configuration
 ///
-/// Contains settings for server behavior including listen addresses,
-/// timeouts, and limits.
+/// Holds settings that control server behavior. The struct is `Clone` so it
+/// can be shared safely across server components. Typical fields include
+/// listen addresses for UDP/TCP, request timeouts, and protocol-specific
+/// size limits.
+///
+/// Use the builder-style methods (e.g. `with_udp_addr`) to customize a
+/// configuration built from `ServerConfig::default()`.
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     /// UDP listen address
@@ -31,6 +50,15 @@ pub struct ServerConfig {
 }
 
 impl Default for ServerConfig {
+    /// Return a sensible default configuration intended for local testing
+    /// and development.
+    ///
+    /// Defaults:
+    /// - `udp_addr` / `tcp_addr`: `127.0.0.1:5353`
+    /// - `max_connections`: 1000
+    /// - `timeout`: 5 seconds
+    /// - `max_udp_size`: 512
+    /// - `max_tcp_size`: 65535
     fn default() -> Self {
         Self {
             udp_addr: Some("127.0.0.1:5353".parse().unwrap()),
@@ -44,12 +72,23 @@ impl Default for ServerConfig {
 }
 
 impl ServerConfig {
-    /// Create a new server configuration with the given UDP and TCP addresses
+    /// Create a new server configuration with the given UDP and TCP addresses.
+    ///
+    /// This helper sets the supplied addresses and inherits remaining defaults
+    /// from `ServerConfig::default()`.
     ///
     /// # Arguments
     ///
     /// * `udp_addr` - Optional UDP listen address
     /// * `tcp_addr` - Optional TCP listen address
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::str::FromStr;
+    /// use lazydns::server::config::ServerConfig;
+    /// let cfg = ServerConfig::new(Some(FromStr::from_str("192.0.2.1:53").unwrap()), None);
+    /// ```
     pub fn new(udp_addr: Option<SocketAddr>, tcp_addr: Option<SocketAddr>) -> Self {
         Self {
             udp_addr,
@@ -58,37 +97,61 @@ impl ServerConfig {
         }
     }
 
-    /// Set the UDP listen address
+    /// Set the UDP listen address.
+    ///
+    /// This follows a builder pattern and returns `self` for chaining.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::str::FromStr;
+    /// use lazydns::server::config::ServerConfig;
+    /// let cfg = ServerConfig::default().with_udp_addr(FromStr::from_str("0.0.0.0:53").unwrap());
+    /// ```
     pub fn with_udp_addr(mut self, addr: SocketAddr) -> Self {
         self.udp_addr = Some(addr);
         self
     }
 
-    /// Set the TCP listen address
+    /// Set the TCP listen address.
+    ///
+    /// Returns `self` to allow chaining with other builder methods.
     pub fn with_tcp_addr(mut self, addr: SocketAddr) -> Self {
         self.tcp_addr = Some(addr);
         self
     }
 
-    /// Set the maximum number of concurrent connections
+    /// Set the maximum number of concurrent connections.
+    ///
+    /// This limit is applied per-server instance and helps control resource
+    /// usage under load.
     pub fn with_max_connections(mut self, max: usize) -> Self {
         self.max_connections = max;
         self
     }
 
-    /// Set the query timeout
+    /// Set the query timeout duration.
+    ///
+    /// This timeout applies to upstream queries and socket operations that
+    /// respect the configured deadline.
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
-    /// Set the maximum UDP packet size
+    /// Set the maximum UDP packet size (in bytes).
+    ///
+    /// This value controls buffer allocation for UDP reads and may affect
+    /// truncation behavior when responses exceed the buffer size.
     pub fn with_max_udp_size(mut self, size: usize) -> Self {
         self.max_udp_size = size;
         self
     }
 
-    /// Set the maximum TCP message size
+    /// Set the maximum TCP message size (in bytes).
+    ///
+    /// Controls how large a single TCP DNS message can be; larger messages
+    /// may be rejected or truncated based on this setting.
     pub fn with_max_tcp_size(mut self, size: usize) -> Self {
         self.max_tcp_size = size;
         self
