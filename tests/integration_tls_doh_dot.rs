@@ -1,4 +1,4 @@
-#![cfg(feature = "tls")]
+#![cfg(any(feature = "doh", feature = "dot"))]
 
 use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};

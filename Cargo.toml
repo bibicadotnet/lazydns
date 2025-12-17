@@ -11,13 +11,17 @@ keywords = ["dns", "server", "mosdns", "doh", "dot"]
 categories = ["network-programming"]
 
 [dependencies]
-tokio = { version = "1.35", features = ["rt", "signal", "macros"] }
+tokio = { version = "1.35", default-features = false, features = [
+    "rt",
+    "signal",
+    "macros",
+] }
 
 # DNS protocol
 hickory-proto = "0.24"
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
 
@@ -27,9 +31,16 @@ thiserror = "1.0"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "env-filter",
+    "json",
+] }
 tracing-appender = "0.2"
-time = { version = "0.3", features = ["formatting", "parsing", "local-offset"] }
+time = { version = "0.3", default-features = false, features = [
+    "formatting",
+    "parsing",
+    "local-offset",
+] }
 
 # Async utilities
 async-trait = "0.1"
@@ -39,11 +50,23 @@ dashmap = "5.5"
 parking_lot = "0.12"
 
 # Networking
-axum = { version = "0.7", default-features = false, features = ["json", "query", "tokio", "macros", "http2"], optional = true }
-rustls = { version = "0.23", features = ["ring"] }
-tokio-rustls = "0.26"
+axum = { version = "0.7", default-features = false, features = [
+    "json",
+    "query",
+    "tokio",
+    "macros",
+    "http2",
+], optional = true }
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+], optional = true }
+tokio-rustls = { version = "0.26", optional = true }
 rustls-pemfile = { version = "2.0", optional = true }
-reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.11", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+# reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 
 # QUIC / DoQ support (optional)
 quinn = { version = "0.11", optional = true }
@@ -67,7 +90,9 @@ ipnet = "2.9"
 rand = "0.8"
 
 # Optional TLS-enabled HTTP server for DoH production deployments.
-axum-server = { version = "0.7", optional = true, package = "axum-server", features = ["tls-rustls-no-provider"] }
+axum-server = { version = "0.7", optional = true, package = "axum-server", default-features = false, features = [
+    "tls-rustls-no-provider",
+] }
 
 [dev-dependencies]
 tempfile = "3.8"
@@ -75,10 +100,12 @@ rcgen = "0.9"
 
 [features]
 default = []
+tls = ["dep:rustls"]
+dot = ["tls", "rustls-pemfile", "tokio-rustls"]
 # Enable TLS-backed (DoH using axum-server + rustls) server implementation
-tls = ["axum-server", "rustls-pemfile"]
+doh = ["tls", "rustls-pemfile", "axum-server", "axum"]
 # Enable DoQ (QUIC) server implementation
-doq = ["quinn"]
+doq = ["tls", "rustls-pemfile", "quinn"]
 admin = ["axum", "prometheus"]
 
 [profile.release]

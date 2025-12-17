@@ -53,10 +53,14 @@
 
 use crate::config::PluginConfig;
 use crate::plugin::{PluginHandler, Registry};
+#[cfg(feature = "doh")]
+use crate::server::DohServer;
 #[cfg(feature = "doq")]
 use crate::server::DoqServer;
-#[cfg(feature = "tls")]
-use crate::server::{DohServer, DotServer, TlsConfig};
+#[cfg(feature = "dot")]
+use crate::server::DotServer;
+#[cfg(any(feature = "doh", feature = "dot"))]
+use crate::server::TlsConfig;
 use crate::server::{ServerConfig, TcpServer, UdpServer};
 use serde_yaml::Value;
 use std::collections::HashMap;
@@ -397,11 +401,11 @@ impl ServerLauncher {
     ///
     /// # Feature Requirements
     ///
-    /// This method is only available when the `tls` feature is enabled:
+    /// This method is only available when the `doh` feature is enabled:
     /// ```toml
-    /// lazydns = { version = "*", features = ["tls"] }
+    /// lazydns = { version = "*", features = ["doh"] }
     /// ```
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "doh")]
     async fn launch_doh_server(&self, plugin_config: &PluginConfig) {
         let args = plugin_config.effective_args();
         let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:443") else {
@@ -443,7 +447,7 @@ impl ServerLauncher {
     /// # Arguments
     ///
     /// * `plugin_config` - Plugin configuration (ignored in this implementation)
-    #[cfg(not(feature = "tls"))]
+    #[cfg(not(feature = "doh"))]
     async fn launch_doh_server(&self, _plugin_config: &PluginConfig) {
         warn!("DoH server requested but TLS feature is not enabled");
     }
@@ -487,11 +491,11 @@ impl ServerLauncher {
     ///
     /// # Feature Requirements
     ///
-    /// This method is only available when the `tls` feature is enabled:
+    /// This method is only available when the `dot` feature is enabled:
     /// ```toml
-    /// lazydns = { version = "*", features = ["tls"] }
+    /// lazydns = { version = "*", features = ["dot"] }
     /// ```
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "dot")]
     async fn launch_dot_server(&self, plugin_config: &PluginConfig) {
         let args = plugin_config.effective_args();
         let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:853") else {
@@ -533,7 +537,7 @@ impl ServerLauncher {
     /// # Arguments
     ///
     /// * `plugin_config` - Plugin configuration (ignored in this implementation)
-    #[cfg(not(feature = "tls"))]
+    #[cfg(not(feature = "dot"))]
     async fn launch_dot_server(&self, _plugin_config: &PluginConfig) {
         warn!("DoT server requested but TLS feature is not enabled");
     }
@@ -776,10 +780,10 @@ mod tests {
         });
     }
 
-    /// Test DoH server launching with TLS feature
+    /// Test DoH server launching with doh feature
     ///
-    /// Verifies that DoH server configuration is processed when TLS is available.
-    #[cfg(feature = "tls")]
+    /// Verifies that DoH server configuration is processed when doh is available.
+    #[cfg(feature = "doh")]
     #[test]
     fn test_launch_all_with_doh_server_config() {
         let registry = Arc::new(Registry::new());
@@ -807,10 +811,10 @@ mod tests {
         });
     }
 
-    /// Test DoT server launching with TLS feature
+    /// Test DoT server launching with dot feature
     ///
-    /// Verifies that DoT server configuration is processed when TLS is available.
-    #[cfg(feature = "tls")]
+    /// Verifies that DoT server configuration is processed when dot is available.
+    #[cfg(feature = "dot")]
     #[test]
     fn test_launch_all_with_dot_server_config() {
         let registry = Arc::new(Registry::new());

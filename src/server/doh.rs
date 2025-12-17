@@ -33,9 +33,9 @@ use axum::{
     routing::post,
     Router,
 };
-#[cfg(feature = "tls")]
+#[cfg(feature = "doh")]
 use axum_server::bind_rustls as axum_bind_rustls;
-#[cfg(feature = "tls")]
+#[cfg(feature = "doh")]
 use axum_server::tls_rustls::RustlsConfig as AxumRustlsConfig;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use std::collections::HashMap;
@@ -117,9 +117,9 @@ impl DohServer {
             self.addr, self.path
         );
 
-        // If compiled with `--features tls`, run axum-server with Rustls.
+        // If compiled with `--features doh`, run axum-server with Rustls.
         // This enables proper TLS termination and HTTP/2 for DoH.
-        #[cfg(feature = "tls")]
+        #[cfg(feature = "doh")]
         {
             // Build TLS config only when TLS feature is enabled to avoid
             // unnecessary work in the default (non-TLS) build.
@@ -145,7 +145,7 @@ impl DohServer {
         }
 
         // Default (no-tls)
-        #[cfg(not(feature = "tls"))]
+        #[cfg(not(feature = "doh"))]
         {
             // Default (no-tls) fallback for test and lightweight deployments: plain TCP
             tracing::warn!(

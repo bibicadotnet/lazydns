@@ -926,6 +926,7 @@ mod tests {
         let _ = server_task.await;
     }
 
+    #[cfg(feature = "tls")]
     #[tokio::test]
     async fn test_upstream_health_counters_on_success_and_failure() {
         use crate::dns::types::{RecordClass, RecordType};
@@ -1192,6 +1193,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(any(feature = "doh", feature = "dot"))]
     async fn test_forward_plugin_doh_https_post_with_self_signed_cert() {
         use crate::dns::types::{RecordClass, RecordType};
         use crate::dns::{Message, Question, RData, ResourceRecord};
@@ -1436,6 +1438,7 @@ mod tests {
         (url, handle)
     }
 
+    #[cfg(any(feature = "doh", feature = "dot"))]
     /// Spawn a minimal HTTPS DoH server using a self-signed certificate.
     /// Returns the HTTPS URL and server JoinHandle.
     async fn spawn_doh_https_server(response_ip: &str) -> (String, JoinHandle<()>) {
