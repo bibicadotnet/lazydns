@@ -49,13 +49,11 @@ pub mod server;
 
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
-pub use advanced::{
-    ArbitraryRecordBuilder, EcsPlugin, GotoPlugin, IfPlugin, MetricsCollectorPlugin,
-    ParallelPlugin, ReturnPlugin,
-};
+pub use advanced::EcsPlugin;
 pub use cache::{CachePlugin, CacheStorePlugin};
 pub use control_flow::{
-    AcceptPlugin, JumpPlugin, PreferIpv4Plugin, PreferIpv6Plugin, RejectPlugin,
+    AcceptPlugin, GotoPlugin, IfPlugin, JumpPlugin, ParallelPlugin, PreferIpv4Plugin,
+    PreferIpv6Plugin, RejectPlugin, ReturnPlugin,
 };
 pub use data_provider::{DomainSetPlugin, IpSetPlugin};
 pub use domain_matcher::DomainMatcherPlugin;
