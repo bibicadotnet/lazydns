@@ -932,6 +932,9 @@ mod tests {
         use crate::dns::types::{RecordClass, RecordType};
         use crate::dns::{Message, Question};
 
+        // Ensure tests accept self-signed certs in CI environments
+        std::env::set_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT", "1");
+
         // Mock server for success
         let (upstream_addr, server_task) = spawn_doh_https_server("1.2.3.4").await;
         let plugin = ForwardPlugin::builder()
@@ -986,6 +989,8 @@ mod tests {
         assert_eq!(f2, 1);
 
         let _ = server_task.await;
+        // Cleanup environment override used to accept self-signed certs
+        std::env::remove_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT");
     }
 
     #[test]
