@@ -113,7 +113,18 @@ impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
 /// assert_eq!(lazydns::logging::normalize_subsec("2025-12-16T22:39:35.926487+08:00", 3),
 ///            "2025-12-16T22:39:35.926+08:00");
 /// ```
-fn normalize_subsec(s: &str, digits: usize) -> String {
+/// Normalize fractional seconds in an RFC3339-like timestamp string to `digits`
+/// precision (truncating or padding as necessary). If no fractional part is
+/// present it will insert `.000...` with `digits` zeros. This helper is
+/// extracted to make the behavior testable and is public so it can be used by
+/// documentation tests and external tooling.
+///
+/// # Examples
+/// ```rust
+/// assert_eq!(lazydns::logging::normalize_subsec("2025-12-16T22:39:35.926487+08:00", 3),
+///            "2025-12-16T22:39:35.926+08:00");
+/// ```
+pub fn normalize_subsec(s: &str, digits: usize) -> String {
     let mut s = s.to_string();
 
     // Find 'T' to locate time part
@@ -289,6 +300,9 @@ mod tests {
 
     #[test]
     fn rust_log_overrides_config_level() {
+        // Preserve existing RUST_LOG and restore at the end to avoid
+        // interfering with other tests running in parallel.
+        let prev = std::env::var_os("RUST_LOG");
         std::env::set_var("RUST_LOG", "trace");
         let cfg = LogConfig {
             level: "info".to_string(),
@@ -297,11 +311,17 @@ mod tests {
 
         assert_eq!(effective_log_spec(&cfg), "trace");
 
-        std::env::remove_var("RUST_LOG");
+        // Restore previous value
+        match prev {
+            Some(v) => std::env::set_var("RUST_LOG", v),
+            None => std::env::remove_var("RUST_LOG"),
+        }
     }
 
     #[test]
     fn cfg_level_used_when_no_rust_log() {
+        // Preserve and remove RUST_LOG to ensure the default is used.
+        let prev = std::env::var_os("RUST_LOG");
         std::env::remove_var("RUST_LOG");
         let cfg = LogConfig {
             level: "warn".to_string(),
@@ -309,6 +329,12 @@ mod tests {
         };
 
         assert_eq!(effective_log_spec(&cfg), "warn");
+
+        // Restore previous value
+        match prev {
+            Some(v) => std::env::set_var("RUST_LOG", v),
+            None => std::env::remove_var("RUST_LOG"),
+        }
     }
 
     #[test]
