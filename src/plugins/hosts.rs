@@ -56,9 +56,9 @@ impl Hosts {
     /// # Example
     ///
     /// ```rust
-    /// use lazydns::plugins::HostsPlugin;
+    /// use lazydns::plugins::hosts::Hosts;
     ///
-    /// let hosts = HostsPlugin::new();
+    /// let hosts = Hosts::new();
     /// ```
     pub fn new() -> Self {
         Self {
@@ -76,10 +76,10 @@ impl Hosts {
     /// # Example
     ///
     /// ```rust
-    /// use lazydns::plugins::HostsPlugin;
+    /// use lazydns::plugins::hosts::Hosts;
     /// use std::net::Ipv4Addr;
     ///
-    /// let mut hosts = HostsPlugin::new();
+    /// let hosts = Hosts::new();
     /// hosts.add_host("example.com".to_string(), Ipv4Addr::new(93, 184, 216, 34).into());
     /// ```
     pub fn add_host(&self, domain: String, ip: IpAddr) {
@@ -131,9 +131,9 @@ impl Hosts {
     /// # Example
     ///
     /// ```rust
-    /// use lazydns::plugins::HostsPlugin;
+    /// use lazydns::plugins::hosts::Hosts;
     ///
-    /// let mut hosts = HostsPlugin::new();
+    /// let hosts = Hosts::new();
     /// let content = r#"
     /// 127.0.0.1 localhost
     /// ::1 localhost
@@ -203,9 +203,9 @@ impl Hosts {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use lazydns::plugins::HostsPlugin;
+    /// use lazydns::plugins::hosts::Hosts;
     ///
-    /// let mut hosts = HostsPlugin::new();
+    /// let hosts = Hosts::new();
     /// hosts.load_file("hosts.txt").unwrap();
     /// ```
     pub fn load_file(&self, path: &str) -> Result<(), Error> {
