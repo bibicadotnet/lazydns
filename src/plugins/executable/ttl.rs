@@ -1,9 +1,23 @@
+/// TTL plugin: fix or clamp TTLs on responses.
+///
+/// This plugin can either set a fixed TTL for all response records,
+/// or enforce a minimum/maximum TTL range. Use `fix` to set all TTLs to
+/// an exact value (>0); otherwise `min` and/or `max` are applied.
+///
+/// Quick setup strings are supported via `quick_setup`, e.g. "60" (fix=60)
+/// or "30-300" (min=30, max=300).
 use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
 
 /// TTL plugin: fix or clamp TTLs on responses
+/// TTL plugin configuration.
+///
+/// Fields:
+/// - `fix`: If >0, all record TTLs will be set to this value.
+/// - `min`: Minimum TTL to enforce when `fix == 0`.
+/// - `max`: Maximum TTL to enforce when `fix == 0`.
 pub struct TtlPlugin {
     fix: u32,
     min: u32,
@@ -11,11 +25,19 @@ pub struct TtlPlugin {
 }
 
 impl TtlPlugin {
+    /// Create a new `TtlPlugin`.
+    ///
+    /// - `fix`: if non-zero, sets all TTLs to this value.
+    /// - `min`: minimum TTL to clamp to when `fix` is zero.
+    /// - `max`: maximum TTL to clamp to when `fix` is zero.
     pub fn new(fix: u32, min: u32, max: u32) -> Self {
         Self { fix, min, max }
     }
 
-    /// Quick setup: accept either "min-max" or a fixed value string
+    /// Parse a quick configuration string.
+    ///
+    /// Accepts either a range `"min-max"` or a single fixed value.
+    /// Returns a `TtlPlugin` configured accordingly.
     pub fn quick_setup(s: &str) -> Result<Self> {
         if s.contains('-') {
             let parts: Vec<&str> = s.splitn(2, '-').collect();
@@ -28,6 +50,10 @@ impl TtlPlugin {
         }
     }
 
+    /// Apply TTL rules to the response contained in `ctx`.
+    ///
+    /// If `fix` > 0, all records have their TTL replaced with `fix`.
+    /// Otherwise `min` and `max` are enforced where set (>0).
     fn apply(&self, ctx: &mut Context) {
         if let Some(resp) = ctx.response_mut() {
             if self.fix > 0 {
@@ -88,10 +114,14 @@ impl fmt::Debug for TtlPlugin {
 
 #[async_trait]
 impl Plugin for TtlPlugin {
+    /// Return the plugin name used in configuration.
     fn name(&self) -> &str {
         "ttl"
     }
 
+    /// Execute the plugin for a given request context.
+    ///
+    /// This will modify any response in the context to adjust TTLs.
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         self.apply(ctx);
         Ok(())
