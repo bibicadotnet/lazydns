@@ -30,7 +30,6 @@
 //! ```
 
 pub mod acl;
-pub mod advanced;
 pub mod cache;
 pub mod control_flow;
 pub mod data_provider;
@@ -49,7 +48,6 @@ pub mod server;
 
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
-pub use advanced::EcsPlugin;
 pub use cache::{CachePlugin, CacheStorePlugin};
 pub use control_flow::{
     AcceptPlugin, GotoPlugin, IfPlugin, JumpPlugin, ParallelPlugin, PreferIpv4Plugin,
