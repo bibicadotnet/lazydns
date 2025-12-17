@@ -134,21 +134,114 @@ mod tests {
     use crate::dns::types::{RecordClass, RecordType};
     use crate::dns::{Message, ResourceRecord};
 
+    fn make_a_record(name: &str, ttl: u32) -> ResourceRecord {
+        ResourceRecord::new(
+            name.into(),
+            RecordType::A,
+            RecordClass::IN,
+            ttl,
+            crate::dns::RData::A(std::net::Ipv4Addr::new(1, 2, 3, 4)),
+        )
+    }
+
     #[tokio::test]
     async fn test_ttl_fix() {
         let plugin = TtlPlugin::new(10, 0, 0);
         let mut msg = Message::new();
-        msg.add_answer(ResourceRecord::new(
-            "a".into(),
-            RecordType::A,
-            RecordClass::IN,
-            300,
-            crate::dns::RData::A(std::net::Ipv4Addr::new(1, 2, 3, 4)),
-        ));
+        msg.add_answer(make_a_record("a", 300));
         let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
         ctx.set_response(Some(msg));
         plugin.execute(&mut ctx).await.unwrap();
         let resp = ctx.response().unwrap();
         assert_eq!(resp.answers()[0].ttl(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_ttl_min_clamp() {
+        let plugin = TtlPlugin::new(0, 50, 0);
+        let mut msg = Message::new();
+        msg.add_answer(make_a_record("a", 30));
+        msg.add_authority(make_a_record("auth", 10));
+        msg.add_additional(make_a_record("add", 20));
+
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answers()[0].ttl(), 50);
+        assert_eq!(resp.authority()[0].ttl(), 50);
+        assert_eq!(resp.additional()[0].ttl(), 50);
+    }
+
+    #[tokio::test]
+    async fn test_ttl_max_clamp() {
+        let plugin = TtlPlugin::new(0, 0, 100);
+        let mut msg = Message::new();
+        msg.add_answer(make_a_record("a", 200));
+        msg.add_authority(make_a_record("auth", 250));
+        msg.add_additional(make_a_record("add", 500));
+
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answers()[0].ttl(), 100);
+        assert_eq!(resp.authority()[0].ttl(), 100);
+        assert_eq!(resp.additional()[0].ttl(), 100);
+    }
+
+    #[tokio::test]
+    async fn test_ttl_min_max_range() {
+        let plugin = TtlPlugin::new(0, 30, 100);
+        let mut msg = Message::new();
+        msg.add_answer(make_a_record("low", 10));
+        msg.add_answer(make_a_record("mid", 50));
+        msg.add_answer(make_a_record("high", 200));
+
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answers()[0].ttl(), 30);
+        assert_eq!(resp.answers()[1].ttl(), 50);
+        assert_eq!(resp.answers()[2].ttl(), 100);
+    }
+
+    #[tokio::test]
+    async fn test_quick_setup_fixed_and_range() {
+        // fixed value
+        let plugin = TtlPlugin::quick_setup("60").unwrap();
+        let mut msg = Message::new();
+        msg.add_answer(make_a_record("a", 300));
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answers()[0].ttl(), 60);
+
+        // range
+        let plugin = TtlPlugin::quick_setup("20-80").unwrap();
+        let mut msg = Message::new();
+        msg.add_answer(make_a_record("a", 10));
+        msg.add_answer(make_a_record("b", 90));
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answers()[0].ttl(), 20);
+        assert_eq!(resp.answers()[1].ttl(), 80);
+    }
+
+    #[tokio::test]
+    async fn test_quick_setup_invalid_noop() {
+        // invalid string results in no-op (all zeros)
+        let plugin = TtlPlugin::quick_setup("abc").unwrap();
+        let mut msg = Message::new();
+        msg.add_answer(make_a_record("a", 100));
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answers()[0].ttl(), 100);
     }
 }
