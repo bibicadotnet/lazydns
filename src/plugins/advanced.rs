@@ -10,7 +10,7 @@ use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use crate::Result;
 use async_trait::async_trait;
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+// atomic types are provided by executable collector; keep advanced.rs free of them
 use std::sync::Arc;
 use tracing::debug;
 
@@ -242,92 +242,11 @@ impl Plugin for EcsPlugin {
     }
 }
 
-/// Metrics collector plugin: comprehensive DNS query and response metrics.
-///
-/// Tracks detailed statistics about DNS operations including query counts,
-/// response codes, latency measurements, and queries per second.
-#[derive(Debug, Clone)]
-pub struct MetricsCollectorPlugin {
-    counter: Arc<AtomicUsize>,
-    _start_time: std::time::Instant,
-    last_reset: Arc<std::sync::RwLock<std::time::Instant>>,
-    total_latency_ms: Arc<AtomicUsize>,
-}
-
-impl MetricsCollectorPlugin {
-    /// Create a new metrics collector with shared counter.
-    pub fn new(counter: Arc<AtomicUsize>) -> Self {
-        let now = std::time::Instant::now();
-        Self {
-            counter,
-            _start_time: now,
-            last_reset: Arc::new(std::sync::RwLock::new(now)),
-            total_latency_ms: Arc::new(AtomicUsize::new(0)),
-        }
-    }
-
-    /// Get the total query count.
-    pub fn count(&self) -> usize {
-        self.counter.load(Ordering::SeqCst)
-    }
-
-    /// Calculate queries per second since last reset.
-    pub fn queries_per_second(&self) -> f64 {
-        let count = self.count() as f64;
-        let last_reset = self.last_reset.read().unwrap();
-        let duration = last_reset.elapsed().as_secs_f64();
-
-        if duration > 0.0 {
-            count / duration
-        } else {
-            0.0
-        }
-    }
-
-    /// Get average latency in milliseconds.
-    pub fn average_latency_ms(&self) -> f64 {
-        let total_latency = self.total_latency_ms.load(Ordering::SeqCst) as f64;
-        let count = self.count() as f64;
-
-        if count > 0.0 {
-            total_latency / count
-        } else {
-            0.0
-        }
-    }
-
-    /// Reset the metrics counters.
-    pub fn reset(&self) {
-        self.counter.store(0, Ordering::SeqCst);
-        self.total_latency_ms.store(0, Ordering::SeqCst);
-        *self.last_reset.write().unwrap() = std::time::Instant::now();
-    }
-
-    /// Get time since metrics were last reset.
-    pub fn time_since_reset(&self) -> std::time::Duration {
-        self.last_reset.read().unwrap().elapsed()
-    }
-}
-
-#[async_trait]
-impl Plugin for MetricsCollectorPlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        // Increment query counter
-        self.counter.fetch_add(1, Ordering::SeqCst);
-
-        // Track latency if available from metadata
-        if let Some(latency_ms) = ctx.get_metadata::<f64>("query_latency_ms") {
-            self.total_latency_ms
-                .fetch_add((*latency_ms) as usize, Ordering::SeqCst);
-        }
-
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "metrics_collector"
-    }
-}
+// Re-export the executable implementation of the metrics collector so
+// callers that referenced `MetricsCollectorPlugin` from this module
+// continue to compile while the canonical implementation lives under
+// `plugins::executable::collector`.
+pub use crate::plugins::executable::collector::MetricsCollectorPlugin;
 
 /// Convenience constructor for an arbitrary A/AAAA response.
 #[derive(Debug, Clone)]

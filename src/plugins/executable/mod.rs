@@ -5,6 +5,7 @@
 pub mod arbitrary;
 pub mod black_hole;
 pub mod cache;
+pub mod collector;
 pub mod debug_print;
 pub mod drop_resp;
 pub mod dual_selector;
@@ -24,6 +25,7 @@ pub mod ttl;
 pub use arbitrary::ArbitraryPlugin;
 pub use black_hole::BlackholePlugin;
 pub use cache::{ExecCache, ExecCacheStore};
+pub use collector::MetricsCollectorPlugin;
 pub use debug_print::DebugPrintPlugin;
 pub use drop_resp::DropRespPlugin;
 pub use dual_selector::{DualSelectorPlugin, IpPreference};
