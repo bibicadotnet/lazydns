@@ -11,9 +11,9 @@
 //! - **DoQ** (feature = "doq"): DNS over QUIC (experimental)
 //!
 //! The module exposes a number of commonly-used types through re-exports
-//! such as [`ServerConfig`], [`UdpServer`], [`TcpServer`], and, when the
-//! corresponding feature is enabled, [`DohServer`], [`DotServer`], and
-//! [`DoqServer`]. See the individual modules for implementation details.
+//! such as `ServerConfig`, `UdpServer`, `TcpServer` and, when the
+//! corresponding feature is enabled, `DohServer`, `DotServer`, and
+//! `DoqServer`. See the individual modules for implementation details.
 //!
 //! Feature notes:
 //! - Build with `--features doh` to enable DoH support.
