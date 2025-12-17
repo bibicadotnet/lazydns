@@ -17,6 +17,7 @@ pub mod query_summary;
 pub mod redirect;
 pub mod reverse_lookup;
 pub mod ros_addrlist;
+pub mod sequence;
 pub mod sleep;
 pub mod ttl;
 
@@ -35,6 +36,8 @@ pub use query_summary::QuerySummary;
 pub use redirect::RedirectPlugin;
 pub use reverse_lookup::ReverseLookup;
 pub use ros_addrlist::RosAddrListPlugin;
+pub use sequence::SequencePlugin;
+pub use sequence::SequenceStep;
 pub use sleep::SleepPlugin;
 pub use ttl::TtlPlugin;
 

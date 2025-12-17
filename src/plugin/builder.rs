@@ -5,7 +5,7 @@
 use crate::config::types::PluginConfig;
 use crate::plugin::traits::Matcher;
 use crate::plugin::{Context, Plugin};
-use crate::plugins::advanced::SequenceStep;
+use crate::plugins::executable::SequenceStep;
 use crate::plugins::*;
 use crate::Error;
 use crate::Result;
@@ -897,7 +897,7 @@ mod tests {
 
 /// Parse complex sequence steps from YAML sequence
 fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
-    use crate::plugins::advanced::SequenceStep;
+    use crate::plugins::executable::SequenceStep;
     info!("Parsing {} sequence steps", sequence.len());
     let mut steps = Vec::new();
 

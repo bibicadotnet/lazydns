@@ -52,7 +52,7 @@ pub use acl::{AclAction, QueryAclPlugin};
 pub use advanced::{
     ArbitraryPlugin, ArbitraryRecordBuilder, BlackholePlugin, DropResponsePlugin, EcsPlugin,
     GotoPlugin, IfPlugin, IpsetPlugin, MetricsCollectorPlugin, NftsetPlugin, ParallelPlugin,
-    QuerySummaryPlugin, ReturnPlugin, ReverseLookupPlugin, SequencePlugin, TtlPlugin,
+    QuerySummaryPlugin, ReturnPlugin, ReverseLookupPlugin, TtlPlugin,
 };
 pub use cache::{CachePlugin, CacheStorePlugin};
 pub use control_flow::{
@@ -78,6 +78,7 @@ pub use matcher::{
 };
 
 // Re-export executable plugins
+pub use executable::SequencePlugin;
 pub use executable::{
     DebugPrintPlugin, DualSelectorPlugin, Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin,
     IpPreference, RedirectPlugin, RosAddrListPlugin, SleepPlugin,

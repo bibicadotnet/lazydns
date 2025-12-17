@@ -13,7 +13,10 @@ use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tracing::{debug, trace};
+use tracing::debug;
+
+// Re-export sequence types from the executable module for backwards compatibility
+pub use crate::plugins::executable::{SequencePlugin, SequenceStep};
 
 /// Summarizes the current query into context metadata for later plugins.
 #[derive(Debug)]
@@ -188,101 +191,8 @@ impl Plugin for ReturnPlugin {
     }
 }
 
-/// Executes a sequence of plugins in order.
-#[derive(Debug)]
-pub struct SequencePlugin {
-    steps: Vec<SequenceStep>,
-}
-
-pub enum SequenceStep {
-    /// Execute a plugin unconditionally
-    Exec(Arc<dyn Plugin>),
-    /// Execute a plugin conditionally
-    If {
-        condition: Arc<dyn Fn(&Context) -> bool + Send + Sync>,
-        action: Arc<dyn Plugin>,
-        /// Human-readable condition string (for logging/debugging)
-        desc: String,
-    },
-}
-
-impl std::fmt::Debug for SequenceStep {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SequenceStep::Exec(plugin) => f.debug_tuple("Exec").field(plugin).finish(),
-            SequenceStep::If { action, desc, .. } => f
-                .debug_struct("If")
-                .field("action", action)
-                .field("cond", desc)
-                .finish(),
-        }
-    }
-}
-
-impl SequencePlugin {
-    /// Create a new sequence plugin with the provided plugins (simple format).
-    pub fn new(plugins: Vec<Arc<dyn Plugin>>) -> Self {
-        let steps = plugins.into_iter().map(SequenceStep::Exec).collect();
-        Self { steps }
-    }
-
-    /// Create a new sequence plugin with complex steps.
-    pub fn with_steps(steps: Vec<SequenceStep>) -> Self {
-        Self { steps }
-    }
-}
-
-#[async_trait]
-impl Plugin for SequencePlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        for step in &self.steps {
-            match step {
-                SequenceStep::Exec(plugin) => {
-                    trace!(plugin = plugin.name(), "Sequence: executing plugin (exec)");
-                    match plugin.execute(ctx).await {
-                        Ok(_) => {
-                            trace!(plugin = plugin.name(), "Sequence: exec succeeded")
-                        }
-                        Err(e) => {
-                            trace!(plugin = plugin.name(), error = %e, "Sequence: exec failed");
-                            return Err(e);
-                        }
-                    }
-                }
-                SequenceStep::If {
-                    condition,
-                    action,
-                    desc,
-                } => {
-                    let cond = condition(ctx);
-                    trace!(condition = %desc, result = cond, plugin = action.name(), "Sequence: conditional step evaluated");
-                    if cond {
-                        trace!(plugin = action.name(), condition = %desc, "Sequence: executing conditional action");
-                        match action.execute(ctx).await {
-                            Ok(_) => {
-                                trace!(plugin = action.name(), condition = %desc, "Sequence: conditional action succeeded")
-                            }
-                            Err(e) => {
-                                trace!(plugin = action.name(), condition = %desc, error = %e, "Sequence: conditional action failed");
-                                return Err(e);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Check for return flag
-            if matches!(ctx.get_metadata::<bool>(RETURN_FLAG), Some(true)) {
-                break;
-            }
-        }
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "sequence"
-    }
-}
+// Sequence execution is implemented in `plugins::executable::sequence`.
+// Re-exported there as `SequencePlugin`.
 
 /// Executes plugins in "parallel" (sequential fallback) until a response or return flag is set.
 #[derive(Debug, Default)]
@@ -1046,46 +956,6 @@ mod tests {
             Some(&true),
             "return flag should be set"
         );
-    }
-
-    #[tokio::test]
-    async fn test_sequence_plugin_executes_in_order() {
-        #[derive(Debug)]
-        struct Recorder {
-            order: Arc<std::sync::Mutex<Vec<&'static str>>>,
-            label: &'static str,
-        }
-
-        #[async_trait]
-        impl Plugin for Recorder {
-            async fn execute(&self, ctx: &mut Context) -> Result<()> {
-                ctx.set_metadata("seen", true);
-                self.order.lock().unwrap().push(self.label);
-                Ok(())
-            }
-
-            fn name(&self) -> &str {
-                self.label
-            }
-        }
-
-        let order = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let seq = SequencePlugin::new(vec![
-            Arc::new(Recorder {
-                order: order.clone(),
-                label: "one",
-            }),
-            Arc::new(Recorder {
-                order: order.clone(),
-                label: "two",
-            }),
-        ]);
-
-        let mut ctx = Context::new(Message::new());
-        seq.execute(&mut ctx).await.unwrap();
-
-        let logged = order.lock().unwrap().clone();
-        assert_eq!(logged, vec!["one", "two"]);
     }
 
     #[tokio::test]
