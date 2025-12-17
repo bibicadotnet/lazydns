@@ -61,7 +61,8 @@ pub use control_flow::{
 pub use data_provider::{DomainSetPlugin, IpSetPlugin};
 pub use domain_matcher::DomainMatcherPlugin;
 pub use executable::HostsPlugin;
-pub use forward::{ForwardPlugin, ForwardPluginBuilder, LoadBalanceStrategy};
+pub use executable::{ForwardPlugin, ForwardPluginBuilder};
+pub use forward::LoadBalanceStrategy;
 pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
 pub use ip_matcher::IpMatcherPlugin;

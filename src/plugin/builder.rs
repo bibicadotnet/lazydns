@@ -73,7 +73,7 @@ impl PluginBuilder {
                 if let Some(fwd) = fp
                     .as_ref()
                     .as_any()
-                    .downcast_ref::<crate::plugins::forward::ForwardPlugin>()
+                    .downcast_ref::<ForwardPlugin>()
                 {
                     debug!(upstreams = ?fwd.upstream_addrs(), "Built forward plugin with upstreams");
                 }
@@ -646,7 +646,7 @@ mod tests {
         if let Some(fp) = plugin
             .as_ref()
             .as_any()
-            .downcast_ref::<crate::plugins::forward::ForwardPlugin>()
+            .downcast_ref::<ForwardPlugin>()
         {
             let addrs = fp.upstream_addrs();
             assert_eq!(addrs.len(), 1);
