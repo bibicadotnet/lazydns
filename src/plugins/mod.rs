@@ -52,7 +52,7 @@ pub use acl::{AclAction, QueryAclPlugin};
 pub use advanced::{
     ArbitraryPlugin, ArbitraryRecordBuilder, BlackholePlugin, DropResponsePlugin, EcsPlugin,
     GotoPlugin, IfPlugin, IpsetPlugin, MetricsCollectorPlugin, NftsetPlugin, ParallelPlugin,
-    QuerySummaryPlugin, ReturnPlugin, ReverseLookupPlugin, TtlPlugin,
+    ReturnPlugin, ReverseLookupPlugin, TtlPlugin,
 };
 pub use cache::{CachePlugin, CacheStorePlugin};
 pub use control_flow::{
@@ -60,8 +60,6 @@ pub use control_flow::{
 };
 pub use data_provider::{DomainSetPlugin, IpSetPlugin};
 pub use domain_matcher::DomainMatcherPlugin;
-pub use executable::HostsPlugin;
-pub use executable::{ForwardPlugin, ForwardPluginBuilder};
 pub use forward::LoadBalanceStrategy;
 pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
@@ -78,10 +76,10 @@ pub use matcher::{
 };
 
 // Re-export executable plugins
-pub use executable::SequencePlugin;
 pub use executable::{
     DebugPrintPlugin, DualSelectorPlugin, Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin,
-    IpPreference, RedirectPlugin, RosAddrListPlugin, SleepPlugin,
+    ForwardPlugin, ForwardPluginBuilder, HostsPlugin, IpPreference, QuerySummaryPlugin,
+    RedirectPlugin, RosAddrListPlugin, SequencePlugin, SleepPlugin,
 };
 
 // Re-export server plugins

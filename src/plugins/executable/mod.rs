@@ -32,7 +32,7 @@ pub use fallback::FallbackPlugin;
 pub use forward_edns0opt::{Edns0Option, ForwardEdns0OptPlugin};
 pub use ipset::IpSetPlugin;
 pub use nftset::NftSetPlugin;
-pub use query_summary::QuerySummary;
+pub use query_summary::QuerySummaryPlugin;
 pub use redirect::RedirectPlugin;
 pub use reverse_lookup::ReverseLookup;
 pub use ros_addrlist::RosAddrListPlugin;

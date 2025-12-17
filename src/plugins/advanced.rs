@@ -18,42 +18,6 @@ use tracing::debug;
 // Re-export sequence types from the executable module for backwards compatibility
 pub use crate::plugins::executable::{SequencePlugin, SequenceStep};
 
-/// Summarizes the current query into context metadata for later plugins.
-#[derive(Debug)]
-pub struct QuerySummaryPlugin {
-    metadata_key: String,
-}
-
-impl QuerySummaryPlugin {
-    /// Create a new query summary plugin.
-    ///
-    /// The summary string is stored under the provided metadata key.
-    pub fn new(metadata_key: impl Into<String>) -> Self {
-        Self {
-            metadata_key: metadata_key.into(),
-        }
-    }
-}
-
-#[async_trait]
-impl Plugin for QuerySummaryPlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        let summary: Vec<String> = ctx
-            .request()
-            .questions()
-            .iter()
-            .map(|q| format!("{} {} {}", q.qname(), q.qclass(), q.qtype()))
-            .collect();
-
-        ctx.set_metadata(self.metadata_key.clone(), summary.join("; "));
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "query_summary"
-    }
-}
-
 /// Forces all TTL values in an existing response to a fixed value.
 #[derive(Debug, Clone, Copy)]
 pub struct TtlPlugin {
@@ -815,31 +779,6 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-
-    #[tokio::test]
-    async fn test_query_summary_sets_metadata() {
-        let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::AAAA,
-            RecordClass::IN,
-        ));
-
-        let mut ctx = Context::new(request);
-        let plugin = QuerySummaryPlugin::new("summary");
-
-        plugin.execute(&mut ctx).await.unwrap();
-        let summary = ctx.get_metadata::<String>("summary").unwrap();
-
-        assert!(summary.contains("example.com"));
-        assert!(summary.contains("A"));
-        assert!(summary.contains("AAAA"));
-    }
 
     #[tokio::test]
     async fn test_ttl_plugin_rewrites_records() {
