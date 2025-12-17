@@ -1,13 +1,28 @@
 //! DNS server implementations module
 //!
-//! This module provides DNS server implementations for various protocols:
-//! - UDP: Standard DNS over UDP (port 53)
-//! - TCP: DNS over TCP for large responses
-//! - DoH: DNS over HTTPS (RFC 8484)
-//! - DoT: DNS over TLS (RFC 7858)
-//! - DoQ: DNS over QUIC (future)
+//! This module groups the concrete server implementations and shared
+//! configuration types used by lazydns. It exposes the following protocol
+//! implementations (some are feature gated):
+//!
+//! - **UDP**: Standard DNS over UDP (default behavior, port configurable)
+//! - **TCP**: DNS over TCP for large responses (un-gated)
+//! - **DoH** (feature = "doh"): DNS over HTTPS (RFC 8484)
+//! - **DoT** (feature = "dot"): DNS over TLS (RFC 7858)
+//! - **DoQ** (feature = "doq"): DNS over QUIC (experimental)
+//!
+//! The module exposes a number of commonly-used types through re-exports
+//! such as [`ServerConfig`], [`UdpServer`], [`TcpServer`], and, when the
+//! corresponding feature is enabled, [`DohServer`], [`DotServer`], and
+//! [`DoqServer`]. See the individual modules for implementation details.
+//!
+//! Feature notes:
+//! - Build with `--features doh` to enable DoH support.
+//! - Build with `--features dot` (and an appropriate TLS backend) to enable DoT.
+//! - Build with `--features doq` to enable QUIC/DoQ support.
 //!
 //! # Example
+//!
+//! Construct and use a UDP server with the default configuration:
 //!
 //! ```rust,no_run
 //! use lazydns::server::{UdpServer, ServerConfig, DefaultHandler};
