@@ -29,33 +29,28 @@
 //! # }
 //! ```
 
-use crate::dns::{Message, Question, RData, RecordType, ResourceRecord};
 use crate::error::Error;
-use crate::plugin::{Context, Plugin};
-use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fmt;
 use std::net::IpAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
-
-use tracing::{debug, info, warn};
 
 /// Hosts file plugin for local DNS resolution
 ///
 /// Maps domain names to IP addresses, similar to `/etc/hosts` file.
 /// Supports both IPv4 and IPv6 addresses with optional auto-reload.
-pub struct HostsPlugin {
-    /// Domain name to list of IP addresses (shared for auto-reload)
+/// Core hosts parsing and lookup store.
+///
+/// This struct contains the parsing/lookup logic only. Plugin-related
+/// lifecycle (file-watching, conversion to DNS responses, Plugin trait)
+/// has been moved to `plugins::executable::HostsPlugin`.
+pub struct Hosts {
+    /// Domain name to list of IP addresses
     hosts: Arc<RwLock<HashMap<String, Vec<IpAddr>>>>,
-    /// Files to load hosts from
-    files: Vec<PathBuf>,
-    /// Whether to auto-reload files
-    auto_reload: bool,
 }
 
-impl HostsPlugin {
+impl Hosts {
     /// Create a new hosts plugin
     ///
     /// # Example
@@ -68,21 +63,7 @@ impl HostsPlugin {
     pub fn new() -> Self {
         Self {
             hosts: Arc::new(RwLock::new(HashMap::new())),
-            files: Vec::new(),
-            auto_reload: false,
         }
-    }
-
-    /// Set files to load hosts from
-    pub fn with_files(mut self, files: Vec<String>) -> Self {
-        self.files = files.into_iter().map(PathBuf::from).collect();
-        self
-    }
-
-    /// Enable auto-reload
-    pub fn with_auto_reload(mut self, enabled: bool) -> Self {
-        self.auto_reload = enabled;
-        self
     }
 
     /// Add a host mapping
@@ -101,7 +82,7 @@ impl HostsPlugin {
     /// let mut hosts = HostsPlugin::new();
     /// hosts.add_host("example.com".to_string(), Ipv4Addr::new(93, 184, 216, 34).into());
     /// ```
-    pub fn add_host(&mut self, domain: String, ip: IpAddr) {
+    pub fn add_host(&self, domain: String, ip: IpAddr) {
         let domain_lower = domain.trim_end_matches('.').to_lowercase();
         self.hosts.write().entry(domain_lower).or_default().push(ip);
     }
@@ -111,7 +92,7 @@ impl HostsPlugin {
     /// # Arguments
     ///
     /// * `domain` - Domain name to remove
-    pub fn remove_host(&mut self, domain: &str) -> bool {
+    pub fn remove_host(&self, domain: &str) -> bool {
         let domain_lower = domain.trim_end_matches('.').to_lowercase();
         self.hosts.write().remove(&domain_lower).is_some()
     }
@@ -137,7 +118,7 @@ impl HostsPlugin {
     }
 
     /// Clear all host entries
-    pub fn clear(&mut self) {
+    pub fn clear(&self) {
         self.hosts.write().clear();
     }
 
@@ -161,7 +142,7 @@ impl HostsPlugin {
     /// hosts.load_from_string(content).unwrap();
     /// assert_eq!(hosts.len(), 3); // localhost, example.com, www.example.com
     /// ```
-    pub fn load_from_string(&mut self, content: &str) -> Result<(), Error> {
+    pub fn load_from_string(&self, content: &str) -> Result<(), Error> {
         let mut new_hosts = HashMap::new();
 
         for line in content.lines() {
@@ -227,257 +208,42 @@ impl HostsPlugin {
     /// let mut hosts = HostsPlugin::new();
     /// hosts.load_file("hosts.txt").unwrap();
     /// ```
-    pub fn load_file(&mut self, path: &str) -> Result<(), Error> {
+    pub fn load_file(&self, path: &str) -> Result<(), Error> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| Error::Config(format!("Failed to read hosts file '{}': {}", path, e)))?;
         self.load_from_string(&content)
     }
-
-    /// Load hosts from all configured files
-    pub fn load_hosts(&self) -> Result<(), Error> {
-        let mut all_hosts = HashMap::new();
-
-        for file_path in &self.files {
-            if let Ok(content) = std::fs::read_to_string(file_path) {
-                for line in content.lines() {
-                    let line = line.trim();
-                    if line.is_empty() || line.starts_with('#') {
-                        continue;
-                    }
-
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() < 2 {
-                        continue;
-                    }
-
-                    // Collect all IP tokens and hostname tokens regardless of order.
-                    let mut ips: Vec<IpAddr> = Vec::new();
-                    let mut hostnames: Vec<&str> = Vec::new();
-
-                    for &token in &parts {
-                        if let Ok(ip) = token.parse::<IpAddr>() {
-                            ips.push(ip);
-                        } else {
-                            hostnames.push(token);
-                        }
-                    }
-
-                    if !ips.is_empty() {
-                        for hostname in hostnames {
-                            let domain_lower = hostname.to_lowercase();
-                            all_hosts
-                                .entry(domain_lower)
-                                .or_insert_with(Vec::new)
-                                .extend(ips.iter().cloned());
-                        }
-                    }
-                }
-            } else {
-                warn!(file = ?file_path, "Failed to read hosts file");
-            }
-        }
-
-        *self.hosts.write() = all_hosts;
-        info!(
-            entries = self.len(),
-            files = self.files.len(),
-            "Hosts loaded"
-        );
-        Ok(())
-    }
-
-    /// Start file watcher if auto-reload is enabled
-    pub fn start_file_watcher(&self) {
-        if !self.auto_reload || self.files.is_empty() {
-            return;
-        }
-
-        let files = self.files.clone();
-        let hosts = Arc::clone(&self.hosts);
-
-        info!(
-            auto_reload = true,
-            files = ?files,
-            "file auto-reload status"
-        );
-
-        const DEBOUNCE_MS: u64 = 200;
-
-        crate::utils::spawn_file_watcher(
-            "hosts",
-            files.clone(),
-            DEBOUNCE_MS,
-            move |path, files| {
-                let file_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown");
-
-                // Reload hosts (same logic as previous implementation)
-                let start = std::time::Instant::now();
-                let mut all_hosts = HashMap::new();
-
-                for file_path in files {
-                    if let Ok(content) = std::fs::read_to_string(file_path) {
-                        for line in content.lines() {
-                            let line = line.trim();
-                            if line.is_empty() || line.starts_with('#') {
-                                continue;
-                            }
-
-                            let parts: Vec<&str> = line.split_whitespace().collect();
-                            if parts.len() < 2 {
-                                continue;
-                            }
-
-                            if let Ok(ip) = parts[0].parse::<IpAddr>() {
-                                for hostname in &parts[1..] {
-                                    let domain_lower = hostname.to_lowercase();
-                                    all_hosts
-                                        .entry(domain_lower)
-                                        .or_insert_with(Vec::new)
-                                        .push(ip);
-                                }
-                            }
-                        }
-                    } else {
-                        warn!(file = ?file_path, "Failed to read hosts file");
-                    }
-                }
-
-                *hosts.write() = all_hosts;
-                let duration = start.elapsed();
-
-                info!(filename = file_name, duration = ?duration, "scheduled auto-reload completed");
-            },
-        );
-    }
-
-    /// Create a DNS response with the given IPs
-    fn create_response(&self, question: &Question, ips: &[IpAddr]) -> Message {
-        let mut response = Message::new();
-        response.set_response(true);
-        response.set_authoritative(true);
-        response.set_recursion_available(false);
-
-        // Add the question
-        response.add_question(question.clone());
-
-        // Add answer records
-        let qtype = question.qtype();
-        let qname = question.qname().to_string();
-        let qclass = question.qclass();
-
-        for ip in ips {
-            let record = match (ip, qtype) {
-                // IPv4 address and A query
-                (IpAddr::V4(ipv4), RecordType::A) => Some(ResourceRecord::new(
-                    qname.clone(),
-                    RecordType::A,
-                    qclass,
-                    3600, // 1 hour TTL
-                    RData::A(*ipv4),
-                )),
-                // IPv6 address and AAAA query
-                (IpAddr::V6(ipv6), RecordType::AAAA) => Some(ResourceRecord::new(
-                    qname.clone(),
-                    RecordType::AAAA,
-                    qclass,
-                    3600,
-                    RData::AAAA(*ipv6),
-                )),
-                _ => None,
-            };
-
-            if let Some(r) = record {
-                response.add_answer(r);
-            }
-        }
-
-        response
-    }
 }
 
-impl Default for HostsPlugin {
+impl Default for Hosts {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl fmt::Debug for HostsPlugin {
+impl fmt::Debug for Hosts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("HostsPlugin")
+        f.debug_struct("Hosts")
             .field("entries", &self.hosts.read().len())
             .finish()
-    }
-}
-
-#[async_trait]
-impl Plugin for HostsPlugin {
-    async fn execute(&self, context: &mut Context) -> Result<(), Error> {
-        // If response is already set, skip
-        if context.response().is_some() {
-            return Ok(());
-        }
-
-        // Get the first question
-        let question = match context.request().questions().first() {
-            Some(q) => q,
-            None => return Ok(()),
-        };
-
-        // Only handle A and AAAA queries
-        let qtype = question.qtype();
-        if qtype != RecordType::A && qtype != RecordType::AAAA {
-            return Ok(());
-        }
-
-        // Lookup in hosts file
-        let domain = question.qname();
-        if let Some(ips) = self.get_ips(domain) {
-            debug!("Hosts plugin: Found {} IPs for {}", ips.len(), domain);
-
-            // Create response
-            let mut response = self.create_response(question, &ips);
-
-            // Copy request ID to response
-            response.set_id(context.request().id());
-
-            // Set response code
-            response.set_response_code(crate::dns::ResponseCode::NoError);
-
-            context.set_response(Some(response));
-        }
-
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "hosts"
-    }
-
-    fn priority(&self) -> i32 {
-        // Hosts should run early, before forward
-        100
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dns::RecordClass;
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     #[test]
-    fn test_hosts_plugin_creation() {
-        let hosts = HostsPlugin::new();
+    fn test_hosts_creation() {
+        let hosts = Hosts::new();
         assert!(hosts.is_empty());
         assert_eq!(hosts.len(), 0);
     }
 
     #[test]
     fn test_add_host() {
-        let mut hosts = HostsPlugin::new();
+        let hosts = Hosts::new();
         let ip = Ipv4Addr::new(127, 0, 0, 1);
 
         hosts.add_host("localhost".to_string(), ip.into());
@@ -488,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_case_insensitive() {
-        let mut hosts = HostsPlugin::new();
+        let hosts = Hosts::new();
         let ip = Ipv4Addr::new(93, 184, 216, 34);
 
         hosts.add_host("Example.COM".to_string(), ip.into());
@@ -503,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_multiple_ips() {
-        let mut hosts = HostsPlugin::new();
+        let hosts = Hosts::new();
         let ipv4 = Ipv4Addr::new(127, 0, 0, 1);
         let ipv6 = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
 
@@ -516,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_remove_host() {
-        let mut hosts = HostsPlugin::new();
+        let hosts = Hosts::new();
         let ip = Ipv4Addr::new(127, 0, 0, 1);
 
         hosts.add_host("localhost".to_string(), ip.into());
@@ -532,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_clear() {
-        let mut hosts = HostsPlugin::new();
+        let hosts = Hosts::new();
         hosts.add_host("example.com".to_string(), Ipv4Addr::new(1, 2, 3, 4).into());
         hosts.add_host("test.com".to_string(), Ipv4Addr::new(5, 6, 7, 8).into());
 
@@ -546,7 +312,7 @@ mod tests {
 
     #[test]
     fn test_load_from_string() {
-        let mut hosts = HostsPlugin::new();
+        let hosts = Hosts::new();
         let content = r#"
 # Comment line
 127.0.0.1 localhost
@@ -565,7 +331,7 @@ mod tests {
 
     #[test]
     fn test_load_from_string_invalid_ip() {
-        let mut hosts = HostsPlugin::new();
+        let hosts = Hosts::new();
         let content = "invalid.ip.address example.com";
 
         let result = hosts.load_from_string(content);
@@ -574,11 +340,12 @@ mod tests {
 
     #[test]
     fn test_load_from_string_hostname_first() {
-        let mut hosts = HostsPlugin::new();
+        let hosts = Hosts::new();
         let content = r#"
 # hostname-first format
 localhost 127.0.0.1
 example.com www.example.com 93.184.216.34 2606:50c0:8001::154
+example.com 2606:50c0:8001::158
 "#;
 
         hosts.load_from_string(content).unwrap();
@@ -591,155 +358,28 @@ example.com www.example.com 93.184.216.34 2606:50c0:8001::154
         // Ensure IPv6 was parsed as well
         let ips = hosts.get_ips("example.com").unwrap();
         assert!(ips.iter().any(|ip| matches!(ip, IpAddr::V6(_))));
+        assert_eq!(ips.len(), 3);
+
+        // Ensure domain aliases was parsed as well
+        let ips = hosts.get_ips("www.example.com").unwrap();
+        assert!(ips.iter().any(|ip| matches!(ip, IpAddr::V6(_))));
+        assert_eq!(ips.len(), 2)
     }
 
-    #[tokio::test]
-    async fn test_hosts_plugin_a_query() {
-        let mut hosts = HostsPlugin::new();
-        let ip = Ipv4Addr::new(93, 184, 216, 34);
-        hosts.add_host("example.com".to_string(), ip.into());
-
-        let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
-
-        let mut context = Context::new(request);
-        hosts.execute(&mut context).await.unwrap();
-
-        let response = context.response();
-        assert!(response.is_some());
-
-        let response = response.unwrap();
-        assert_eq!(response.answers().len(), 1);
-        assert_eq!(response.answers()[0].rtype(), RecordType::A);
-    }
-
-    #[tokio::test]
-    async fn test_hosts_plugin_aaaa_query() {
-        let mut hosts = HostsPlugin::new();
-        let ip = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
-        hosts.add_host("example.com".to_string(), ip.into());
-
-        let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::AAAA,
-            RecordClass::IN,
-        ));
-
-        let mut context = Context::new(request);
-        hosts.execute(&mut context).await.unwrap();
-
-        let response = context.response();
-        assert!(response.is_some());
-
-        let response = response.unwrap();
-        assert_eq!(response.answers().len(), 1);
-        assert_eq!(response.answers()[0].rtype(), RecordType::AAAA);
-    }
-
-    #[tokio::test]
-    async fn test_hosts_plugin_hostname_first_ipv4_and_ipv6() {
-        let mut hosts = HostsPlugin::new();
-        let content = "media.githubusercontent.com 185.199.108.133 2606:50c0:8001::154";
+    #[test]
+    fn test_load_from_string_mixed_orders() {
+        let hosts = Hosts::new();
+        let content = r#"
+# hostname-first format
+localhost 127.0.0.1
+example.com www.example.com 93.184.216.34 2606:50c0:8001::154
+2606:50c0:8001::158 example.com
+1.1.1.1 global-dns.com
+"#;
         hosts.load_from_string(content).unwrap();
-
-        // A query
-        let mut request_a = Message::new();
-        request_a.add_question(Question::new(
-            "media.githubusercontent.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
-        let mut ctx_a = Context::new(request_a);
-        hosts.execute(&mut ctx_a).await.unwrap();
-        let resp_a = ctx_a.response().unwrap();
-        assert_eq!(resp_a.answers().len(), 1);
-        assert_eq!(resp_a.answers()[0].rtype(), RecordType::A);
-
-        // AAAA query
-        let mut request_aaaa = Message::new();
-        request_aaaa.add_question(Question::new(
-            "media.githubusercontent.com".to_string(),
-            RecordType::AAAA,
-            RecordClass::IN,
-        ));
-        let mut ctx_aaaa = Context::new(request_aaaa);
-        hosts.execute(&mut ctx_aaaa).await.unwrap();
-        let resp_aaaa = ctx_aaaa.response().unwrap();
-        assert_eq!(resp_aaaa.answers().len(), 1);
-        assert_eq!(resp_aaaa.answers()[0].rtype(), RecordType::AAAA);
-    }
-
-    #[tokio::test]
-    async fn test_hosts_plugin_no_match() {
-        let mut hosts = HostsPlugin::new();
-        let ip = Ipv4Addr::new(93, 184, 216, 34);
-        hosts.add_host("example.com".to_string(), ip.into());
-
-        let mut request = Message::new();
-        request.add_question(Question::new(
-            "notfound.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
-
-        let mut context = Context::new(request);
-        hosts.execute(&mut context).await.unwrap();
-
-        // Should not set a response
-        assert!(context.response().is_none());
-    }
-
-    #[tokio::test]
-    async fn test_hosts_plugin_wrong_type() {
-        let mut hosts = HostsPlugin::new();
-        // Add IPv4 address
-        let ip = Ipv4Addr::new(93, 184, 216, 34);
-        hosts.add_host("example.com".to_string(), ip.into());
-
-        // Query for AAAA (IPv6)
-        let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::AAAA,
-            RecordClass::IN,
-        ));
-
-        let mut context = Context::new(request);
-        hosts.execute(&mut context).await.unwrap();
-
-        // Should set response but with no answers
-        let response = context.response();
-        assert!(response.is_some());
-        assert_eq!(response.unwrap().answers().len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_hosts_plugin_skips_if_response_set() {
-        let mut hosts = HostsPlugin::new();
-        hosts.add_host("example.com".to_string(), Ipv4Addr::new(1, 2, 3, 4).into());
-
-        let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
-
-        let mut context = Context::new(request);
-
-        // Pre-set a response
-        let mut pre_response = Message::new();
-        pre_response.set_id(999);
-        context.set_response(Some(pre_response));
-
-        hosts.execute(&mut context).await.unwrap();
-
-        // Should not modify the pre-set response
-        assert_eq!(context.response().unwrap().id(), 999);
+        assert!(hosts.get_ips("localhost").is_some());
+        assert!(hosts.get_ips("example.com").is_some());
+        assert!(hosts.get_ips("www.example.com").is_some());
+        assert!(hosts.get_ips("global-dns.com").is_some());
     }
 }

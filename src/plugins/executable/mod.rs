@@ -37,3 +37,6 @@ pub use reverse_lookup::ReverseLookup;
 pub use ros_addrlist::RosAddrListPlugin;
 pub use sleep::SleepPlugin;
 pub use ttl::TtlPlugin;
+
+pub mod hosts;
+pub use hosts::HostsPlugin;
