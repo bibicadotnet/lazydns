@@ -3,17 +3,17 @@
 //! This module wraps the core forward logic (from `plugins::forward`)
 //! with the Plugin trait for execution within the plugin chain.
 
-use crate::plugins::forward::{ForwardCore, LoadBalanceStrategy, Upstream};
-use crate::plugin::{Context, Plugin};
 use crate::dns::Message;
+use crate::plugin::{Context, Plugin};
+use crate::plugins::forward::{ForwardCore, LoadBalanceStrategy, Upstream};
 use crate::Result;
+use async_trait::async_trait;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
-use async_trait::async_trait;
 use tracing::{debug, error, warn};
 
 /// Forward plugin - forwards DNS queries to upstream resolvers
@@ -488,9 +488,9 @@ impl Plugin for ForwardPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugins::forward::UpstreamHealth;
-    use crate::dns::{Message, Question, RData, ResourceRecord};
     use crate::dns::types::{RecordClass, RecordType};
+    use crate::dns::{Message, Question, RData, ResourceRecord};
+    use crate::plugins::forward::UpstreamHealth;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 

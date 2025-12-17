@@ -348,4 +348,55 @@ mod tests {
         assert_eq!(s, 2);
         assert_eq!(f, 0);
     }
+
+    #[test]
+    fn test_select_upstream_random_and_fastest() {
+        // Random: ensure index is in range
+        let upstreams = vec![Upstream::new("8.8.8.8:53"), Upstream::new("1.1.1.1:53")];
+        let core = ForwardCore::new(
+            upstreams.clone(),
+            Duration::from_secs(5),
+            LoadBalanceStrategy::Random,
+        );
+        for _ in 0..10 {
+            let idx = core.select_upstream(0).unwrap();
+            assert!(idx < core.upstreams.len());
+        }
+
+        // Fastest: prefer measured faster upstream
+        let ups = upstreams;
+        // initially no measurements -> should return first
+        let core2 = ForwardCore::new(
+            ups.clone(),
+            Duration::from_secs(5),
+            LoadBalanceStrategy::Fastest,
+        );
+        let idx_initial = core2.select_upstream(0).unwrap();
+        assert_eq!(idx_initial, 0);
+
+        // Record fast time on second upstream and slower on first
+        ups[1].health.record_success(Duration::from_millis(5));
+        ups[0].health.record_success(Duration::from_millis(100));
+        let core3 = ForwardCore::new(ups, Duration::from_secs(5), LoadBalanceStrategy::Fastest);
+        let idx_after = core3.select_upstream(0).unwrap();
+        assert_eq!(idx_after, 1);
+    }
+
+    #[test]
+    fn test_serialize_parse_roundtrip() {
+        use crate::dns::types::{RecordClass, RecordType};
+        use crate::dns::{Message, Question};
+
+        let mut msg = Message::new();
+        msg.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let data = ForwardCore::serialize_message(&msg).expect("serialize");
+        let parsed = ForwardCore::parse_message(&data).expect("parse");
+        assert_eq!(parsed.questions().len(), 1);
+        assert_eq!(parsed.questions()[0].qname(), "example.com");
+    }
 }
