@@ -70,11 +70,7 @@ impl PluginBuilder {
 
                 // Build plugin and log configured upstream addresses for visibility
                 let fp = Arc::new(builder.build());
-                if let Some(fwd) = fp
-                    .as_ref()
-                    .as_any()
-                    .downcast_ref::<ForwardPlugin>()
-                {
+                if let Some(fwd) = fp.as_ref().as_any().downcast_ref::<ForwardPlugin>() {
                     debug!(upstreams = ?fwd.upstream_addrs(), "Built forward plugin with upstreams");
                 }
                 fp
@@ -643,11 +639,7 @@ mod tests {
         assert_eq!(plugin.name(), "forward");
 
         // Downcast to ForwardPlugin to inspect upstreams
-        if let Some(fp) = plugin
-            .as_ref()
-            .as_any()
-            .downcast_ref::<ForwardPlugin>()
-        {
+        if let Some(fp) = plugin.as_ref().as_any().downcast_ref::<ForwardPlugin>() {
             let addrs = fp.upstream_addrs();
             assert_eq!(addrs.len(), 1);
             assert_eq!(addrs[0], "119.29.29.29:53");
