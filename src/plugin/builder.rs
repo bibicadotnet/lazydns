@@ -237,7 +237,7 @@ impl PluginBuilder {
                 Arc::new(TtlPlugin::new(ttl, 0, 0))
             }
 
-            "drop_resp" => Arc::new(DropResponsePlugin::new()),
+            "drop_resp" => Arc::new(DropRespPlugin::new()),
             "accept" => Arc::new(AcceptPlugin::new()),
 
             "reject" => {
@@ -961,7 +961,7 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
             } else if exec_str == "accept" {
                 Ok(Arc::new(crate::plugins::AcceptPlugin::new()))
             } else if exec_str == "drop_resp" {
-                Ok(Arc::new(crate::plugins::DropResponsePlugin::new()))
+                Ok(Arc::new(crate::plugins::DropRespPlugin::new()))
             } else if exec_str.starts_with("reject") {
                 // reject [rcode] - default to 3 (NXDOMAIN)
                 let rcode = if let Some(rest) = exec_str.strip_prefix("reject") {

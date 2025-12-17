@@ -50,8 +50,8 @@ pub mod server;
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
 pub use advanced::{
-    ArbitraryRecordBuilder, DropResponsePlugin, EcsPlugin, GotoPlugin, IfPlugin, IpsetPlugin,
-    MetricsCollectorPlugin, NftsetPlugin, ParallelPlugin, ReturnPlugin, ReverseLookupPlugin,
+    ArbitraryRecordBuilder, EcsPlugin, GotoPlugin, IfPlugin, IpsetPlugin, MetricsCollectorPlugin,
+    NftsetPlugin, ParallelPlugin, ReturnPlugin, ReverseLookupPlugin,
 };
 pub use cache::{CachePlugin, CacheStorePlugin};
 pub use control_flow::{
@@ -76,10 +76,10 @@ pub use matcher::{
 
 // Re-export executable plugins
 pub use executable::{
-    ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DualSelectorPlugin, Edns0Option,
-    FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, ForwardPluginBuilder, HostsPlugin,
-    IpPreference, QuerySummaryPlugin, RedirectPlugin, RosAddrListPlugin, SequencePlugin,
-    SequenceStep, SleepPlugin, TtlPlugin,
+    ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin,
+    Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, ForwardPluginBuilder,
+    HostsPlugin, IpPreference, QuerySummaryPlugin, RedirectPlugin, RosAddrListPlugin,
+    SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 // Re-export server plugins

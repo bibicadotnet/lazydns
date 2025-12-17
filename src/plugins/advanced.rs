@@ -15,29 +15,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tracing::debug;
 
-/// Drops any existing response from the context.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct DropResponsePlugin;
-
-impl DropResponsePlugin {
-    /// Create a new drop-response plugin.
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[async_trait]
-impl Plugin for DropResponsePlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        ctx.set_response(None);
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "drop_resp"
-    }
-}
-
 /// Signals the executor to stop executing subsequent plugins.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ReturnPlugin;
@@ -709,17 +686,6 @@ mod tests {
         } else {
             panic!("expected A");
         }
-    }
-
-    #[tokio::test]
-    async fn test_drop_response_plugin_clears_response() {
-        let mut ctx = Context::new(Message::new());
-        ctx.set_response(Some(Message::new()));
-
-        let plugin = DropResponsePlugin::new();
-        plugin.execute(&mut ctx).await.unwrap();
-
-        assert!(!ctx.has_response());
     }
 
     #[tokio::test]
