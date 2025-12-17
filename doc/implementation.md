@@ -3,6 +3,7 @@
 This document summarizes the current implementation status of the Rust `lazydns` project against the upstream `mosdns` feature list (see `upstream-features.md`). It lists implemented features, partial implementations, and known gaps. Paths reference current source files where applicable.
 
 ## Summary
+
 - Overall status: large portion of core features and many plugins implemented in Rust with the goal of parity.
 - Focus so far: plugin architecture, forward/cache/hosts, control-flow plugins, and executable plugins including `reverse_lookup`, `ipset`, and `nftset`.
 
@@ -32,7 +33,7 @@ Status: PARTIAL — UDP/TCP/DoH/DoT/DoQ present, not all features.
 
 - `forward`: Implemented (`src/plugins/forward.rs`) — supports multiple upstreams and concurrent queries. Transport feature parity (DoH/DoT/DoQ upstream) is partial on transport side.
 - `cache`: Implemented (`src/plugins/cache.rs`).
-- `hosts`: Implemented (`src/plugins/hosts.rs`).
+- `hosts`: Implemented (`src/plugins/hosts.rs`). Parser supports both ip-first and hostname-first lines, multiple IPs per line, and mixed ordering across files; unit tests verify A/AAAA behavior and hostname-first parsing.
 - `domain_set` / `geosite`: Implemented (`src/plugins/domain_matcher.rs`, `src/plugins/geosite.rs`).
 - `ip_set` / IP matching: Implemented (`src/plugins/ip_matcher.rs`, `src/plugins/data_provider.rs`).
 - `geoip`: Implemented (`src/plugins/geoip.rs`) — GeoIP integration present; check for data loader details.
@@ -48,6 +49,7 @@ Status: PARTIAL — UDP/TCP/DoH/DoT/DoQ present, not all features.
 ### ipset / nftset integration
 
 - `ipset`: Implemented (`src/plugins/executable/ipset.rs`). Behavior:
+
   - Computes CIDR prefixes from A/AAAA answers.
   - QuickSetup parser present.
   - On Linux, invokes system `ipset` binary via `std::process::Command` (guarded with `cfg(target_os = "linux")`).
@@ -103,4 +105,3 @@ Status: IMPLEMENTED — good test coverage; integration tests added for key beha
 - Plugin system: `src/plugin/*`, `src/plugins/*`
 - Executable plugins: `src/plugins/executable/*` (includes `ipset.rs`, `nftset.rs`, `reverse_lookup.rs`, `ttl.rs`, `query_summary.rs`)
 - Config and examples: `src/config/*`, `examples/etc/config.yaml`
-
