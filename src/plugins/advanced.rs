@@ -9,7 +9,6 @@ use crate::dns::{Message, RData, RecordClass, RecordType, ResourceRecord};
 use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use crate::Result;
 use async_trait::async_trait;
-use std::collections::HashSet;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -243,218 +242,6 @@ impl Plugin for EcsPlugin {
     }
 }
 
-/// ipset plugin: integrates with Linux ipset for IP address tracking.
-///
-/// This plugin extracts IP addresses from DNS responses and can add them
-/// to system ipset sets for use with iptables/netfilter. This is useful
-/// for dynamic firewall rules based on DNS responses.
-#[derive(Debug, Clone)]
-pub struct IpsetPlugin {
-    name: String,
-    addrs: HashSet<IpAddr>,
-    track_responses: bool,
-}
-
-impl IpsetPlugin {
-    /// Create a new ipset plugin with the set name and addresses.
-    pub fn new(name: impl Into<String>, addrs: HashSet<IpAddr>) -> Self {
-        Self {
-            name: name.into(),
-            addrs,
-            track_responses: true,
-        }
-    }
-
-    /// Enable or disable response IP tracking.
-    pub fn track_responses(mut self, enabled: bool) -> Self {
-        self.track_responses = enabled;
-        self
-    }
-
-    /// Extract all IP addresses from a DNS response.
-    fn extract_response_ips(ctx: &Context) -> Vec<IpAddr> {
-        let mut ips = Vec::new();
-
-        if let Some(resp) = ctx.response() {
-            for rr in resp.answers() {
-                match rr.rdata() {
-                    RData::A(ipv4) => ips.push(IpAddr::V4(*ipv4)),
-                    RData::AAAA(ipv6) => ips.push(IpAddr::V6(*ipv6)),
-                    _ => {}
-                }
-            }
-        }
-
-        ips
-    }
-}
-
-#[async_trait]
-impl Plugin for IpsetPlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        // Mark if response IPs match configured set
-        mark_set(ctx, "ipset", &self.name, &self.addrs);
-
-        // Track response IPs for potential ipset integration
-        if self.track_responses {
-            let response_ips = Self::extract_response_ips(ctx);
-
-            if !response_ips.is_empty() {
-                // Store in metadata for potential system integration
-                ctx.set_metadata(format!("ipset:{}:ips", self.name), response_ips.clone());
-
-                // Log for audit trail
-                debug!(
-                    "ipset plugin '{}': tracked {} IP(s) from response",
-                    self.name,
-                    response_ips.len()
-                );
-
-                // TODO: Integration point for actual ipset system calls
-                // Example: ipset add <name> <ip> timeout <ttl>
-                // This would require elevated privileges and is left as a
-                // platform-specific integration point.
-            }
-        }
-
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "ipset"
-    }
-}
-
-/// nftset plugin: integrates with nftables sets for IP address tracking.
-///
-/// This plugin extracts IP addresses from DNS responses and can add them
-/// to nftables sets for use with modern Linux firewalls. This provides
-/// similar functionality to ipset but for the newer nftables framework.
-#[derive(Debug, Clone)]
-pub struct NftsetPlugin {
-    name: String,
-    addrs: HashSet<IpAddr>,
-    table_family: String,
-    table_name: String,
-    track_responses: bool,
-}
-
-impl NftsetPlugin {
-    /// Create a new nftset plugin with the set name and addresses.
-    ///
-    /// Uses default table family "inet" and table name "filter".
-    pub fn new(name: impl Into<String>, addrs: HashSet<IpAddr>) -> Self {
-        Self {
-            name: name.into(),
-            addrs,
-            table_family: "inet".to_string(),
-            table_name: "filter".to_string(),
-            track_responses: true,
-        }
-    }
-
-    /// Set the nftables table family (inet, ip, ip6, etc.).
-    pub fn with_table_family(mut self, family: impl Into<String>) -> Self {
-        self.table_family = family.into();
-        self
-    }
-
-    /// Set the nftables table name.
-    pub fn with_table_name(mut self, table: impl Into<String>) -> Self {
-        self.table_name = table.into();
-        self
-    }
-
-    /// Enable or disable response IP tracking.
-    pub fn track_responses(mut self, enabled: bool) -> Self {
-        self.track_responses = enabled;
-        self
-    }
-
-    /// Extract all IP addresses from a DNS response.
-    fn extract_response_ips(ctx: &Context) -> Vec<IpAddr> {
-        let mut ips = Vec::new();
-
-        if let Some(resp) = ctx.response() {
-            for rr in resp.answers() {
-                match rr.rdata() {
-                    RData::A(ipv4) => ips.push(IpAddr::V4(*ipv4)),
-                    RData::AAAA(ipv6) => ips.push(IpAddr::V6(*ipv6)),
-                    _ => {}
-                }
-            }
-        }
-
-        ips
-    }
-}
-
-#[async_trait]
-impl Plugin for NftsetPlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        // Mark if response IPs match configured set
-        mark_set(ctx, "nftset", &self.name, &self.addrs);
-
-        // Track response IPs for potential nftables integration
-        if self.track_responses {
-            let response_ips = Self::extract_response_ips(ctx);
-
-            if !response_ips.is_empty() {
-                // Store in metadata for potential system integration
-                ctx.set_metadata(format!("nftset:{}:ips", self.name), response_ips.clone());
-                ctx.set_metadata(
-                    format!("nftset:{}:table", self.name),
-                    format!("{} {}", self.table_family, self.table_name),
-                );
-
-                // Log for audit trail
-                debug!(
-                    "nftset plugin '{}': tracked {} IP(s) from response (table: {} {})",
-                    self.name,
-                    response_ips.len(),
-                    self.table_family,
-                    self.table_name
-                );
-
-                // TODO: Integration point for actual nftables system calls
-                // Example: nft add element <family> <table> <set> { <ip> }
-                // This would require elevated privileges and is left as a
-                // platform-specific integration point.
-            }
-        }
-
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "nftset"
-    }
-}
-
-fn mark_set(ctx: &mut Context, prefix: &str, name: &str, addrs: &HashSet<IpAddr>) {
-    if let Some(resp) = ctx.response() {
-        let mut matched = false;
-        for rr in resp.answers() {
-            match rr.rdata() {
-                RData::A(ip) => {
-                    if addrs.contains(&IpAddr::V4(*ip)) {
-                        matched = true;
-                    }
-                }
-                RData::AAAA(ip) => {
-                    if addrs.contains(&IpAddr::V6(*ip)) {
-                        matched = true;
-                    }
-                }
-                _ => {}
-            }
-        }
-        if matched {
-            ctx.set_metadata(format!("{prefix}:{name}"), true);
-        }
-    }
-}
-
 /// Metrics collector plugin: comprehensive DNS query and response metrics.
 ///
 /// Tracks detailed statistics about DNS operations including query counts,
@@ -599,39 +386,10 @@ impl ArbitraryRecordBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dns::{Question, RecordClass, RecordType};
     use crate::plugin::Executor;
-    use crate::plugins::executable::arbitrary::{ArbitraryArgs, ArbitraryPlugin};
     use std::net::Ipv4Addr;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-
-    #[tokio::test]
-    async fn test_arbitrary_plugin_sets_response() {
-        // Use the rule-based `Arbitrary` plugin from `plugins::executable::arbitrary`.
-        let args = ArbitraryArgs {
-            rules: Some(vec!["example.com A 10.0.0.1".to_string()]),
-            files: None,
-        };
-        let plugin = ArbitraryPlugin::new(args).unwrap();
-
-        let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
-        let mut ctx = Context::new(req);
-        plugin.execute(&mut ctx).await.unwrap();
-
-        let resp = ctx.response().unwrap();
-        assert_eq!(resp.answer_count(), 1);
-        if let RData::A(ip) = resp.answers()[0].rdata() {
-            assert_eq!(*ip, Ipv4Addr::new(10, 0, 0, 1));
-        } else {
-            panic!("expected A");
-        }
-    }
 
     #[tokio::test]
     async fn test_return_plugin_stops_execution() {
@@ -770,34 +528,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ipset_and_nftset_match() {
-        let addr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
-        let mut resp = Message::new();
-        resp.set_response(true);
-        resp.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-            60,
-            RData::A(Ipv4Addr::new(10, 0, 0, 1)),
-        ));
-
-        let mut ctx = Context::new(Message::new());
-        ctx.set_response(Some(resp));
-
-        let mut set = HashSet::new();
-        set.insert(addr);
-        let ipset = IpsetPlugin::new("testset", set.clone());
-        let nftset = NftsetPlugin::new("testnft", set);
-
-        ipset.execute(&mut ctx).await.unwrap();
-        nftset.execute(&mut ctx).await.unwrap();
-
-        assert_eq!(ctx.get_metadata::<bool>("ipset:testset"), Some(&true));
-        assert_eq!(ctx.get_metadata::<bool>("nftset:testnft"), Some(&true));
-    }
-
-    #[tokio::test]
     async fn test_metrics_collector_increments() {
         let counter = Arc::new(AtomicUsize::new(0));
         let plugin = MetricsCollectorPlugin::new(counter.clone());
@@ -806,5 +536,4 @@ mod tests {
         plugin.execute(&mut ctx).await.unwrap();
         assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
-
 }

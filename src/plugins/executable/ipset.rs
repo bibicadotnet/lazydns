@@ -1,3 +1,19 @@
+//! IpSet executable plugin.
+//!
+//! This plugin inspects DNS response answers and emits ipset entries
+//! (CIDR prefixes) for A/AAAA records. On Linux it will attempt to run
+//! the `ipset` command to add the computed prefixes; on other platforms
+//! it simply records the additions in the request `Context` metadata
+//! under the key `"ipset_added"` as a `Vec<(String, String)>` with
+//! (set_name, cidr).
+//!
+//! Quick-setup accepts a compact shorthand used by some configurations:
+//! `"<set_name>,inet,<mask> <set_name6>,inet6,<mask>"` (max two fields).
+//!
+//! Example metadata after execution: `ipset_added = vec![("myset".into(), "192.0.2.0/24".into())]`.
+//!
+//! Note: this file contains only the executable wrapper; logic is small
+//! and intended to be fast and dependency-free.
 use crate::dns::RData;
 use crate::plugin::{Context, Plugin};
 use crate::Result;
@@ -9,9 +25,15 @@ use tracing::info;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct IpSetArgs {
+    /// Optional ipset name for IPv4 entries (e.g. "my_ipset_v4").
     pub set_name4: Option<String>,
+    /// Optional ipset name for IPv6 entries (e.g. "my_ipset_v6").
     pub set_name6: Option<String>,
+    /// IPv4 prefix length to use when converting A records to CIDR.
+    /// Defaults to `Some(24)` in `Default` if not specified.
     pub mask4: Option<u8>,
+    /// IPv6 prefix length to use when converting AAAA records to CIDR.
+    /// Defaults to `Some(32)` in `Default` if not specified.
     pub mask6: Option<u8>,
 }
 
@@ -82,11 +104,12 @@ impl IpSetPlugin {
         let ip_u32 = u32::from_be_bytes(ip.octets());
         let net = ip_u32 & (!0u32 << (32 - mask as u32));
         let bytes = net.to_be_bytes();
+        // Return canonical CIDR like "192.0.2.0/24" (no spaces).
         format!(
             "{}.{}.{}.{} /{}",
             bytes[0], bytes[1], bytes[2], bytes[3], mask
         )
-        .replace(" ", "")
+        .replace(' ', "")
     }
 
     fn make_v6_prefix(ip: &Ipv6Addr, mask: u8) -> String {
@@ -109,6 +132,7 @@ impl IpSetPlugin {
         }
         use std::net::Ipv6Addr;
         let addr = Ipv6Addr::from(bytes);
+        // Return canonical IPv6 CIDR like "2001:db8::/48".
         format!("{}/{}", addr, mask)
     }
 }
