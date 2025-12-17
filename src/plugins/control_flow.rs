@@ -47,6 +47,11 @@ impl Plugin for AcceptPlugin {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ReturnPlugin;
 
+/// Stop execution helper.
+///
+/// `ReturnPlugin` is a tiny utility plugin that simply sets the executor
+/// return flag. It is useful when a configuration wants to stop further
+/// plugin processing in a sequence without constructing a full response.
 impl ReturnPlugin {
     /// Create a new return plugin.
     pub fn new() -> Self {
@@ -90,6 +95,13 @@ impl Plugin for ParallelPlugin {
     }
 }
 
+/// Parallel/sequential executor helper.
+///
+/// `ParallelPlugin` runs a list of plugins in order but with the semantics of
+/// "parallel" from a configuration perspective: the first plugin to set a
+/// response or the return flag short-circuits the remaining plugins.
+/// This helper is implemented as a small wrapper around the `run_plugins`
+/// helper to keep behaviour consistent across call sites.
 async fn run_plugins(
     plugins: &[Arc<dyn Plugin>],
     ctx: &mut Context,
@@ -107,7 +119,6 @@ async fn run_plugins(
     }
     Ok(())
 }
-
 /// Reject plugin - rejects the query with a specific response code
 ///
 /// This plugin generates a DNS response with the specified response code
@@ -221,6 +232,11 @@ pub struct IfPlugin {
     inner: Arc<dyn Plugin>,
 }
 
+/// Conditional plugin that executes `inner` only when `condition` is true.
+///
+/// Use `IfPlugin::new(condition, inner)` to create a plugin which evaluates
+/// the runtime `condition` against the current `Context` and executes the
+/// provided `inner` plugin when the condition returns true.
 impl std::fmt::Debug for IfPlugin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IfPlugin").finish()
@@ -257,6 +273,12 @@ pub struct GotoPlugin {
     label: String,
 }
 
+/// Goto plugin for executor control flow.
+///
+/// `GotoPlugin` records a `goto_label` in the `Context` metadata and sets
+/// the return flag so that higher-level executors (or sequence handlers)
+/// can perform a jump/transfer to the named label. This is an internal
+/// control-flow primitive used by sequence implementations.
 impl GotoPlugin {
     /// Create a new goto plugin with target label.
     pub fn new(label: impl Into<String>) -> Self {
