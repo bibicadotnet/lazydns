@@ -52,7 +52,7 @@ pub use acl::{AclAction, QueryAclPlugin};
 pub use advanced::{
     ArbitraryPlugin, ArbitraryRecordBuilder, BlackholePlugin, DropResponsePlugin, EcsPlugin,
     GotoPlugin, IfPlugin, IpsetPlugin, MetricsCollectorPlugin, NftsetPlugin, ParallelPlugin,
-    ReturnPlugin, ReverseLookupPlugin, TtlPlugin,
+    ReturnPlugin, ReverseLookupPlugin,
 };
 pub use cache::{CachePlugin, CacheStorePlugin};
 pub use control_flow::{
@@ -79,7 +79,7 @@ pub use matcher::{
 pub use executable::{
     DebugPrintPlugin, DualSelectorPlugin, Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin,
     ForwardPlugin, ForwardPluginBuilder, HostsPlugin, IpPreference, QuerySummaryPlugin,
-    RedirectPlugin, RosAddrListPlugin, SequencePlugin, SleepPlugin,
+    RedirectPlugin, RosAddrListPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 // Re-export server plugins
@@ -137,7 +137,7 @@ mod tests {
     fn test_advanced_plugins_accessible() {
         // Verify advanced plugin types are accessible
         let _blackhole = BlackholePlugin;
-        let _ttl = TtlPlugin::new(300);
+        let _ttl = TtlPlugin::new(300, 0, 0);
         let _return = ReturnPlugin;
     }
 

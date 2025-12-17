@@ -6,8 +6,8 @@ async fn integration_ipset_sequence() {
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
     use lazydns::plugin::Context;
     use lazydns::plugin::Plugin;
-    use lazydns::plugins::advanced::{ArbitraryPlugin, SequencePlugin, SequenceStep};
     use lazydns::plugins::executable::ipset::{IpSetArgs, IpSetPlugin};
+    use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
     // no cwd changes required — tests use constructed messages
 
@@ -62,8 +62,8 @@ async fn integration_nftset_sequence() {
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
     use lazydns::plugin::Context;
     use lazydns::plugin::Plugin;
-    use lazydns::plugins::advanced::{ArbitraryPlugin, SequencePlugin, SequenceStep};
     use lazydns::plugins::executable::nftset::{NftSetArgs, NftSetPlugin, SetArgs};
+    use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
     // no cwd changes required — tests use constructed messages
 

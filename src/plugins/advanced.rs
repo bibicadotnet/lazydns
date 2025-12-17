@@ -15,44 +15,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tracing::debug;
 
-// Re-export sequence types from the executable module for backwards compatibility
-pub use crate::plugins::executable::{SequencePlugin, SequenceStep};
-
-/// Forces all TTL values in an existing response to a fixed value.
-#[derive(Debug, Clone, Copy)]
-pub struct TtlPlugin {
-    ttl: u32,
-}
-
-impl TtlPlugin {
-    /// Create a new TTL plugin with the target TTL value.
-    pub fn new(ttl: u32) -> Self {
-        Self { ttl }
-    }
-
-    fn rewrite_records(records: &mut [ResourceRecord], ttl: u32) {
-        for record in records {
-            record.set_ttl(ttl);
-        }
-    }
-}
-
-#[async_trait]
-impl Plugin for TtlPlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        if let Some(response) = ctx.response_mut() {
-            Self::rewrite_records(response.answers_mut(), self.ttl);
-            Self::rewrite_records(response.authority_mut(), self.ttl);
-            Self::rewrite_records(response.additional_mut(), self.ttl);
-        }
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "ttl"
-    }
-}
-
 /// Generates a static, arbitrary DNS response.
 #[derive(Debug, Clone)]
 pub struct ArbitraryPlugin {
@@ -779,36 +741,6 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
-
-    #[tokio::test]
-    async fn test_ttl_plugin_rewrites_records() {
-        let mut response = Message::new();
-        response.set_response(true);
-        response.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-            300,
-            RData::A(Ipv4Addr::new(192, 0, 2, 1)),
-        ));
-        response.add_additional(ResourceRecord::new(
-            "example.com".to_string(),
-            RecordType::AAAA,
-            RecordClass::IN,
-            450,
-            RData::AAAA(Ipv6Addr::LOCALHOST),
-        ));
-
-        let mut ctx = Context::new(Message::new());
-        ctx.set_response(Some(response));
-
-        let plugin = TtlPlugin::new(60);
-        plugin.execute(&mut ctx).await.unwrap();
-
-        let resp = ctx.response().unwrap();
-        assert!(resp.answers().iter().all(|r| r.ttl() == 60));
-        assert!(resp.additional().iter().all(|r| r.ttl() == 60));
-    }
 
     #[tokio::test]
     async fn test_arbitrary_plugin_sets_response() {

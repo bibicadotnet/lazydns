@@ -234,7 +234,7 @@ impl PluginBuilder {
             "ttl" => {
                 let args = &config.effective_args();
                 let ttl = get_int_arg(args, "ttl", 300)? as u32;
-                Arc::new(TtlPlugin::new(ttl))
+                Arc::new(TtlPlugin::new(ttl, 0, 0))
             }
 
             "drop_resp" => Arc::new(DropResponsePlugin::new()),
@@ -972,7 +972,7 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
                 // ttl 300-3600 format - take the first number
                 if let Some(first_num) = ttl_part.split('-').next() {
                     if let Ok(ttl) = first_num.parse::<u32>() {
-                        Ok(Arc::new(crate::plugins::TtlPlugin::new(ttl)))
+                        Ok(Arc::new(crate::plugins::TtlPlugin::new(ttl, 0, 0)))
                     } else {
                         Err(Error::Config(format!("Invalid TTL value: {}", ttl_part)))
                     }

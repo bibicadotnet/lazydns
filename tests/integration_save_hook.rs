@@ -7,8 +7,8 @@ async fn integration_sequence_save_hook() {
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
     use lazydns::plugin::Context;
     use lazydns::plugin::PluginBuilder;
-    use lazydns::plugins::advanced::{ArbitraryPlugin, SequencePlugin, SequenceStep};
     use lazydns::plugins::executable::ReverseLookup;
+    use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
     // Use examples/etc as working directory and load its config
     std::env::set_current_dir("examples/etc").expect("chdir examples/etc");
