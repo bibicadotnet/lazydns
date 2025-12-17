@@ -21,8 +21,8 @@ pub mod sequence;
 pub mod sleep;
 pub mod ttl;
 
-pub use arbitrary::Arbitrary;
-pub use black_hole::BlackHolePlugin;
+pub use arbitrary::ArbitraryPlugin;
+pub use black_hole::BlackholePlugin;
 pub use cache::{ExecCache, ExecCacheStore};
 pub use debug_print::DebugPrintPlugin;
 pub use drop_resp::DropRespPlugin;

@@ -5,7 +5,7 @@
 //! They are lightweight, dependency-free Rust ports designed to be
 //! configuration-compatible with their mosdns counterparts.
 
-use crate::dns::{Message, RData, RecordClass, RecordType, ResourceRecord, ResponseCode};
+use crate::dns::{Message, RData, RecordClass, RecordType, ResourceRecord};
 use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use crate::Result;
 use async_trait::async_trait;
@@ -14,62 +14,6 @@ use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tracing::debug;
-
-/// Generates a static, arbitrary DNS response.
-#[derive(Debug, Clone)]
-pub struct ArbitraryPlugin {
-    response: Message,
-}
-
-impl ArbitraryPlugin {
-    /// Create a new arbitrary response plugin with the provided message.
-    pub fn new(response: Message) -> Self {
-        Self { response }
-    }
-}
-
-#[async_trait]
-impl Plugin for ArbitraryPlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        ctx.set_response(Some(self.response.clone()));
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "arbitrary"
-    }
-}
-
-/// Returns an empty response for every query (blackhole behavior).
-#[derive(Debug, Default, Clone, Copy)]
-pub struct BlackholePlugin;
-
-impl BlackholePlugin {
-    /// Create a new blackhole plugin.
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[async_trait]
-impl Plugin for BlackholePlugin {
-    async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        let mut response = Message::new();
-        response.set_id(ctx.request().id());
-        response.set_response(true);
-        response.set_response_code(ResponseCode::NoError);
-        response
-            .questions_mut()
-            .extend(ctx.request().questions().iter().cloned());
-
-        ctx.set_response(Some(response));
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "blackhole"
-    }
-}
 
 /// Drops any existing response from the context.
 #[derive(Debug, Default, Clone, Copy)]
@@ -116,9 +60,6 @@ impl Plugin for ReturnPlugin {
         "return"
     }
 }
-
-// Sequence execution is implemented in `plugins::executable::sequence`.
-// Re-exported there as `SequencePlugin`.
 
 /// Executes plugins in "parallel" (sequential fallback) until a response or return flag is set.
 #[derive(Debug, Default)]
@@ -738,47 +679,36 @@ mod tests {
     use super::*;
     use crate::dns::{Question, RecordClass, RecordType};
     use crate::plugin::Executor;
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use crate::plugins::executable::arbitrary::{ArbitraryArgs, ArbitraryPlugin};
+    use std::net::Ipv4Addr;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
     #[tokio::test]
     async fn test_arbitrary_plugin_sets_response() {
-        let builder = ArbitraryRecordBuilder::new("example.com", 120)
-            .with_a(Ipv4Addr::new(10, 0, 0, 1))
-            .with_aaaa(Ipv6Addr::LOCALHOST);
-        let response = builder.build(42);
+        // Use the rule-based `Arbitrary` plugin from `plugins::executable::arbitrary`.
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com A 10.0.0.1".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
 
-        let mut ctx = Context::new(Message::new());
-        let plugin = ArbitraryPlugin::new(response.clone());
-        plugin.execute(&mut ctx).await.unwrap();
-
-        let resp = ctx.response().unwrap();
-        assert_eq!(resp.id(), 42);
-        assert_eq!(resp.answers().len(), 2);
-        assert_eq!(resp.answers()[0].name(), "example.com");
-    }
-
-    #[tokio::test]
-    async fn test_blackhole_plugin_creates_empty_response() {
-        let mut request = Message::new();
-        request.set_id(99);
-        request.add_question(Question::new(
-            "blackhole.test".to_string(),
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
             RecordType::A,
             RecordClass::IN,
         ));
-
-        let mut ctx = Context::new(request);
-        let plugin = BlackholePlugin::new();
-
+        let mut ctx = Context::new(req);
         plugin.execute(&mut ctx).await.unwrap();
 
         let resp = ctx.response().unwrap();
-        assert!(resp.is_response());
-        assert_eq!(resp.id(), 99);
-        assert_eq!(resp.answer_count(), 0);
-        assert_eq!(resp.question_count(), 1);
+        assert_eq!(resp.answer_count(), 1);
+        if let RData::A(ip) = resp.answers()[0].rdata() {
+            assert_eq!(*ip, Ipv4Addr::new(10, 0, 0, 1));
+        } else {
+            panic!("expected A");
+        }
     }
 
     #[tokio::test]

@@ -50,9 +50,8 @@ pub mod server;
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
 pub use advanced::{
-    ArbitraryPlugin, ArbitraryRecordBuilder, BlackholePlugin, DropResponsePlugin, EcsPlugin,
-    GotoPlugin, IfPlugin, IpsetPlugin, MetricsCollectorPlugin, NftsetPlugin, ParallelPlugin,
-    ReturnPlugin, ReverseLookupPlugin,
+    ArbitraryRecordBuilder, DropResponsePlugin, EcsPlugin, GotoPlugin, IfPlugin, IpsetPlugin,
+    MetricsCollectorPlugin, NftsetPlugin, ParallelPlugin, ReturnPlugin, ReverseLookupPlugin,
 };
 pub use cache::{CachePlugin, CacheStorePlugin};
 pub use control_flow::{
@@ -77,9 +76,10 @@ pub use matcher::{
 
 // Re-export executable plugins
 pub use executable::{
-    DebugPrintPlugin, DualSelectorPlugin, Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin,
-    ForwardPlugin, ForwardPluginBuilder, HostsPlugin, IpPreference, QuerySummaryPlugin,
-    RedirectPlugin, RosAddrListPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
+    ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DualSelectorPlugin, Edns0Option,
+    FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, ForwardPluginBuilder, HostsPlugin,
+    IpPreference, QuerySummaryPlugin, RedirectPlugin, RosAddrListPlugin, SequencePlugin,
+    SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 // Re-export server plugins
@@ -136,9 +136,11 @@ mod tests {
     #[test]
     fn test_advanced_plugins_accessible() {
         // Verify advanced plugin types are accessible
-        let _blackhole = BlackholePlugin;
+        // BlackholePlugin is implemented in `plugins::executable::black_hole` and
+        // provides `new_from_strs` constructor.
+        let _blackhole = BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap();
         let _ttl = TtlPlugin::new(300, 0, 0);
-        let _return = ReturnPlugin;
+        let _return = ReturnPlugin::new();
     }
 
     #[test]

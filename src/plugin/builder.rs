@@ -246,7 +246,9 @@ impl PluginBuilder {
                 Arc::new(RejectPlugin::new(rcode))
             }
 
-            "black_hole" | "blackhole" => Arc::new(BlackholePlugin),
+            "black_hole" | "blackhole" => {
+                Arc::new(BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap())
+            }
 
             "redirect" => {
                 let args = &config.effective_args();
@@ -980,7 +982,9 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
                     Err(Error::Config(format!("Invalid TTL format: {}", exec_str)))
                 }
             } else if exec_str.starts_with("black_hole") {
-                Ok(Arc::new(crate::plugins::BlackholePlugin::new()))
+                Ok(Arc::new(
+                    crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
+                ))
             } else if let Some(target) = exec_str.strip_prefix("jump ") {
                 // jump target_name
                 let target = target.trim();

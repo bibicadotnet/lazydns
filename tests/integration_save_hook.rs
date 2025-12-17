@@ -44,7 +44,20 @@ async fn integration_sequence_save_hook() {
     ));
 
     // Build an ArbitraryPlugin that will set the response when executed
-    let arb = Arc::new(ArbitraryPlugin::new(resp.clone()));
+    use lazydns::plugins::executable::arbitrary::ArbitraryArgs;
+    let mut rules = Vec::new();
+    for rr in resp.answers() {
+        match rr.rdata() {
+            RData::A(ip) => rules.push(format!("{} A {}", rr.name(), ip)),
+            RData::AAAA(ip) => rules.push(format!("{} AAAA {}", rr.name(), ip)),
+            _ => {}
+        }
+    }
+    let args = ArbitraryArgs {
+        rules: Some(rules),
+        files: None,
+    };
+    let arb = Arc::new(ArbitraryPlugin::new(args).unwrap());
 
     // Sequence with single exec of arbitrary plugin
     let seq = Arc::new(SequencePlugin::with_steps(vec![SequenceStep::Exec(arb)]));

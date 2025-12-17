@@ -15,12 +15,12 @@ pub struct ArbitraryArgs {
     pub files: Option<Vec<String>>,
 }
 
-pub struct Arbitrary {
+pub struct ArbitraryPlugin {
     // map qname -> vector of resource records to reply
     map: HashMap<String, Vec<ResourceRecord>>,
 }
 
-impl Arbitrary {
+impl ArbitraryPlugin {
     pub fn new(args: ArbitraryArgs) -> Result<Self> {
         let mut m: HashMap<String, Vec<ResourceRecord>> = HashMap::new();
         if let Some(rules) = args.rules {
@@ -113,7 +113,7 @@ impl Arbitrary {
     }
 }
 
-impl fmt::Debug for Arbitrary {
+impl fmt::Debug for ArbitraryPlugin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Arbitrary")
             .field("rules_count", &self.map.len())
@@ -122,7 +122,7 @@ impl fmt::Debug for Arbitrary {
 }
 
 #[async_trait]
-impl Plugin for Arbitrary {
+impl Plugin for ArbitraryPlugin {
     fn name(&self) -> &str {
         "arbitrary"
     }
@@ -158,7 +158,7 @@ mod tests {
             rules: Some(vec!["example.com A 192.0.2.1".to_string()]),
             files: None,
         };
-        let plugin = Arbitrary::new(args).unwrap();
+        let plugin = ArbitraryPlugin::new(args).unwrap();
         let mut req = Message::new();
         req.add_question(Question::new(
             "example.com".to_string(),
