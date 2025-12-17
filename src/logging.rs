@@ -1,3 +1,10 @@
+//! Logging utilities and initialization helpers.
+//!
+//! This module provides helpers to initialize the global `tracing` subscriber
+//! according to the application's `LogConfig`. It supports JSON and plain
+//! text output, optional file output with rotation, and configurable
+//! timestamp formats (including custom `time` crate format descriptions).
+
 use crate::config::LogConfig;
 use anyhow::Result;
 use once_cell::sync::OnceCell;
@@ -8,19 +15,38 @@ use time::{
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+/// Guard to hold the background log file worker alive for the lifetime of the
+/// process. The worker guard is stored in a `OnceCell` so it can be initialized
+/// once during `init_logging` and retained to prevent log loss on shutdown.
 static FILE_GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
 
-/// Custom formatter for time using `time_format` from config.
+/// Formatter used to render timestamps according to the configured
+/// `time_format` value in `LogConfig`.
+///
+/// Supported formats:
+/// - `iso8601`: UTC RFC3339 timestamps
+/// - `timestamp`: unix seconds (UTC)
+/// - `local`: local time in RFC3339
+/// - `custom:<fmt>`: custom UTC format using `time` crate's format descriptions
+/// - `custom_local:<fmt>`: custom local time format
 struct TimeFormatter {
     fmt: String,
 }
 
 impl TimeFormatter {
+    /// Create a new `TimeFormatter` with the given format string.
+    ///
+    /// The format value is interpreted as described on [`TimeFormatter`]:
+    /// see module-level documentation for supported values.
     fn new(fmt: impl Into<String>) -> Self {
         Self { fmt: fmt.into() }
     }
 }
 
+/// Implementation of `tracing_subscriber`'s `FormatTime` trait.
+///
+/// Chooses the correct timestamp representation based on the configured
+/// format string and emits a normalized timestamp to the provided writer.
 impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> fmt::Result {
         let now_utc = OffsetDateTime::now_utc();
@@ -80,6 +106,13 @@ impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
 /// precision (truncating or padding as necessary). If no fractional part is
 /// present it will insert `.000...` with `digits` zeros. This helper is
 /// extracted to make the behavior testable.
+///
+/// # Examples
+/// ```rust,no_run
+/// // Truncate to 3 digits
+/// assert_eq!(lazydns::logging::normalize_subsec("2025-12-16T22:39:35.926487+08:00", 3),
+///            "2025-12-16T22:39:35.926+08:00");
+/// ```
 fn normalize_subsec(s: &str, digits: usize) -> String {
     let mut s = s.to_string();
 
@@ -116,11 +149,11 @@ fn normalize_subsec(s: &str, digits: usize) -> String {
     s
 }
 
-/// Initialize tracing/logging according to `LogConfig`.
-/// Determine the effective log spec string used to build an `EnvFilter`.
+/// Determine the effective log specification string used to build an `EnvFilter`.
 ///
-/// Precedence: `RUST_LOG` env var (when set and non-empty) overrides the
-/// provided `cfg.level` (which may already reflect a CLI `--log-level`).
+/// The environment variable `RUST_LOG`, when set and non-empty, takes
+/// precedence over the configured `cfg.level`. This allows runtime
+/// overrides without changing configuration files.
 pub(crate) fn effective_log_spec(cfg: &LogConfig) -> String {
     match std::env::var("RUST_LOG") {
         Ok(v) if !v.is_empty() => v,
@@ -128,6 +161,17 @@ pub(crate) fn effective_log_spec(cfg: &LogConfig) -> String {
     }
 }
 
+/// Initialize global logging according to the provided `LogConfig`.
+///
+/// This configures `tracing_subscriber` with an `EnvFilter` derived from
+/// `effective_log_spec`, applies either JSON or human-readable formatting,
+/// configures timestamp formatting via `TimeFormatter`, and optionally
+/// routes logs to a rotating file. When a file writer is created a
+/// background worker guard is stored in a global `OnceCell` to keep the
+/// file appender alive for the process lifetime.
+///
+/// Returns `anyhow::Result<()>` to make initialization errors easy to
+/// propagate from application startup.
 pub fn init_logging(cfg: &LogConfig) -> Result<()> {
     // Build EnvFilter from effective spec
     let filter = EnvFilter::try_new(effective_log_spec(cfg))?;
