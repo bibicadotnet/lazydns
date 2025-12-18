@@ -1,5 +1,8 @@
-use crate::plugin::traits::PluginBuilder;
-use crate::plugin::{Context, Plugin, RETURN_FLAG};
+use crate::{
+    config::PluginConfig,
+    plugin::{Context, Plugin, RETURN_FLAG},
+    Result,
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -19,9 +22,20 @@ impl Plugin for AcceptPlugin {
         "accept"
     }
 
-    async fn execute(&self, ctx: &mut Context) -> crate::Result<()> {
+    async fn execute(&self, ctx: &mut Context) -> Result<()> {
         ctx.set_metadata(RETURN_FLAG, true);
         Ok(())
+    }
+
+    fn create(_config: &PluginConfig) -> Result<Arc<dyn Plugin>>
+    where
+        Self: Sized,
+    {
+        Ok(Arc::new(AcceptPlugin::new()))
+    }
+
+    fn plugin_type() -> &'static str {
+        "accept"
     }
 }
 
@@ -45,17 +59,5 @@ mod tests {
 // ============================================================================
 // Plugin Factory Registration
 // ============================================================================
-
-use crate::config::types::PluginConfig;
-
-impl PluginBuilder for AcceptPlugin {
-    fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
-        Ok(Arc::new(AcceptPlugin::new()))
-    }
-
-    fn plugin_type() -> &'static str {
-        "accept"
-    }
-}
 
 crate::register_plugin_builder!(AcceptPlugin);

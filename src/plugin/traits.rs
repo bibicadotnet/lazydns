@@ -2,7 +2,7 @@
 //!
 //! Defines the core Plugin trait that all plugins must implement.
 
-use crate::config::types::PluginConfig;
+use crate::config::PluginConfig;
 use crate::plugin::Context;
 use crate::Result;
 use async_trait::async_trait;
@@ -39,7 +39,7 @@ use std::sync::Arc;
 /// }
 /// ```
 #[async_trait]
-pub trait Plugin: Send + Sync + Debug + Any {
+pub trait Plugin: Send + Sync + Debug + Any + 'static {
     /// Execute the plugin logic
     ///
     /// This method is called to process a DNS query. The plugin can:
@@ -92,7 +92,7 @@ pub trait Plugin: Send + Sync + Debug + Any {
         &()
     }
 
-    /// Optional factory method to create a plugin instance from configuration.
+    /// factory method to create a plugin instance from configuration.
     ///
     /// Default implementation returns an error indicating no builder is
     /// provided for this plugin type. Implementations that support
@@ -108,12 +108,12 @@ pub trait Plugin: Send + Sync + Debug + Any {
     }
 
     /// Plugin type name used for registration and configuration.
-    // fn plugin_type() -> &'static str
-    // where
-    //     Self: Sized,
-    // {
-    //     "" // Default empty type name; implementations should override
-    // }
+    fn plugin_type() -> &'static str
+    where
+        Self: Sized,
+    {
+        "" // Default empty type name; implementations should override
+    }
 
     /// Optional aliases for plugin type names.
     fn aliases() -> Vec<&'static str>
@@ -129,30 +129,6 @@ pub trait Plugin: Send + Sync + Debug + Any {
 pub trait Matcher: Plugin {
     /// Check if the context matches this matcher
     fn matches_context(&self, ctx: &Context) -> bool;
-}
-
-/// Plugin builder trait for self-registering plugins
-///
-/// Implement this trait on your plugin type to enable automatic
-/// registration without needing a separate factory struct.
-pub trait PluginBuilder: Send + Sync + 'static {
-    /// Create a plugin instance from configuration
-    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>>
-    where
-        Self: Sized;
-
-    /// Get the plugin type name
-    fn plugin_type() -> &'static str
-    where
-        Self: Sized;
-
-    /// Get alternative names (optional)
-    fn aliases() -> Vec<&'static str>
-    where
-        Self: Sized,
-    {
-        Vec::new()
-    }
 }
 
 #[cfg(test)]

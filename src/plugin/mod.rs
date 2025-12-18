@@ -50,7 +50,6 @@ pub use context::Context;
 pub use executor::Executor;
 pub use registry::Registry;
 pub use traits::Plugin;
-pub use traits::PluginBuilder;
 
 use crate::dns::Message;
 use crate::server::RequestHandler;

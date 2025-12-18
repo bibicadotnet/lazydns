@@ -3,9 +3,8 @@
 //! This module wraps the core forward logic (from `plugins::forward`)
 //! with the Plugin trait for execution within the plugin chain.
 
-use crate::config::types::PluginConfig;
+use crate::config::PluginConfig;
 use crate::dns::Message;
-use crate::plugin::traits::PluginBuilder;
 use crate::plugin::{Context, Plugin};
 use crate::plugins::forward::{Forward, LoadBalanceStrategy, Upstream};
 use crate::Result;
@@ -14,7 +13,7 @@ use serde_yaml::Value;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc as StdArc;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
@@ -234,6 +233,31 @@ impl ForwardPlugin {
 
 #[async_trait]
 impl Plugin for ForwardPlugin {
+    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+
+        // Reuse centralized core parser to build Forward
+        let core = crate::plugins::forward::ForwardBuilder::from_args(&args)?;
+
+        // Parse concurrent flag (legacy behavior: concurrent > 1 -> race)
+        let concurrent = match args.get("concurrent") {
+            Some(Value::Number(n)) => n.as_i64().unwrap_or(1) > 1,
+            _ => false,
+        };
+
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: concurrent,
+        };
+
+        Ok(Arc::new(plugin))
+    }
+
+    fn plugin_type() -> &'static str {
+        "forward"
+    }
+
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         // Check if we already have a response
         if ctx.has_response() {
@@ -365,34 +389,6 @@ impl Plugin for ForwardPlugin {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-}
-
-/// Implement PluginBuilder for ForwardPlugin
-impl PluginBuilder for ForwardPlugin {
-    fn create(config: &PluginConfig) -> crate::Result<StdArc<dyn Plugin>> {
-        let args = config.effective_args();
-
-        // Reuse centralized core parser to build Forward
-        let core = crate::plugins::forward::ForwardBuilder::from_args(&args)?;
-
-        // Parse concurrent flag (legacy behavior: concurrent > 1 -> race)
-        let concurrent = match args.get("concurrent") {
-            Some(Value::Number(n)) => n.as_i64().unwrap_or(1) > 1,
-            _ => false,
-        };
-
-        let plugin = ForwardPlugin {
-            core,
-            current: AtomicUsize::new(0),
-            concurrent_queries: concurrent,
-        };
-
-        Ok(StdArc::new(plugin))
-    }
-
-    fn plugin_type() -> &'static str {
-        "forward"
     }
 }
 

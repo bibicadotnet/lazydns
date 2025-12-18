@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::config::PluginConfig;
-use crate::plugin::{Context, Plugin, PluginBuilder};
+use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 
@@ -34,7 +34,7 @@ impl DropRespPlugin {
 impl Plugin for DropRespPlugin {
     /// Return the canonical plugin name `drop_resp`.
     fn name(&self) -> &str {
-        "drop_resp"
+        DropRespPlugin::plugin_type()
     }
 
     /// Execute the plugin: clear any response currently stored in the
@@ -43,11 +43,8 @@ impl Plugin for DropRespPlugin {
         ctx.set_response(None);
         Ok(())
     }
-}
 
-/// Implement PluginBuilder for DropRespPlugin
-impl PluginBuilder for DropRespPlugin {
-    fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
+    fn create(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         Ok(Arc::new(DropRespPlugin::new()))
     }
 

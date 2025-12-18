@@ -153,15 +153,15 @@ macro_rules! register_plugin_builder {
                 fn create(&self, config: &$crate::config::types::PluginConfig)
                     -> $crate::Result<std::sync::Arc<dyn $crate::plugin::Plugin>>
                 {
-                    <$plugin_type as $crate::plugin::traits::PluginBuilder>::create(config)
+                    <$plugin_type as $crate::plugin::Plugin>::create(config)
                 }
 
                 fn plugin_type(&self) -> &'static str {
-                    <$plugin_type as $crate::plugin::traits::PluginBuilder>::plugin_type()
+                    <$plugin_type as $crate::plugin::Plugin>::plugin_type()
                 }
 
                 fn aliases(&self) -> Vec<&'static str> {
-                    <$plugin_type as $crate::plugin::traits::PluginBuilder>::aliases()
+                    Vec::new()
                 }
             }
 

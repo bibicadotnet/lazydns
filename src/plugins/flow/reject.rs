@@ -1,6 +1,7 @@
+use crate::config::PluginConfig;
 use crate::dns::{Message, ResponseCode};
-use crate::plugin::traits::PluginBuilder;
 use crate::plugin::{Context, Plugin};
+use crate::Result;
 use async_trait::async_trait;
 use serde_yaml::Value;
 use std::sync::Arc;
@@ -34,7 +35,7 @@ impl Plugin for RejectPlugin {
         "reject"
     }
 
-    async fn execute(&self, ctx: &mut Context) -> crate::Result<()> {
+    async fn execute(&self, ctx: &mut Context) -> Result<()> {
         let mut response = Message::new();
         response.set_id(ctx.request().id());
         response.set_response_code(ResponseCode::from_u8(self.rcode));
@@ -47,6 +48,25 @@ impl Plugin for RejectPlugin {
         ctx.set_response(Some(response));
         ctx.set_metadata(crate::plugin::RETURN_FLAG, true);
         Ok(())
+    }
+
+    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+
+        let rcode = match args.get("rcode") {
+            Some(Value::Number(n)) => n
+                .as_i64()
+                .ok_or_else(|| crate::Error::Config("Invalid rcode value".to_string()))?
+                as u8,
+            Some(_) => return Err(crate::Error::Config("rcode must be a number".to_string())),
+            None => 3,
+        };
+
+        Ok(Arc::new(RejectPlugin::new(rcode)))
+    }
+
+    fn plugin_type() -> &'static str {
+        "reject"
     }
 }
 
@@ -87,31 +107,6 @@ mod tests {
         assert_eq!(nxdomain.rcode, 3);
         assert_eq!(refused.rcode, 5);
         assert_eq!(servfail.rcode, 2);
-    }
-}
-
-// Factory
-use crate::config::types::PluginConfig;
-use crate::Error;
-
-impl PluginBuilder for RejectPlugin {
-    fn create(config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
-        let args = config.effective_args();
-
-        let rcode = match args.get("rcode") {
-            Some(Value::Number(n)) => n
-                .as_i64()
-                .ok_or_else(|| Error::Config("Invalid rcode value".to_string()))?
-                as u8,
-            Some(_) => return Err(Error::Config("rcode must be a number".to_string())),
-            None => 3,
-        };
-
-        Ok(Arc::new(RejectPlugin::new(rcode)))
-    }
-
-    fn plugin_type() -> &'static str {
-        "reject"
     }
 }
 

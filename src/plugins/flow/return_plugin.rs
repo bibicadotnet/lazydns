@@ -1,5 +1,8 @@
-use crate::plugin::traits::PluginBuilder;
-use crate::plugin::{Context, Plugin, RETURN_FLAG};
+use crate::{
+    config::PluginConfig,
+    plugin::{Context, Plugin, RETURN_FLAG},
+    Result,
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -18,9 +21,17 @@ impl Plugin for ReturnPlugin {
         "return"
     }
 
-    async fn execute(&self, ctx: &mut Context) -> crate::Result<()> {
+    async fn execute(&self, ctx: &mut Context) -> Result<()> {
         ctx.set_metadata(RETURN_FLAG, true);
         Ok(())
+    }
+
+    fn create(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        Ok(Arc::new(ReturnPlugin::new()))
+    }
+
+    fn plugin_type() -> &'static str {
+        "return"
     }
 }
 
@@ -63,18 +74,6 @@ mod tests {
 
         assert_eq!(counter.load(Ordering::SeqCst), 0);
         assert_eq!(ctx.get_metadata::<bool>(RETURN_FLAG), Some(&true));
-    }
-}
-
-use crate::config::types::PluginConfig;
-
-impl PluginBuilder for ReturnPlugin {
-    fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
-        Ok(Arc::new(ReturnPlugin::new()))
-    }
-
-    fn plugin_type() -> &'static str {
-        "return"
     }
 }
 
