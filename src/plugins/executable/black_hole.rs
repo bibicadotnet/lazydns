@@ -1,9 +1,14 @@
+use crate::config::PluginConfig;
 use crate::dns::{Message, RData, ResourceRecord};
 use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::Arc;
+
+// Auto-register using the register macro
+crate::register_plugin_builder!(BlackholePlugin);
 
 /// Black hole plugin: returns configured A/AAAA answers for a query
 pub struct BlackholePlugin {
@@ -94,7 +99,7 @@ impl fmt::Debug for BlackholePlugin {
 #[async_trait]
 impl Plugin for BlackholePlugin {
     fn name(&self) -> &str {
-        "black_hole"
+        "blackhole"
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
@@ -106,6 +111,27 @@ impl Plugin for BlackholePlugin {
             ctx.set_response(Some(resp));
         }
         Ok(())
+    }
+
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+        use serde_yaml::Value;
+
+        // Blackhole plugin can accept a list of IPs or be empty (defaults to common sinkhole IPs)
+        let ips: Vec<String> = if let Some(Value::Sequence(seq)) = args.get("ips") {
+            seq.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        } else {
+            Vec::new() // Empty will use default sinkhole IPs
+        };
+
+        let plugin = BlackholePlugin::new_from_strs(ips)?;
+        Ok(Arc::new(plugin))
+    }
+
+    fn aliases() -> Vec<&'static str> {
+        vec!["sinkhole", "black_hole", "null_dns"]
     }
 }
 

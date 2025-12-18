@@ -2,9 +2,11 @@
 //!
 //! Adds matched IPs to RouterOS address lists (stub implementation)
 
+use crate::config::PluginConfig;
 use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
+use std::sync::Arc;
 
 use reqwest::StatusCode;
 use serde_json::json;
@@ -12,6 +14,9 @@ use std::fmt;
 use std::net::IpAddr;
 use std::time::Duration;
 use tracing::{debug, error, info};
+
+// Auto-register using the register macro
+crate::register_plugin_builder!(RosAddrlistPlugin);
 
 /// Plugin that manages RouterOS address lists
 ///
@@ -21,11 +26,11 @@ use tracing::{debug, error, info};
 /// # Example
 ///
 /// ```rust
-/// use lazydns::plugins::executable::RosAddrListPlugin;
+/// use lazydns::plugins::executable::RosAddrlistPlugin;
 ///
-/// let plugin = RosAddrListPlugin::new("blocked_ips");
+/// let plugin = RosAddrlistPlugin::new("blocked_ips");
 /// ```
-pub struct RosAddrListPlugin {
+pub struct RosAddrlistPlugin {
     /// Address list name in RouterOS
     list_name: String,
     /// Whether to add IPs from query responses
@@ -43,7 +48,7 @@ pub struct RosAddrListPlugin {
     // client: Option<Client>,
 }
 
-impl RosAddrListPlugin {
+impl RosAddrlistPlugin {
     /// Create a new RouterOS address list plugin
     pub fn new(list_name: impl Into<String>) -> Self {
         Self {
@@ -188,7 +193,7 @@ impl RosAddrListPlugin {
     }
 }
 
-impl fmt::Debug for RosAddrListPlugin {
+impl fmt::Debug for RosAddrlistPlugin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RosAddrListPlugin")
             .field("list_name", &self.list_name)
@@ -202,7 +207,7 @@ impl fmt::Debug for RosAddrListPlugin {
 }
 
 #[async_trait]
-impl Plugin for RosAddrListPlugin {
+impl Plugin for RosAddrlistPlugin {
     fn name(&self) -> &str {
         "ros_addrlist"
     }
@@ -237,6 +242,36 @@ impl Plugin for RosAddrListPlugin {
 
         Ok(())
     }
+
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+
+        let addrlist = args
+            .get("addrlist")
+            .and_then(|v| v.as_str())
+            .unwrap_or("default");
+        let mut plugin = RosAddrlistPlugin::new(addrlist);
+
+        if let Some(server) = args.get("server").and_then(|v| v.as_str()) {
+            plugin = plugin.with_server(server.to_string());
+        }
+
+        if let Some(user) = args.get("user").and_then(|v| v.as_str()) {
+            if let Some(pass) = args.get("passwd").and_then(|v| v.as_str()) {
+                plugin = plugin.with_auth(user.to_string(), pass.to_string());
+            }
+        }
+
+        if let Some(mask4) = args.get("mask4").and_then(|v| v.as_i64()) {
+            plugin = plugin.with_mask4(mask4 as u8);
+        }
+
+        if let Some(mask6) = args.get("mask6").and_then(|v| v.as_i64()) {
+            plugin = plugin.with_mask6(mask6 as u8);
+        }
+
+        Ok(Arc::new(plugin))
+    }
 }
 
 #[cfg(test)]
@@ -247,7 +282,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ros_addrlist_extract_ips() {
-        let plugin = RosAddrListPlugin::new("test_list");
+        let plugin = RosAddrlistPlugin::new("test_list");
 
         let mut ctx = Context::new(Message::new());
         let mut response = Message::new();
@@ -276,7 +311,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ros_addrlist_disabled() {
-        let plugin = RosAddrListPlugin::new("test_list").track_responses(false);
+        let plugin = RosAddrlistPlugin::new("test_list").track_responses(false);
 
         let mut ctx = Context::new(Message::new());
         let mut response = Message::new();
@@ -297,7 +332,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ros_addrlist_no_ips() {
-        let plugin = RosAddrListPlugin::new("test_list");
+        let plugin = RosAddrlistPlugin::new("test_list");
 
         let mut ctx = Context::new(Message::new());
         let mut response = Message::new();

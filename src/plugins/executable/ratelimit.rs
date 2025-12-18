@@ -2,15 +2,20 @@
 //!
 //! Implements rate limiting to prevent DoS attacks and resource exhaustion.
 
+use crate::config::PluginConfig;
 use crate::dns::ResponseCode;
 use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
+use std::any::Any;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::warn;
+
+// Auto-register plugin builder
+crate::register_plugin_builder!(RateLimitPlugin);
 
 /// Rate limiter entry tracking request history
 #[derive(Debug)]
@@ -25,13 +30,26 @@ struct RateLimitEntry {
 ///
 /// Limits the number of queries from a single IP address within a time window.
 ///
-/// # Example
+/// # YAML configuration example
+///
+/// ```yaml
+/// # plugins: (top-level list of plugins)
+/// - name: my_rate_limiter
+///   type: rate_limit
+///   args:
+///     max_queries: 100     # max queries per window per IP (integer)
+///     window_secs: 60      # window length in seconds (integer)
+/// ```
+///
+/// # Rust example
 ///
 /// ```rust
 /// use lazydns::plugins::RateLimitPlugin;
+/// use lazydns::plugin::Plugin;
 ///
 /// // Allow 100 queries per 60 seconds per IP
 /// let rate_limiter = RateLimitPlugin::new(100, 60);
+/// assert_eq!(rate_limiter.name(), "rate_limit");
 /// ```
 #[derive(Debug)]
 pub struct RateLimitPlugin {
@@ -132,6 +150,74 @@ impl Plugin for RateLimitPlugin {
         // Should run early to block excessive requests
         1000
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        use serde_yaml::Value;
+        use std::sync::Arc;
+
+        // defaults
+        let mut max_queries: u32 = 100;
+        let mut window_secs: u64 = 60;
+
+        let args = config.effective_args();
+        if let Some(v) = args.get("max_queries") {
+            match v {
+                Value::Number(n) => {
+                    if let Some(u) = n.as_u64() {
+                        max_queries = u as u32;
+                    } else if let Some(i) = n.as_i64() {
+                        max_queries = i as u32;
+                    } else {
+                        return Err(crate::Error::Config(
+                            "Invalid 'max_queries' value".to_string(),
+                        ));
+                    }
+                }
+                Value::String(s) => {
+                    max_queries = s.parse::<u32>().map_err(|_| {
+                        crate::Error::Config("Invalid 'max_queries' string value".to_string())
+                    })?;
+                }
+                _ => {
+                    return Err(crate::Error::Config(
+                        "Invalid 'max_queries' type".to_string(),
+                    ))
+                }
+            }
+        }
+
+        if let Some(v) = args.get("window_secs") {
+            match v {
+                Value::Number(n) => {
+                    if let Some(u) = n.as_u64() {
+                        window_secs = u;
+                    } else if let Some(i) = n.as_i64() {
+                        window_secs = i as u64;
+                    } else {
+                        return Err(crate::Error::Config(
+                            "Invalid 'window_secs' value".to_string(),
+                        ));
+                    }
+                }
+                Value::String(s) => {
+                    window_secs = s.parse::<u64>().map_err(|_| {
+                        crate::Error::Config("Invalid 'window_secs' string value".to_string())
+                    })?;
+                }
+                _ => {
+                    return Err(crate::Error::Config(
+                        "Invalid 'window_secs' type".to_string(),
+                    ))
+                }
+            }
+        }
+
+        Ok(Arc::new(RateLimitPlugin::new(max_queries, window_secs)))
+    }
 }
 
 #[cfg(test)]
@@ -223,5 +309,43 @@ mod tests {
             ctx.response().unwrap().response_code(),
             ResponseCode::Refused
         );
+    }
+}
+
+#[cfg(test)]
+mod builder_init_tests {
+    use super::*;
+    use serde_yaml::Mapping;
+    use serde_yaml::Value;
+
+    #[test]
+    fn test_init_from_config() {
+        let mut args_map = Mapping::new();
+        args_map.insert(
+            Value::String("max_queries".to_string()),
+            Value::Number(100.into()),
+        );
+        args_map.insert(
+            Value::String("window_secs".to_string()),
+            Value::Number(60.into()),
+        );
+
+        let cfg = crate::config::types::PluginConfig {
+            tag: None,
+            plugin_type: "rate_limit".to_string(),
+            args: Value::Mapping(args_map),
+            name: None,
+            priority: 100,
+            config: std::collections::HashMap::new(),
+        };
+
+        let plugin = RateLimitPlugin::init(&cfg).expect("init");
+        assert_eq!(plugin.name(), "rate_limit");
+        if let Some(rl) = plugin.as_ref().as_any().downcast_ref::<RateLimitPlugin>() {
+            assert_eq!(rl.max_queries, 100);
+            assert_eq!(rl.window_secs, 60);
+        } else {
+            panic!("unexpected plugin type");
+        }
     }
 }

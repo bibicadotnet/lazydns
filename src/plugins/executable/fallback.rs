@@ -9,6 +9,9 @@ use std::fmt;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
+// Auto-register using the register macro
+crate::register_plugin_builder!(FallbackPlugin);
+
 /// Plugin that provides fallback to alternative plugins if primary fails
 ///
 /// # Example
@@ -26,22 +29,36 @@ use tracing::{debug, info, warn};
 /// # Ok(())
 /// # }
 /// ```
+use std::sync::RwLock;
+
 pub struct FallbackPlugin {
-    /// List of plugins to try in order
-    plugins: Vec<Arc<dyn Plugin>>,
+    /// List of resolved plugins to try in order
+    plugins: RwLock<Vec<Arc<dyn Plugin>>>,
+    /// Pending child plugin names to resolve
+    pending: RwLock<Vec<String>>,
     /// Whether to fallback on errors only or also on empty responses
     error_only: bool,
 }
 
 impl FallbackPlugin {
-    /// Create a new fallback plugin
+    /// Create a new fallback plugin with already-resolved child plugins
     ///
     /// # Arguments
     ///
     /// * `plugins` - List of plugins to try in order
     pub fn new(plugins: Vec<Arc<dyn Plugin>>) -> Self {
         Self {
-            plugins,
+            plugins: RwLock::new(plugins),
+            pending: RwLock::new(Vec::new()),
+            error_only: false,
+        }
+    }
+
+    /// Create a fallback plugin that references children by name (to be resolved later)
+    pub fn with_names(names: Vec<String>) -> Self {
+        Self {
+            plugins: RwLock::new(Vec::new()),
+            pending: RwLock::new(names),
             error_only: false,
         }
     }
@@ -50,6 +67,35 @@ impl FallbackPlugin {
     pub fn error_only(mut self, error_only: bool) -> Self {
         self.error_only = error_only;
         self
+    }
+
+    /// Resolve pending child names using provided plugin registry map
+    pub fn resolve_children(&self, registry: &std::collections::HashMap<String, Arc<dyn Plugin>>) {
+        let mut pending = self.pending.write().unwrap();
+        if pending.is_empty() {
+            return;
+        }
+
+        let mut resolved = self.plugins.write().unwrap();
+
+        for name in pending.drain(..) {
+            if let Some(p) = registry.get(&name).cloned() {
+                debug!(plugin = %name, "Resolved fallback child");
+                resolved.push(p);
+            } else {
+                warn!(plugin = %name, "Fallback child plugin not found");
+            }
+        }
+    }
+
+    /// Return how many resolved child plugins there are (public helper)
+    pub fn resolved_child_count(&self) -> usize {
+        self.plugins.read().unwrap().len()
+    }
+
+    /// Return how many pending child names remain (public helper)
+    pub fn pending_child_count(&self) -> usize {
+        self.pending.read().unwrap().len()
     }
 
     /// Check if we should try the next plugin
@@ -73,8 +119,11 @@ impl FallbackPlugin {
 
 impl fmt::Debug for FallbackPlugin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let resolved_count = self.plugins.read().unwrap().len();
+        let pending_count = self.pending.read().unwrap().len();
         f.debug_struct("FallbackPlugin")
-            .field("plugin_count", &self.plugins.len())
+            .field("resolved_children", &resolved_count)
+            .field("pending_children", &pending_count)
             .field("error_only", &self.error_only)
             .finish()
     }
@@ -87,12 +136,14 @@ impl Plugin for FallbackPlugin {
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        info!("Fallback: plugin count = {}", self.plugins.len());
+        let plugins = { self.plugins.read().unwrap().clone() };
+
+        info!("Fallback: plugin count = {}", plugins.len());
         info!(
             "Fallback children: {:?}",
-            self.plugins.iter().map(|p| p.name()).collect::<Vec<_>>()
+            plugins.iter().map(|p| p.name()).collect::<Vec<_>>()
         );
-        for (i, plugin) in self.plugins.iter().enumerate() {
+        for (i, plugin) in plugins.iter().enumerate() {
             debug!("Fallback: trying plugin {} (index {})", plugin.name(), i);
 
             let had_error = match plugin.execute(ctx).await {
@@ -118,7 +169,7 @@ impl Plugin for FallbackPlugin {
                 return Ok(());
             }
 
-            if i < self.plugins.len() - 1 {
+            if i < plugins.len() - 1 {
                 debug!(
                     plugin_index = i,
                     plugin_name = plugin.name(),
@@ -137,6 +188,36 @@ impl Plugin for FallbackPlugin {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn init(config: &crate::config::types::PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
+        // Read primary/secondary names from args and create plugin with pending names
+        let args = config.effective_args();
+        let primary = args
+            .get("primary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let secondary = args
+            .get("secondary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        info!(
+            "Creating fallback plugin (pending references): primary={}, secondary={}",
+            primary, secondary
+        );
+
+        let mut names = Vec::new();
+        if !primary.is_empty() {
+            names.push(primary);
+        }
+        if !secondary.is_empty() {
+            names.push(secondary);
+        }
+
+        Ok(Arc::new(FallbackPlugin::with_names(names)))
     }
 }
 

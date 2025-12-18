@@ -5,8 +5,8 @@ async fn integration_sequence_save_hook() {
     use lazydns::config::Config;
     use lazydns::dns::types::{RecordClass, RecordType};
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
-    use lazydns::plugin::Context;
     use lazydns::plugin::PluginBuilder;
+    use lazydns::plugin::Context;
     use lazydns::plugins::executable::ReverseLookupPlugin;
     use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
@@ -17,6 +17,11 @@ async fn integration_sequence_save_hook() {
     // Build plugins from config
     let mut builder = PluginBuilder::new();
     for p in &cfg.plugins {
+        println!(
+            "Building plugin: {} (type: {})",
+            p.effective_name(),
+            p.plugin_type
+        );
         let _ = builder.build(p).expect("build plugin");
     }
     builder

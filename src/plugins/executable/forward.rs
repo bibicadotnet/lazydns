@@ -3,14 +3,17 @@
 //! This module wraps the core forward logic (from `plugins::forward`)
 //! with the Plugin trait for execution within the plugin chain.
 
+use crate::config::PluginConfig;
 use crate::dns::Message;
 use crate::plugin::{Context, Plugin};
-use crate::plugins::forward::{ForwardCore, LoadBalanceStrategy, Upstream};
+use crate::plugins::forward::{Forward, LoadBalanceStrategy, Upstream};
 use crate::Result;
 use async_trait::async_trait;
+use serde_yaml::Value;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
@@ -26,171 +29,21 @@ use tracing::{debug, error, warn};
 ///
 /// ```rust
 /// use lazydns::plugins::executable::forward::ForwardPlugin;
-/// use lazydns::plugins::forward::LoadBalanceStrategy;
 ///
-/// // Build with concurrent queries enabled
-/// let plugin = ForwardPlugin::builder()
-///     .add_upstream("8.8.8.8:53")
-///     .add_upstream("8.8.4.4:53")
-///     .strategy(LoadBalanceStrategy::Fastest)
-///     .enable_health_checks(true)
-///     .concurrent_queries(true)  // Race all upstreams
-///     .build();
+/// // Create a simple forward plugin from upstream addresses
+/// let plugin = lazydns::plugins::executable::forward::ForwardPlugin::new(vec![
+///     "8.8.8.8:53".to_string(),
+///     "8.8.4.4:53".to_string(),
+///]);
 /// ```
 #[derive(Debug)]
 pub struct ForwardPlugin {
     /// Core forwarding logic
-    core: ForwardCore,
+    core: Forward,
     /// Current upstream index for round-robin
     current: AtomicUsize,
     /// Enable concurrent queries (race mode)
     concurrent_queries: bool,
-}
-
-/// Builder for ForwardPlugin
-pub struct ForwardPluginBuilder {
-    upstreams: Vec<String>,
-    timeout: Duration,
-    strategy: LoadBalanceStrategy,
-    health_checks_enabled: bool,
-    max_attempts: usize,
-    concurrent_queries: bool,
-}
-
-impl ForwardPluginBuilder {
-    /// Create a new `ForwardPluginBuilder` with sensible defaults.
-    ///
-    /// Defaults:
-    /// - `timeout`: 5s
-    /// - `strategy`: `RoundRobin`
-    /// - `health_checks_enabled`: false
-    /// - `max_attempts`: 3
-    /// - `concurrent_queries`: false
-    ///
-    /// Use the builder methods to customize upstreams and behavior before
-    /// calling `build()`.
-    pub fn new() -> Self {
-        Self {
-            upstreams: Vec::new(),
-            timeout: Duration::from_secs(5),
-            strategy: LoadBalanceStrategy::RoundRobin,
-            health_checks_enabled: false,
-            max_attempts: 3,
-            concurrent_queries: false,
-        }
-    }
-
-    /// Add an upstream server by address (e.g. `8.8.8.8:53`).
-    ///
-    /// This accepts either a plain socket address (`ip:port`) or a DoH URL
-    /// (`https://dns.example/dns-query`). The upstream will be contacted
-    /// when the `ForwardPlugin` forwards queries.
-    pub fn add_upstream(mut self, upstream: impl Into<String>) -> Self {
-        self.upstreams.push(upstream.into());
-        self
-    }
-
-    /// Add an upstream with an associated `tag`.
-    ///
-    /// The `tag` is a small identifier stored alongside the upstream entry
-    /// and can be used by higher-level logic to refer to specific upstreams
-    /// without relying on the full `addr` string.
-    pub fn add_upstream_with_tag(
-        mut self,
-        upstream: impl Into<String>,
-        tag: impl Into<String>,
-    ) -> Self {
-        let entry = format!("{}|{}", upstream.into(), tag.into());
-        self.upstreams.push(entry);
-        self
-    }
-
-    /// Set the per-upstream query `timeout` used for network requests.
-    ///
-    /// Example: `.timeout(Duration::from_secs(2))`.
-    pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
-    }
-
-    /// Set the `LoadBalanceStrategy` used for selecting upstreams.
-    ///
-    /// Options include round-robin, random, or selecting the fastest based
-    /// on locally collected health stats.
-    pub fn strategy(mut self, strategy: LoadBalanceStrategy) -> Self {
-        self.strategy = strategy;
-        self
-    }
-
-    /// Enable or disable local health checks and tracking.
-    ///
-    /// When enabled the plugin records success/failure counts and response
-    /// times per upstream which influence selection (e.g. `Fastest`).
-    pub fn enable_health_checks(mut self, enabled: bool) -> Self {
-        self.health_checks_enabled = enabled;
-        self
-    }
-
-    /// Set the maximum number of failover attempts when forwarding a query.
-    ///
-    /// The plugin will try up to `max` different upstreams before returning
-    /// an error. This limits the amount of work spent retrying.
-    pub fn max_attempts(mut self, max: usize) -> Self {
-        self.max_attempts = max;
-        self
-    }
-
-    /// Enable concurrent (race) queries across all upstreams.
-    ///
-    /// When enabled the plugin sends the same query to all upstreams and
-    /// returns the first successful response. This reduces latency at the
-    /// cost of increased upstream load.
-    pub fn concurrent_queries(mut self, enabled: bool) -> Self {
-        self.concurrent_queries = enabled;
-        self
-    }
-
-    /// Consume the builder and create a configured `ForwardPlugin`.
-    ///
-    /// After `build()` the plugin is ready to be inserted into the plugin
-    /// chain; the upstream list and settings are immutable on the returned
-    /// `ForwardPlugin` instance.
-    pub fn build(self) -> ForwardPlugin {
-        let upstreams = self
-            .upstreams
-            .into_iter()
-            .map(|entry| {
-                // support optional tag encoded as "addr|tag" from builder helper
-                if let Some((addr, tag)) = entry.split_once('|') {
-                    Upstream::with_tag(addr.to_string(), tag.to_string())
-                } else {
-                    Upstream::new(entry)
-                }
-            })
-            .collect();
-
-        let core = ForwardCore::new(upstreams, self.timeout, self.strategy)
-            .with_health_checks(self.health_checks_enabled)
-            .with_max_attempts(self.max_attempts);
-
-        ForwardPlugin {
-            core,
-            current: AtomicUsize::new(0),
-            concurrent_queries: self.concurrent_queries,
-        }
-    }
-
-    /// Build with a list of upstream addresses (internal helper)
-    fn build_with_upstreams(mut self, upstreams: Vec<String>) -> ForwardPlugin {
-        self.upstreams = upstreams;
-        self.build()
-    }
-}
-
-impl Default for ForwardPluginBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl ForwardPlugin {
@@ -200,14 +53,26 @@ impl ForwardPlugin {
     ///
     /// * `upstreams` - List of upstream DNS server addresses (format: "ip:port")
     pub fn new(upstreams: Vec<String>) -> Self {
-        Self::builder()
-            .timeout(Duration::from_secs(5))
-            .build_with_upstreams(upstreams)
-    }
+        let ups: Vec<Upstream> = upstreams
+            .into_iter()
+            .map(|entry| {
+                if let Some((addr, tag)) = entry.split_once('|') {
+                    Upstream::with_tag(addr.to_string(), tag.to_string())
+                } else {
+                    Upstream::new(entry)
+                }
+            })
+            .collect();
 
-    /// Create a builder for advanced configuration
-    pub fn builder() -> ForwardPluginBuilder {
-        ForwardPluginBuilder::new()
+        let core = Forward::new(ups, Duration::from_secs(5), LoadBalanceStrategy::RoundRobin)
+            .with_health_checks(false)
+            .with_max_attempts(3);
+
+        ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        }
     }
 
     /// Create a forward plugin with custom timeout (legacy method)
@@ -217,9 +82,26 @@ impl ForwardPlugin {
     /// * `upstreams` - List of upstream DNS server addresses
     /// * `timeout` - Query timeout duration
     pub fn with_timeout(upstreams: Vec<String>, timeout: Duration) -> Self {
-        Self::builder()
-            .timeout(timeout)
-            .build_with_upstreams(upstreams)
+        let ups: Vec<Upstream> = upstreams
+            .into_iter()
+            .map(|entry| {
+                if let Some((addr, tag)) = entry.split_once('|') {
+                    Upstream::with_tag(addr.to_string(), tag.to_string())
+                } else {
+                    Upstream::new(entry)
+                }
+            })
+            .collect();
+
+        let core = Forward::new(ups, timeout, LoadBalanceStrategy::RoundRobin)
+            .with_health_checks(false)
+            .with_max_attempts(3);
+
+        ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        }
     }
 
     /// Return a list of upstream address strings (for testing/inspection)
@@ -340,17 +222,38 @@ impl ForwardPlugin {
 
     /// Serialize message (delegate to core)
     fn serialize_message(message: &Message) -> Result<Vec<u8>> {
-        ForwardCore::serialize_message(message)
+        Forward::serialize_message(message)
     }
 
     /// Parse message (delegate to core)
     fn parse_message(data: &[u8]) -> Result<Message> {
-        ForwardCore::parse_message(data)
+        Forward::parse_message(data)
     }
 }
 
 #[async_trait]
 impl Plugin for ForwardPlugin {
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+
+        // Reuse centralized core parser to build Forward
+        let core = crate::plugins::forward::ForwardBuilder::from_args(&args)?;
+
+        // Parse concurrent flag (legacy behavior: concurrent > 1 -> race)
+        let concurrent = match args.get("concurrent") {
+            Some(Value::Number(n)) => n.as_i64().unwrap_or(1) > 1,
+            _ => false,
+        };
+
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: concurrent,
+        };
+
+        Ok(Arc::new(plugin))
+    }
+
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         // Check if we already have a response
         if ctx.has_response() {
@@ -485,6 +388,9 @@ impl Plugin for ForwardPlugin {
     }
 }
 
+// Auto-register the plugin using macro
+crate::register_plugin_builder!(ForwardPlugin);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -568,11 +474,16 @@ mod tests {
     async fn test_forward_plugin_with_mocked_upstream() {
         // Start a mocked upstream DoH HTTP server and point plugin to it
         let (upstream_addr, server_task) = spawn_doh_http_server("1.2.3.4").await;
-        let plugin = ForwardPlugin::builder()
-            .add_upstream(upstream_addr.clone())
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::new(upstream_addr.clone()))
             .timeout(Duration::from_secs(2))
             .enable_health_checks(true)
             .build();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
 
         // Build a request message
         let mut req = Message::new();
@@ -614,11 +525,16 @@ mod tests {
 
         // Mock server for success
         let (upstream_addr, server_task) = spawn_doh_https_server("1.2.3.4").await;
-        let plugin = ForwardPlugin::builder()
-            .add_upstream(upstream_addr.clone())
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::new(upstream_addr.clone()))
             .timeout(Duration::from_secs(2))
             .enable_health_checks(true)
             .build();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
 
         let mut req = Message::new();
         req.add_question(Question::new(
@@ -651,11 +567,16 @@ mod tests {
         assert_eq!(f1, 0, "failures counter should be 0 after success");
 
         // Now test failure increments
-        let bad_plugin = ForwardPlugin::builder()
-            .add_upstream("127.0.0.1:43210".to_string())
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::new("127.0.0.1:43210".to_string()))
             .timeout(Duration::from_secs(1))
             .enable_health_checks(true)
             .build();
+        let bad_plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
         let mut ctx2 = Context::new(req);
         let _res = bad_plugin.execute(&mut ctx2).await;
         let (q2, s2, f2) = bad_plugin.upstreams()[0].health.counters();
@@ -670,11 +591,16 @@ mod tests {
     #[test]
     fn test_load_balance_strategies() {
         // Test RoundRobin
-        let plugin = ForwardPlugin::builder()
-            .add_upstream("8.8.8.8:53")
-            .add_upstream("1.1.1.1:53")
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::new("8.8.8.8:53".to_string()))
+            .add_upstream(Upstream::new("1.1.1.1:53".to_string()))
             .strategy(LoadBalanceStrategy::RoundRobin)
             .build();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
 
         let idx1 = plugin.select_upstream().unwrap();
         let idx2 = plugin.select_upstream().unwrap();
@@ -682,21 +608,31 @@ mod tests {
         assert_eq!(idx2, 1);
 
         // Test Random (just verify it returns valid index)
-        let plugin = ForwardPlugin::builder()
-            .add_upstream("8.8.8.8:53")
-            .add_upstream("1.1.1.1:53")
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::new("8.8.8.8:53".to_string()))
+            .add_upstream(Upstream::new("1.1.1.1:53".to_string()))
             .strategy(LoadBalanceStrategy::Random)
             .build();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
 
         let idx = plugin.select_upstream().unwrap();
         assert!(idx < 2);
 
         // Test Fastest (initially should return first)
-        let plugin = ForwardPlugin::builder()
-            .add_upstream("8.8.8.8:53")
-            .add_upstream("1.1.1.1:53")
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::new("8.8.8.8:53".to_string()))
+            .add_upstream(Upstream::new("1.1.1.1:53".to_string()))
             .strategy(LoadBalanceStrategy::Fastest)
             .build();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
 
         let idx = plugin.select_upstream().unwrap();
         assert_eq!(idx, 0); // First upstream before any health data
@@ -728,14 +664,19 @@ mod tests {
 
     #[test]
     fn test_builder_pattern() {
-        let plugin = ForwardPlugin::builder()
-            .add_upstream("8.8.8.8:53")
-            .add_upstream("1.1.1.1:53")
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::new("8.8.8.8:53".to_string()))
+            .add_upstream(Upstream::new("1.1.1.1:53".to_string()))
             .timeout(Duration::from_secs(10))
             .strategy(LoadBalanceStrategy::Fastest)
             .enable_health_checks(true)
             .max_attempts(5)
             .build();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
 
         assert_eq!(plugin.upstreams().len(), 2);
         assert_eq!(plugin.timeout(), Duration::from_secs(10));
@@ -807,11 +748,16 @@ mod tests {
         });
 
         let url = format!("http://{}/dns-query", local_addr);
-        let plugin = ForwardPlugin::builder()
-            .add_upstream(url)
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::new(url))
             .timeout(Duration::from_secs(2))
             .enable_health_checks(true)
             .build();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
 
         let mut req = Message::new();
         req.add_question(Question::new(
@@ -843,9 +789,17 @@ mod tests {
 
     #[test]
     fn test_add_upstream_with_tag_parses_tag() {
-        let plugin = ForwardPlugin::builder()
-            .add_upstream_with_tag("8.8.8.8:53", "google")
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::with_tag(
+                "8.8.8.8:53".to_string(),
+                "google".to_string(),
+            ))
             .build();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
 
         assert_eq!(plugin.upstreams().len(), 1);
         assert_eq!(plugin.upstreams()[0].addr, "8.8.8.8:53");
@@ -941,11 +895,16 @@ mod tests {
         std::env::set_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT", "1");
 
         let url = format!("https://localhost:{}/dns-query", local_addr.port());
-        let plugin = ForwardPlugin::builder()
-            .add_upstream(url)
+        let core = crate::plugins::forward::ForwardBuilder::new()
+            .add_upstream(Upstream::new(url))
             .timeout(Duration::from_secs(2))
             .enable_health_checks(true)
             .build();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: false,
+        };
 
         let mut req = Message::new();
         req.add_question(Question::new(

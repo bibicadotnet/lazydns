@@ -22,6 +22,9 @@
 
 // #![warn(clippy::all)]
 
+// Re-export paste macro for register_plugin_builder!
+pub use paste;
+
 /// DNS protocol implementation
 ///
 /// This module provides DNS message parsing, serialization, and core DNS types.

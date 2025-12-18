@@ -15,6 +15,7 @@ pub mod forward_edns0opt;
 pub mod ipset;
 pub mod nftset;
 pub mod query_summary;
+pub mod ratelimit;
 pub mod redirect;
 pub mod reverse_lookup;
 pub mod ros_addrlist;
@@ -24,7 +25,7 @@ pub mod ttl;
 
 pub use arbitrary::ArbitraryPlugin;
 pub use black_hole::BlackholePlugin;
-pub use cache::{ExecCache, ExecCacheStore};
+pub use cache::CachePlugin;
 pub use collector::MetricsCollectorPlugin;
 pub use debug_print::DebugPrintPlugin;
 pub use drop_resp::DropRespPlugin;
@@ -35,9 +36,10 @@ pub use forward_edns0opt::{Edns0Option, ForwardEdns0OptPlugin};
 pub use ipset::IpSetPlugin;
 pub use nftset::NftSetPlugin;
 pub use query_summary::QuerySummaryPlugin;
+pub use ratelimit::RateLimitPlugin;
 pub use redirect::RedirectPlugin;
 pub use reverse_lookup::ReverseLookupPlugin;
-pub use ros_addrlist::RosAddrListPlugin;
+pub use ros_addrlist::RosAddrlistPlugin;
 pub use sequence::SequencePlugin;
 pub use sequence::SequenceStep;
 pub use sleep::SleepPlugin;
@@ -46,4 +48,8 @@ pub use ttl::TtlPlugin;
 pub mod hosts;
 pub use hosts::HostsPlugin;
 pub mod forward;
-pub use forward::{ForwardPlugin, ForwardPluginBuilder};
+pub use forward::ForwardPlugin;
+
+// Re-export builder initialization statics
+#[allow(unused_imports)]
+pub(crate) use forward::FORWARD_PLUGIN_FACTORY;

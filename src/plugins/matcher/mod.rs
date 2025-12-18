@@ -22,7 +22,7 @@ pub use base_int::{BaseIntMatcherPlugin, IntComparison};
 pub use client_ip::ClientIpMatcherPlugin;
 pub use cname::CnameMatcherPlugin;
 pub use env::EnvMatcherPlugin;
-pub use has_resp::HasRespMatcherPlugin;
+pub use has_resp::HasRespPlugin;
 pub use has_wanted_ans::HasWantedAnsMatcherPlugin;
 pub use ptr_ip::PtrIpMatcherPlugin;
 pub use qclass::QClassMatcherPlugin;

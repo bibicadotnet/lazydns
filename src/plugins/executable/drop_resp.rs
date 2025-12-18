@@ -1,6 +1,12 @@
+use std::sync::Arc;
+
+use crate::config::PluginConfig;
 use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
+
+// Plugin builder registration for DropRespPlugin
+crate::register_plugin_builder!(DropRespPlugin);
 
 /// Plugin that clears any existing response from the execution `Context`.
 ///
@@ -39,6 +45,10 @@ impl Plugin for DropRespPlugin {
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         ctx.set_response(None);
         Ok(())
+    }
+
+    fn init(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        Ok(Arc::new(DropRespPlugin::new()))
     }
 }
 

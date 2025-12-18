@@ -7,6 +7,8 @@
 use crate::dns::Message;
 use crate::Result;
 use reqwest::Client as HttpClient;
+use serde_yaml::Value;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -147,7 +149,7 @@ impl Upstream {
 /// This struct encapsulates the upstream query forwarding logic
 /// and is used by the executable ForwardPlugin.
 #[derive(Debug)]
-pub struct ForwardCore {
+pub struct Forward {
     /// Upstream servers
     pub upstreams: Vec<Upstream>,
     /// Query timeout
@@ -160,8 +162,8 @@ pub struct ForwardCore {
     pub max_attempts: usize,
 }
 
-impl ForwardCore {
-    /// Create a new ForwardCore
+impl Forward {
+    /// Create a new Forward
     pub fn new(upstreams: Vec<Upstream>, timeout: Duration, strategy: LoadBalanceStrategy) -> Self {
         Self {
             upstreams,
@@ -318,6 +320,184 @@ impl ForwardCore {
     }
 }
 
+/// Builder for `Forward` (parsing/validation of core settings)
+pub struct ForwardBuilder {
+    upstreams: Vec<Upstream>,
+    timeout: Duration,
+    strategy: LoadBalanceStrategy,
+    health_checks_enabled: bool,
+    max_attempts: usize,
+}
+
+impl ForwardBuilder {
+    /// Create a new builder with sensible defaults
+    pub fn new() -> Self {
+        Self {
+            upstreams: Vec::new(),
+            timeout: Duration::from_secs(5),
+            strategy: LoadBalanceStrategy::RoundRobin,
+            health_checks_enabled: false,
+            max_attempts: 3,
+        }
+    }
+
+    pub fn add_upstream(mut self, u: Upstream) -> Self {
+        self.upstreams.push(u);
+        self
+    }
+
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    pub fn strategy(mut self, strategy: LoadBalanceStrategy) -> Self {
+        self.strategy = strategy;
+        self
+    }
+
+    pub fn enable_health_checks(mut self, enabled: bool) -> Self {
+        self.health_checks_enabled = enabled;
+        self
+    }
+
+    pub fn max_attempts(mut self, max: usize) -> Self {
+        self.max_attempts = max;
+        self
+    }
+
+    /// Build the `Forward` from the builder
+    pub fn build(self) -> Forward {
+        Forward::new(self.upstreams, self.timeout, self.strategy)
+            .with_health_checks(self.health_checks_enabled)
+            .with_max_attempts(self.max_attempts)
+    }
+
+    /// Parse core settings from plugin args (effective args map)
+    pub fn from_args(args: &HashMap<String, Value>) -> crate::Result<Forward> {
+        // Parse upstreams (required)
+        let upstreams_val = args.get("upstreams").ok_or_else(|| {
+            crate::Error::Config("upstreams is required for forward plugin".to_string())
+        })?;
+
+        let mut upstreams = Vec::new();
+
+        match upstreams_val {
+            Value::Sequence(seq) => {
+                for item in seq {
+                    match item {
+                        Value::String(s) => {
+                            let mut entry = s.clone();
+
+                            // Preserve DoH URLs (http/https), but strip udp:// and tcp://
+                            if !(entry.starts_with("http://") || entry.starts_with("https://")) {
+                                entry = entry
+                                    .trim_start_matches("udp://")
+                                    .trim_start_matches("tcp://")
+                                    .to_string();
+
+                                if !entry.contains(':') {
+                                    entry.push_str(":53");
+                                }
+                            }
+
+                            if let Some((addr, tag)) = entry.split_once('|') {
+                                upstreams
+                                    .push(Upstream::with_tag(addr.to_string(), tag.to_string()));
+                            } else {
+                                upstreams.push(Upstream::new(entry));
+                            }
+                        }
+                        Value::Mapping(map) => {
+                            // Support mapping form: { addr: "1.2.3.4:53", tag: "x" }
+                            let addr = map
+                                .get(Value::String("addr".to_string()))
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| {
+                                    crate::Error::Config(
+                                        "upstream mapping must contain addr".to_string(),
+                                    )
+                                })?;
+                            let addr = if !addr.contains(':') && !addr.starts_with("http") {
+                                format!("{}:53", addr)
+                            } else {
+                                addr.to_string()
+                            };
+                            let tag = map
+                                .get(Value::String("tag".to_string()))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                            if let Some(t) = tag {
+                                upstreams.push(Upstream::with_tag(addr, t));
+                            } else {
+                                upstreams.push(Upstream::new(addr));
+                            }
+                        }
+                        _ => {
+                            return Err(crate::Error::Config(
+                                "upstreams must be array of strings or mappings".to_string(),
+                            ))
+                        }
+                    }
+                }
+            }
+            _ => {
+                return Err(crate::Error::Config(
+                    "upstreams must be an array".to_string(),
+                ))
+            }
+        }
+
+        // timeout
+        let mut builder = ForwardBuilder::new();
+
+        if let Some(Value::Number(n)) = args.get("timeout") {
+            let secs = n
+                .as_i64()
+                .ok_or_else(|| crate::Error::Config("Invalid timeout value".to_string()))?;
+            builder = builder.timeout(Duration::from_secs(secs as u64));
+        }
+
+        // strategy
+        if let Some(Value::String(s)) = args.get("strategy") {
+            let strategy = match s.as_str() {
+                "round_robin" | "roundrobin" => LoadBalanceStrategy::RoundRobin,
+                "random" => LoadBalanceStrategy::Random,
+                "fastest" => LoadBalanceStrategy::Fastest,
+                _ => return Err(crate::Error::Config(format!("Unknown strategy: {}", s))),
+            };
+            builder = builder.strategy(strategy);
+        }
+
+        // health_checks
+        if let Some(Value::Bool(enabled)) = args.get("health_checks") {
+            builder = builder.enable_health_checks(*enabled);
+        }
+
+        // max_attempts
+        if let Some(Value::Number(n)) = args.get("max_attempts") {
+            let max = n
+                .as_i64()
+                .ok_or_else(|| crate::Error::Config("Invalid max_attempts value".to_string()))?
+                as usize;
+            builder = builder.max_attempts(max);
+        }
+
+        // add parsed upstreams
+        for u in upstreams {
+            builder = builder.add_upstream(u);
+        }
+
+        Ok(builder.build())
+    }
+}
+
+impl Default for ForwardBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,7 +505,7 @@ mod tests {
     #[test]
     fn test_load_balance_strategies() {
         let upstreams = vec![Upstream::new("8.8.8.8:53"), Upstream::new("1.1.1.1:53")];
-        let core = ForwardCore::new(
+        let core = Forward::new(
             upstreams,
             Duration::from_secs(5),
             LoadBalanceStrategy::RoundRobin,
@@ -353,7 +533,7 @@ mod tests {
     fn test_select_upstream_random_and_fastest() {
         // Random: ensure index is in range
         let upstreams = vec![Upstream::new("8.8.8.8:53"), Upstream::new("1.1.1.1:53")];
-        let core = ForwardCore::new(
+        let core = Forward::new(
             upstreams.clone(),
             Duration::from_secs(5),
             LoadBalanceStrategy::Random,
@@ -366,7 +546,7 @@ mod tests {
         // Fastest: prefer measured faster upstream
         let ups = upstreams;
         // initially no measurements -> should return first
-        let core2 = ForwardCore::new(
+        let core2 = Forward::new(
             ups.clone(),
             Duration::from_secs(5),
             LoadBalanceStrategy::Fastest,
@@ -377,7 +557,7 @@ mod tests {
         // Record fast time on second upstream and slower on first
         ups[1].health.record_success(Duration::from_millis(5));
         ups[0].health.record_success(Duration::from_millis(100));
-        let core3 = ForwardCore::new(ups, Duration::from_secs(5), LoadBalanceStrategy::Fastest);
+        let core3 = Forward::new(ups, Duration::from_secs(5), LoadBalanceStrategy::Fastest);
         let idx_after = core3.select_upstream(0).unwrap();
         assert_eq!(idx_after, 1);
     }
@@ -394,8 +574,8 @@ mod tests {
             RecordClass::IN,
         ));
 
-        let data = ForwardCore::serialize_message(&msg).expect("serialize");
-        let parsed = ForwardCore::parse_message(&data).expect("parse");
+        let data = Forward::serialize_message(&msg).expect("serialize");
+        let parsed = Forward::parse_message(&data).expect("parse");
         assert_eq!(parsed.questions().len(), 1);
         assert_eq!(parsed.questions()[0].qname(), "example.com");
     }

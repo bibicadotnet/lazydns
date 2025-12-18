@@ -74,6 +74,10 @@ async fn main() -> anyhow::Result<()> {
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
     info!("Configuration file: {}", args.config);
 
+    // Initialize plugin builder system
+    info!("Initializing plugin builder system...");
+    lazydns::plugin::factory::initialize_all_factories();
+
     // Ensure rustls has a process-level CryptoProvider installed (ring)
     #[cfg(feature = "tls")]
     let _ = rustls::crypto::ring::default_provider().install_default();

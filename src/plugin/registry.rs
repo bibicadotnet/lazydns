@@ -1,4 +1,4 @@
-//! Plugin registry
+//! Plugin registry for runtime plugin management.
 //!
 //! Manages plugin registration and lookup.
 

@@ -1,6 +1,7 @@
-//! Plugin builder and factory
+//! Plugin builder system
 //!
-//! This module provides a factory system for creating plugin instances from configuration.
+//! This module provides a builder pattern for creating plugin instances from configuration.
+//! It supports both the new Plugin trait pattern and legacy hardcoded plugins.
 
 use crate::config::types::PluginConfig;
 use crate::plugin::traits::Matcher;
@@ -12,7 +13,11 @@ use crate::Result;
 use serde_yaml::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
+
+// ============================================================================
+// Main Plugin Builder (Configuration-based Plugin Creation)
+// ============================================================================
 
 /// Plugin builder that creates plugin instances from configuration
 pub struct PluginBuilder {
@@ -36,146 +41,33 @@ impl PluginBuilder {
         // Normalize plugin type for more forgiving parsing (trim and lowercase)
         let plugin_type = config.plugin_type.trim().to_lowercase();
 
+        // Ensure plugin builders from plugin modules are initialized (register themselves)
+        crate::plugin::factory::initialize_all_factories();
+
+        // Try to get builder from registry first
+        if let Some(builder) = crate::plugin::factory::get_plugin_factory(&plugin_type) {
+            debug!(
+                name = %config.effective_name(),
+                plugin_type = %plugin_type,
+                "Creating plugin using registered builder"
+            );
+            let plugin = builder.create(config)?;
+
+            // Store in registry if it has a tag or name
+            let effective_name = config.effective_name().to_string();
+            self.plugins.insert(effective_name, Arc::clone(&plugin));
+
+            return Ok(plugin);
+        }
+
+        // Fallback to legacy hardcoded match for backward compatibility
+        debug!(
+            name = %config.effective_name(),
+            plugin_type = %plugin_type,
+            "Plugin type not found in builder registry, using legacy match",
+        );
+
         let plugin: Arc<dyn Plugin> = match plugin_type.as_str() {
-            "cache" => {
-                let args = &config.effective_args();
-                let size = get_int_arg(args, "size", 1024)?;
-                Arc::new(CachePlugin::new(size as usize))
-            }
-
-            "forward" => {
-                let args = &config.effective_args();
-                let upstreams = get_string_array_arg(args, "upstreams")?;
-                let _concurrent = get_int_arg(args, "concurrent", 1)? as usize;
-
-                let mut builder = ForwardPluginBuilder::new();
-                for upstream in upstreams {
-                    // Parse upstream address - handle udp:// and tcp:// prefixes
-                    let mut addr = upstream
-                        .trim_start_matches("udp://")
-                        .trim_start_matches("tcp://")
-                        .to_string();
-
-                    // Ensure the address includes a port. If parsing as a SocketAddr
-                    // fails, try appending the default DNS port 53.
-                    if addr.parse::<std::net::SocketAddr>().is_err() {
-                        let with_port = format!("{}:53", addr);
-                        if with_port.parse::<std::net::SocketAddr>().is_ok() {
-                            addr = with_port;
-                        }
-                    }
-
-                    builder = builder.add_upstream(addr);
-                }
-
-                // Build plugin and log configured upstream addresses for visibility
-                let fp = Arc::new(builder.build());
-                if let Some(fwd) = fp.as_ref().as_any().downcast_ref::<ForwardPlugin>() {
-                    debug!(upstreams = ?fwd.upstream_addrs(), "Built forward plugin with upstreams");
-                }
-                fp
-            }
-
-            "hosts" => {
-                let args = &config.effective_args();
-                let mut plugin = HostsPlugin::new();
-
-                if let Some(files) = get_optional_string_array_arg(args, "files") {
-                    plugin = plugin.with_files(files);
-                }
-
-                if let Some(auto_reload) = get_optional_bool_arg(args, "auto_reload") {
-                    plugin = plugin.with_auto_reload(auto_reload);
-                }
-
-                // Load hosts immediately
-                if let Err(e) = plugin.load_hosts() {
-                    warn!(error = %e, "Failed to load hosts, continuing");
-                }
-
-                // Start file watcher if auto-reload is enabled
-                plugin.start_file_watcher();
-
-                Arc::new(plugin)
-            }
-
-            "domain_set" => {
-                let args = &config.effective_args();
-                let tag = get_string_arg(args, "tag", "")?;
-                let name = if !tag.is_empty() {
-                    tag
-                } else {
-                    plugin_type.clone()
-                };
-
-                let mut plugin = DomainSetPlugin::new(name);
-
-                if let Some(files) = get_optional_string_array_arg(args, "files") {
-                    plugin = plugin.with_files(files);
-                }
-
-                if let Some(auto_reload) = get_optional_bool_arg(args, "auto_reload") {
-                    plugin = plugin.with_auto_reload(auto_reload);
-                }
-
-                // Load domains immediately
-                plugin.load_domains()?;
-
-                // Start file watcher if auto-reload is enabled
-                plugin.start_file_watcher();
-
-                Arc::new(plugin)
-            }
-
-            "ip_set" => {
-                let args = &config.effective_args();
-                let tag = get_string_arg(args, "tag", "")?;
-                let name = if !tag.is_empty() {
-                    tag
-                } else {
-                    plugin_type.clone()
-                };
-
-                let mut plugin = IpSetPlugin::new(name);
-
-                if let Some(files) = get_optional_string_array_arg(args, "files") {
-                    plugin = plugin.with_files(files);
-                }
-
-                if let Some(auto_reload) = get_optional_bool_arg(args, "auto_reload") {
-                    plugin = plugin.with_auto_reload(auto_reload);
-                }
-
-                // Load IPs immediately
-                plugin.load_networks()?;
-
-                // Start file watcher if auto-reload is enabled
-                plugin.start_file_watcher();
-
-                Arc::new(plugin)
-            }
-
-            "ros_addrlist" => {
-                let args = &config.effective_args();
-                let addrlist = get_string_arg(args, "addrlist", "default")?;
-                let mut plugin = RosAddrListPlugin::new(addrlist);
-                if let Some(server) = args.get("server").and_then(|v| v.as_str()) {
-                    plugin = plugin.with_server(server.to_string());
-                }
-                if let Some(user) = args.get("user").and_then(|v| v.as_str()) {
-                    if let Some(pass) = args.get("passwd").and_then(|v| v.as_str()) {
-                        plugin = plugin.with_auth(user.to_string(), pass.to_string());
-                    }
-                }
-                if let Some(mask4) = args.get("mask4").and_then(|v| v.as_i64()) {
-                    plugin = plugin.with_mask4(mask4 as u8);
-                }
-                if let Some(mask6) = args.get("mask6").and_then(|v| v.as_i64()) {
-                    plugin = plugin.with_mask6(mask6 as u8);
-                }
-                Arc::new(plugin)
-            }
-
             "sequence" => {
                 // Handle different sequence formats
                 if let Value::Mapping(map) = &config.args {
@@ -221,141 +113,7 @@ impl PluginBuilder {
                 }
             }
 
-            "fallback" => {
-                // Fallback plugins reference other plugins by name
-                // We'll handle this in a second pass
-                let args = &config.effective_args();
-                let primary = get_string_arg(args, "primary", "")?;
-                let secondary = get_string_arg(args, "secondary", "")?;
-                info!("Creating fallback plugin (will resolve references later): primary={}, secondary={}", primary, secondary);
-                Arc::new(FallbackPlugin::new(Vec::new()))
-            }
-
-            "ttl" => {
-                let args = &config.effective_args();
-                let ttl = get_int_arg(args, "ttl", 300)? as u32;
-                Arc::new(TtlPlugin::new(ttl, 0, 0))
-            }
-
-            "drop_resp" => Arc::new(DropRespPlugin::new()),
-            "accept" => Arc::new(AcceptPlugin::new()),
-
-            "reject" => {
-                let args = &config.effective_args();
-                let rcode = get_int_arg(args, "rcode", 3)? as u8;
-                Arc::new(RejectPlugin::new(rcode))
-            }
-
-            "black_hole" | "blackhole" => {
-                Arc::new(BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap())
-            }
-
-            "redirect" => {
-                let args = &config.effective_args();
-                // Expect `rules` to be an array. Each entry can be a simple string
-                // like "from to" or a mapping with `from`/`to` keys. We'll use
-                // the first rule if multiple are provided.
-                if let Some(Value::Sequence(seq)) = args.get("rules") {
-                    if seq.is_empty() {
-                        return Err(Error::Config(
-                            "redirect requires at least one rule".to_string(),
-                        ));
-                    }
-
-                    let first = &seq[0];
-                    if let Value::String(s) = first {
-                        let parts: Vec<&str> = s.split_whitespace().collect();
-                        if parts.len() == 2 {
-                            Arc::new(crate::plugins::executable::RedirectPlugin::new(
-                                parts[0].to_string(),
-                                parts[1].to_string(),
-                            ))
-                        } else {
-                            return Err(Error::Config(
-                                "redirect rule must be 'from to'".to_string(),
-                            ));
-                        }
-                    } else if let Value::Mapping(map) = first {
-                        let from = map
-                            .get(Value::String("from".to_string()))
-                            .and_then(|v| v.as_str())
-                            .ok_or_else(|| {
-                                Error::Config("redirect rule mapping missing 'from'".to_string())
-                            })?;
-                        let to = map
-                            .get(Value::String("to".to_string()))
-                            .and_then(|v| v.as_str())
-                            .ok_or_else(|| {
-                                Error::Config("redirect rule mapping missing 'to'".to_string())
-                            })?;
-                        Arc::new(crate::plugins::executable::RedirectPlugin::new(
-                            from.to_string(),
-                            to.to_string(),
-                        ))
-                    } else {
-                        return Err(Error::Config(
-                            "unsupported redirect rule format".to_string(),
-                        ));
-                    }
-                } else {
-                    return Err(Error::Config(
-                        "redirect plugin requires 'rules' array".to_string(),
-                    ));
-                }
-            }
-
-            "prefer_ipv4" => Arc::new(PreferIpv4Plugin::new()),
-            "prefer_ipv6" => Arc::new(PreferIpv6Plugin::new()),
-
-            "jump" => {
-                let args = &config.effective_args();
-                let target = get_string_arg(args, "target", "")?;
-                Arc::new(JumpPlugin::new(target))
-            }
-
-            "return" => Arc::new(ReturnPlugin::new()),
-
-            // Matcher plugins
-            "has_resp" => Arc::new(HasRespMatcherPlugin::new()),
-
-            // Server plugins
-            "udp_server" => {
-                let args = &config.effective_args();
-                let listen = get_string_arg(args, "listen", "0.0.0.0:53")?;
-                let entry = get_string_arg(args, "entry", "main_sequence")?;
-                // Accept shorthand like ":5353" and normalize to "0.0.0.0:5353"
-                let listen_parse_str = if listen.starts_with(':') {
-                    format!("0.0.0.0{}", listen)
-                } else {
-                    listen.clone()
-                };
-                let addr = listen_parse_str.parse().map_err(|e| {
-                    Error::Config(format!("Invalid listen address '{}': {}", listen, e))
-                })?;
-                let tag = config.effective_name().to_string();
-                self.server_plugin_tags.push(tag);
-                Arc::new(UdpServerPlugin::new(addr, entry))
-            }
-
-            "tcp_server" => {
-                let args = &config.effective_args();
-                let listen = get_string_arg(args, "listen", "0.0.0.0:53")?;
-                let entry = get_string_arg(args, "entry", "main_sequence")?;
-                // Accept shorthand like ":5353" and normalize to "0.0.0.0:5353"
-                let listen_parse_str = if listen.starts_with(':') {
-                    format!("0.0.0.0{}", listen)
-                } else {
-                    listen.clone()
-                };
-                let addr = listen_parse_str.parse().map_err(|e| {
-                    Error::Config(format!("Invalid listen address '{}': {}", listen, e))
-                })?;
-                let tag = config.effective_name().to_string();
-                self.server_plugin_tags.push(tag);
-                Arc::new(TcpServerPlugin::new(addr, entry))
-            }
-
-            // Accept doh/dot server plugin types at build time so configuration
+            // Accept doh/dot/doq server plugin types at build time so configuration
             // parsing succeeds. The actual servers are started by the application
             // runtime (main.rs) when TLS and certs are available. Here we return
             // a benign plugin instance (AcceptPlugin) so the name is registered
@@ -385,46 +143,21 @@ impl PluginBuilder {
     /// (for example, `fallback` refers to other plugins by name).
     /// This also re-parses sequences to update plugin references after fallback resolution.
     pub fn resolve_references(&mut self, configs: &[PluginConfig]) -> Result<()> {
-        // First pass: resolve fallback plugins
+        // First pass: ask fallback plugins to resolve their pending child references
         for config in configs {
             if config.plugin_type == "fallback" {
-                let args = config.effective_args();
-                let primary = get_string_arg(&args, "primary", "")?;
-                let secondary = get_string_arg(&args, "secondary", "")?;
-
-                debug!(
-                    "Resolving fallback references: primary={}, secondary={}",
-                    primary, secondary
-                );
-                debug!(
-                    "Available plugins: {:?}",
-                    self.plugins.keys().collect::<Vec<_>>()
-                );
-
-                let mut children: Vec<Arc<dyn Plugin>> = Vec::new();
-
-                if !primary.is_empty() {
-                    if let Some(p) = self.plugins.get(&primary).cloned() {
-                        debug!("Found primary plugin: {}", primary);
-                        children.push(p);
-                    } else {
-                        warn!(primary = %primary, "Fallback primary plugin not found");
-                    }
-                }
-
-                if !secondary.is_empty() {
-                    if let Some(p) = self.plugins.get(&secondary).cloned() {
-                        debug!("Found secondary plugin: {}", secondary);
-                        children.push(p);
-                    } else {
-                        warn!(secondary = %secondary, "Fallback secondary plugin not found");
-                    }
-                }
-
-                debug!("Fallback plugin resolved with {} children", children.len());
-                let fallback_plugin = Arc::new(FallbackPlugin::new(children));
                 let name = config.effective_name().to_string();
-                self.plugins.insert(name, fallback_plugin);
+                debug!("Resolving fallback plugin: {}", name);
+                if let Some(plugin) = self.plugins.get(&name).cloned() {
+                    // Attempt to downcast to FallbackPlugin and let it resolve itself
+                    if let Some(fp) = plugin.as_ref().as_any().downcast_ref::<FallbackPlugin>() {
+                        fp.resolve_children(&self.plugins);
+                    } else {
+                        warn!(plugin = %name, "Plugin registered under name is not a FallbackPlugin");
+                    }
+                } else {
+                    warn!(plugin = %name, "Fallback plugin not found in registry");
+                }
             }
         }
 
@@ -498,69 +231,258 @@ impl Default for PluginBuilder {
     }
 }
 
-// Helper functions for extracting configuration values
+/// Parse complex sequence steps from YAML sequence
+fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
+    use crate::plugins::executable::SequenceStep;
+    debug!("Parsing {} sequence steps", sequence.len());
+    let mut steps = Vec::new();
 
-fn get_string_arg(args: &HashMap<String, Value>, key: &str, default: &str) -> Result<String> {
-    match args.get(key) {
-        Some(Value::String(s)) => Ok(s.clone()),
-        Some(_) => Err(Error::Config(format!(
-            "Expected string for '{}', got different type",
-            key
-        ))),
-        None => Ok(default.to_string()),
-    }
-}
+    for step_value in sequence {
+        match step_value {
+            Value::Mapping(map) => {
+                // Check if it's a conditional step (has "matches" key)
+                if let Some(matches_value) = map.get(Value::String("matches".to_string())) {
+                    if let Value::String(condition_str) = matches_value {
+                        // Parse condition
+                        let condition = parse_condition(builder, condition_str)?;
 
-fn get_int_arg(args: &HashMap<String, Value>, key: &str, default: i64) -> Result<i64> {
-    match args.get(key) {
-        Some(Value::Number(n)) => n
-            .as_i64()
-            .ok_or_else(|| Error::Config(format!("Invalid integer value for '{}'", key))),
-        Some(_) => Err(Error::Config(format!(
-            "Expected integer for '{}', got different type",
-            key
-        ))),
-        None => Ok(default),
-    }
-}
-
-fn get_optional_bool_arg(args: &HashMap<String, Value>, key: &str) -> Option<bool> {
-    match args.get(key) {
-        Some(Value::Bool(b)) => Some(*b),
-        _ => None,
-    }
-}
-
-fn get_string_array_arg(args: &HashMap<String, Value>, key: &str) -> Result<Vec<String>> {
-    match args.get(key) {
-        Some(Value::Sequence(seq)) => {
-            let mut result = Vec::new();
-            for item in seq {
-                match item {
-                    Value::String(s) => result.push(s.clone()),
-                    Value::Mapping(map) => {
-                        // Handle upstream format like "- addr: udp://8.8.8.8"
-                        if let Some(Value::String(addr)) =
-                            map.get(Value::String("addr".to_string()))
-                        {
-                            result.push(addr.clone());
+                        // Get the exec action
+                        if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
+                            let action = parse_exec_action(builder, exec_value)?;
+                            steps.push(SequenceStep::If {
+                                condition,
+                                action,
+                                desc: condition_str.to_string(),
+                            });
+                        } else {
+                            return Err(Error::Config("matches step must have exec".to_string()));
                         }
+                    } else {
+                        return Err(Error::Config("matches value must be string".to_string()));
                     }
-                    _ => {}
+                } else if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
+                    // Simple exec step
+                    let plugin = parse_exec_action(builder, exec_value)?;
+                    steps.push(SequenceStep::Exec(plugin));
+                } else {
+                    return Err(Error::Config(
+                        "sequence step must have exec or matches".to_string(),
+                    ));
                 }
             }
-            Ok(result)
+            _ => return Err(Error::Config("sequence step must be a mapping".to_string())),
         }
-        Some(_) => Err(Error::Config(format!(
-            "Expected array for '{}', got different type",
-            key
-        ))),
-        None => Ok(Vec::new()),
     }
+
+    Ok(steps)
 }
 
-fn get_optional_string_array_arg(args: &HashMap<String, Value>, key: &str) -> Option<Vec<String>> {
-    get_string_array_arg(args, key).ok()
+/// Parse exec action from YAML value
+fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<dyn Plugin>> {
+    match exec_value {
+        Value::String(exec_str) => {
+            // Handle different exec formats
+            if let Some(plugin_name) = exec_str.strip_prefix('$') {
+                // Plugin reference: $plugin_name
+                if let Some(plugin) = builder.get_plugin(plugin_name) {
+                    Ok(plugin)
+                } else {
+                    Err(Error::Config(format!(
+                        "Referenced plugin '{}' not found",
+                        plugin_name
+                    )))
+                }
+            } else if exec_str == "accept" {
+                Ok(Arc::new(crate::plugins::AcceptPlugin::new()))
+            } else if exec_str == "drop_resp" {
+                Ok(Arc::new(crate::plugins::DropRespPlugin::new()))
+            } else if exec_str.starts_with("reject") {
+                // reject [rcode] - default to 3 (NXDOMAIN)
+                let rcode = if let Some(rest) = exec_str.strip_prefix("reject") {
+                    rest.trim().parse::<u8>().unwrap_or(3)
+                } else {
+                    3
+                };
+                Ok(Arc::new(crate::plugins::RejectPlugin::new(rcode)))
+            } else if let Some(ttl_part) = exec_str.strip_prefix("ttl ") {
+                // ttl 300-3600 format - take the first number
+                if let Some(first_num) = ttl_part.split('-').next() {
+                    if let Ok(ttl) = first_num.parse::<u32>() {
+                        Ok(Arc::new(crate::plugins::TtlPlugin::new(ttl, 0, 0)))
+                    } else {
+                        Err(Error::Config(format!("Invalid TTL value: {}", ttl_part)))
+                    }
+                } else {
+                    Err(Error::Config(format!("Invalid TTL format: {}", exec_str)))
+                }
+            } else if exec_str.starts_with("black_hole") {
+                Ok(Arc::new(
+                    crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
+                ))
+            } else if let Some(target) = exec_str.strip_prefix("jump ") {
+                // jump target_name
+                let target = target.trim();
+                Ok(Arc::new(crate::plugins::JumpPlugin::new(target)))
+            } else if exec_str == "prefer_ipv4" {
+                Ok(Arc::new(crate::plugins::PreferIpv4Plugin::new()))
+            } else if exec_str == "prefer_ipv6" {
+                Ok(Arc::new(crate::plugins::PreferIpv6Plugin::new()))
+            } else {
+                Err(Error::Config(format!("Unknown exec action: {}", exec_str)))
+            }
+        }
+        _ => Err(Error::Config("exec value must be string".to_string())),
+    }
+}
+#[allow(clippy::type_complexity)]
+fn parse_condition(
+    builder: &PluginBuilder,
+    condition_str: &str,
+) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
+    // Simple condition parsing - this is a basic implementation
+    // In a full implementation, this would need to handle more complex expressions
+
+    if condition_str == "has_resp" {
+        Ok(Arc::new(|ctx: &crate::plugin::Context| ctx.has_response()))
+    } else if let Some(ip_set_ref) = condition_str.strip_prefix("resp_ip ") {
+        let ip_set_name = if let Some(name) = ip_set_ref.strip_prefix('$') {
+            name
+        } else {
+            ip_set_ref
+        };
+        // Get the IP set plugin and create a matcher
+        if let Some(plugin) = builder.get_plugin(ip_set_name) {
+            if plugin.name() == "ip_set" {
+                let plugin_clone = Arc::clone(&plugin);
+                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+                    if let Some(matcher) = plugin_clone
+                        .as_ref()
+                        .as_any()
+                        .downcast_ref::<crate::plugins::dataset::IpSetPlugin>()
+                    {
+                        matcher.matches_context(ctx)
+                    } else {
+                        false
+                    }
+                }))
+            } else {
+                warn!("Plugin '{}' is not an IP set plugin", ip_set_name);
+                Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
+            }
+        } else {
+            warn!("IP set plugin '{}' not found", ip_set_name);
+            Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
+        }
+    } else if let Some(ip_set_ref) = condition_str.strip_prefix("!resp_ip ") {
+        let ip_set_name = if let Some(name) = ip_set_ref.strip_prefix('$') {
+            name
+        } else {
+            ip_set_ref
+        };
+        // Negated IP matching
+        if let Some(plugin) = builder.get_plugin(ip_set_name) {
+            if plugin.name() == "ip_set" {
+                let plugin_clone = Arc::clone(&plugin);
+                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+                    if let Some(matcher) = plugin_clone
+                        .as_ref()
+                        .as_any()
+                        .downcast_ref::<crate::plugins::dataset::IpSetPlugin>()
+                    {
+                        !matcher.matches_context(ctx)
+                    } else {
+                        true
+                    }
+                }))
+            } else {
+                warn!("Plugin '{}' is not an IP set plugin", ip_set_name);
+                Ok(Arc::new(|_ctx: &crate::plugin::Context| true))
+            }
+        } else {
+            warn!("IP set plugin '{}' not found", ip_set_name);
+            Ok(Arc::new(|_ctx: &crate::plugin::Context| true))
+        }
+    } else if let Some(domain_set_ref) = condition_str.strip_prefix("qname ") {
+        let domain_set_name = if let Some(name) = domain_set_ref.strip_prefix('$') {
+            name
+        } else {
+            domain_set_ref
+        };
+        // Domain matching
+        if let Some(plugin) = builder.get_plugin(domain_set_name) {
+            if plugin.name() == "domain_set" {
+                let plugin_clone = Arc::clone(&plugin);
+                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+                    if let Some(matcher) = plugin_clone
+                        .as_ref()
+                        .as_any()
+                        .downcast_ref::<crate::plugins::dataset::DomainSetPlugin>(
+                    ) {
+                        matcher.matches_context(ctx)
+                    } else {
+                        false
+                    }
+                }))
+            } else {
+                warn!("Plugin '{}' is not a domain set plugin", domain_set_name);
+                Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
+            }
+        } else {
+            warn!("Domain set plugin '{}' not found", domain_set_name);
+            Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
+        }
+    } else if let Some(domain) = condition_str.strip_prefix("!qname ") {
+        // Negated domain matching - for single domain, not domain set
+        let domain_lower = domain.to_lowercase();
+        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+            if let Some(question) = ctx.request().questions().first() {
+                let qname = question.qname().to_string().to_lowercase();
+                !qname.eq(&domain_lower)
+            } else {
+                true
+            }
+        }))
+    } else if condition_str.starts_with("qtype ") {
+        // qtype 12 65 - query type matching
+        let type_str = condition_str.strip_prefix("qtype ").unwrap_or_default();
+        let mut qtypes = Vec::new();
+
+        // Parse space-separated type numbers
+        for type_part in type_str.split_whitespace() {
+            match type_part.parse::<u16>() {
+                Ok(qtype_num) => {
+                    qtypes.push(qtype_num);
+                }
+                Err(_) => {
+                    return Err(Error::Config(format!(
+                        "Invalid query type number '{}': {}",
+                        type_part, condition_str
+                    )));
+                }
+            }
+        }
+
+        if qtypes.is_empty() {
+            return Err(Error::Config(format!(
+                "No query types specified: {}",
+                condition_str
+            )));
+        }
+
+        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+            if let Some(question) = ctx.request().questions().first() {
+                let qtype = question.qtype().to_u16();
+                qtypes.contains(&qtype)
+            } else {
+                false
+            }
+        }))
+    } else {
+        Err(Error::Config(format!(
+            "Unknown condition: {}",
+            condition_str
+        )))
+    }
 }
 
 #[allow(clippy::items_after_test_module)]
@@ -707,27 +629,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_string_arg() {
-        let mut args = HashMap::new();
-        args.insert("key".to_string(), Value::String("value".to_string()));
-
-        assert_eq!(get_string_arg(&args, "key", "default").unwrap(), "value");
-        assert_eq!(
-            get_string_arg(&args, "missing", "default").unwrap(),
-            "default"
-        );
-    }
-
-    #[test]
-    fn test_get_int_arg() {
-        let mut args = HashMap::new();
-        args.insert("key".to_string(), Value::Number(42.into()));
-
-        assert_eq!(get_int_arg(&args, "key", 0).unwrap(), 42);
-        assert_eq!(get_int_arg(&args, "missing", 100).unwrap(), 100);
-    }
-
-    #[test]
     fn test_build_udp_server_with_shorthand_listen() {
         let mut builder = PluginBuilder::new();
         let mut args_map = Mapping::new();
@@ -751,6 +652,131 @@ mod tests {
 
         let plugin = builder.build(&config).unwrap();
         assert_eq!(plugin.name(), "udp_server");
+    }
+
+    #[test]
+    fn test_derived_plugin_type_names() {
+        // Ensure the macro-based derivation registers canonical names derived from type names
+        crate::plugin::factory::initialize_all_factories();
+        let types = crate::plugin::factory::get_all_plugin_types();
+        assert!(types.contains(&"drop_resp".to_string()));
+        assert!(types.contains(&"forward".to_string()));
+        assert!(crate::plugin::factory::get_plugin_factory("drop_resp").is_some());
+        assert!(crate::plugin::factory::get_plugin_factory("forward").is_some());
+    }
+
+    #[test]
+    fn test_derived_plugin_name_mapping() {
+        // Local helper that mirrors the macro's derivation algorithm
+        fn derive<T: 'static>() -> String {
+            let t = std::any::type_name::<T>();
+            let last = t.rsplit("::").next().unwrap_or(t);
+            let base = last.strip_suffix("Plugin").unwrap_or(last);
+            let mut s = String::new();
+            for (i, ch) in base.chars().enumerate() {
+                if ch.is_uppercase() {
+                    if i != 0 {
+                        s.push('_');
+                    }
+                    for lc in ch.to_lowercase() {
+                        s.push(lc);
+                    }
+                } else {
+                    s.push(ch);
+                }
+            }
+            s
+        }
+
+        assert_eq!(
+            derive::<crate::plugins::executable::DropRespPlugin>(),
+            "drop_resp"
+        );
+        assert_eq!(
+            derive::<crate::plugins::executable::ForwardPlugin>(),
+            "forward"
+        );
+        assert_eq!(derive::<crate::plugins::AcceptPlugin>(), "accept");
+        assert_eq!(
+            derive::<crate::plugins::flow::return_plugin::ReturnPlugin>(),
+            "return"
+        );
+        assert_eq!(derive::<crate::plugins::flow::jump::JumpPlugin>(), "jump");
+        assert_eq!(
+            derive::<crate::plugins::flow::reject::RejectPlugin>(),
+            "reject"
+        );
+        assert_eq!(
+            derive::<crate::plugins::flow::prefer_ipv4::PreferIpv4Plugin>(),
+            "prefer_ipv4"
+        );
+        assert_eq!(
+            derive::<crate::plugins::flow::prefer_ipv6::PreferIpv6Plugin>(),
+            "prefer_ipv6"
+        );
+        assert_eq!(derive::<crate::plugins::CachePlugin>(), "cache");
+        assert_eq!(
+            derive::<crate::plugins::dataset::DomainSetPlugin>(),
+            "domain_set"
+        );
+    }
+
+    #[test]
+    fn test_no_derived_name_collisions() {
+        fn derive<T: 'static>() -> String {
+            let t = std::any::type_name::<T>();
+            let last = t.rsplit("::").next().unwrap_or(t);
+            let base = last.strip_suffix("Plugin").unwrap_or(last);
+            let mut s = String::new();
+            for (i, ch) in base.chars().enumerate() {
+                if ch.is_uppercase() {
+                    if i != 0 {
+                        s.push('_');
+                    }
+                    for lc in ch.to_lowercase() {
+                        s.push(lc);
+                    }
+                } else {
+                    s.push(ch);
+                }
+            }
+            s
+        }
+
+        // A representative set of plugin types to check for accidental collisions
+        let derived = vec![
+            derive::<crate::plugins::executable::DropRespPlugin>(),
+            derive::<crate::plugins::executable::ForwardPlugin>(),
+            derive::<crate::plugins::AcceptPlugin>(),
+            derive::<crate::plugins::flow::return_plugin::ReturnPlugin>(),
+            derive::<crate::plugins::flow::jump::JumpPlugin>(),
+            derive::<crate::plugins::flow::reject::RejectPlugin>(),
+            derive::<crate::plugins::flow::prefer_ipv4::PreferIpv4Plugin>(),
+            derive::<crate::plugins::flow::prefer_ipv6::PreferIpv6Plugin>(),
+            derive::<crate::plugins::executable::CachePlugin>(),
+            derive::<crate::plugins::dataset::DomainSetPlugin>(),
+            derive::<crate::plugins::geoip::GeoIpPlugin>(),
+            derive::<crate::plugins::geosite::GeoSitePlugin>(),
+            derive::<crate::plugins::executable::HostsPlugin>(),
+        ];
+
+        let set: std::collections::HashSet<_> = derived.iter().cloned().collect();
+        assert_eq!(
+            set.len(),
+            derived.len(),
+            "Derived plugin names collided: {:?}",
+            {
+                // Build a list of duplicates for better diagnostics
+                let mut counts = std::collections::HashMap::new();
+                for name in &derived {
+                    *counts.entry(name.clone()).or_insert(0usize) += 1;
+                }
+                counts
+                    .into_iter()
+                    .filter_map(|(k, v)| if v > 1 { Some(k) } else { None })
+                    .collect::<Vec<_>>()
+            }
+        );
     }
 
     #[test]
@@ -895,258 +921,71 @@ mod tests {
         let plugin = builder.build(&config).expect("build redirect plugin");
         assert_eq!(plugin.name(), "redirect");
     }
-}
 
-/// Parse complex sequence steps from YAML sequence
-fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
-    use crate::plugins::executable::SequenceStep;
-    info!("Parsing {} sequence steps", sequence.len());
-    let mut steps = Vec::new();
+    #[test]
+    fn test_fallback_resolves_children() {
+        let mut builder = PluginBuilder::new();
 
-    for step_value in sequence {
-        match step_value {
-            Value::Mapping(map) => {
-                // Check if it's a conditional step (has "matches" key)
-                if let Some(matches_value) = map.get(Value::String("matches".to_string())) {
-                    if let Value::String(condition_str) = matches_value {
-                        // Parse condition
-                        let condition = parse_condition(builder, condition_str)?;
-
-                        // Get the exec action
-                        if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
-                            let action = parse_exec_action(builder, exec_value)?;
-                            steps.push(SequenceStep::If {
-                                condition,
-                                action,
-                                desc: condition_str.to_string(),
-                            });
-                        } else {
-                            return Err(Error::Config("matches step must have exec".to_string()));
-                        }
-                    } else {
-                        return Err(Error::Config("matches value must be string".to_string()));
-                    }
-                } else if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
-                    // Simple exec step
-                    let plugin = parse_exec_action(builder, exec_value)?;
-                    steps.push(SequenceStep::Exec(plugin));
-                } else {
-                    return Err(Error::Config(
-                        "sequence step must have exec or matches".to_string(),
-                    ));
-                }
-            }
-            _ => return Err(Error::Config("sequence step must be a mapping".to_string())),
-        }
-    }
-
-    Ok(steps)
-}
-
-/// Parse exec action from YAML value
-fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<dyn Plugin>> {
-    match exec_value {
-        Value::String(exec_str) => {
-            // Handle different exec formats
-            if let Some(plugin_name) = exec_str.strip_prefix('$') {
-                // Plugin reference: $plugin_name
-                if let Some(plugin) = builder.get_plugin(plugin_name) {
-                    Ok(plugin)
-                } else {
-                    Err(Error::Config(format!(
-                        "Referenced plugin '{}' not found",
-                        plugin_name
-                    )))
-                }
-            } else if exec_str == "accept" {
-                Ok(Arc::new(crate::plugins::AcceptPlugin::new()))
-            } else if exec_str == "drop_resp" {
-                Ok(Arc::new(crate::plugins::DropRespPlugin::new()))
-            } else if exec_str.starts_with("reject") {
-                // reject [rcode] - default to 3 (NXDOMAIN)
-                let rcode = if let Some(rest) = exec_str.strip_prefix("reject") {
-                    rest.trim().parse::<u8>().unwrap_or(3)
-                } else {
-                    3
-                };
-                Ok(Arc::new(crate::plugins::RejectPlugin::new(rcode)))
-            } else if let Some(ttl_part) = exec_str.strip_prefix("ttl ") {
-                // ttl 300-3600 format - take the first number
-                if let Some(first_num) = ttl_part.split('-').next() {
-                    if let Ok(ttl) = first_num.parse::<u32>() {
-                        Ok(Arc::new(crate::plugins::TtlPlugin::new(ttl, 0, 0)))
-                    } else {
-                        Err(Error::Config(format!("Invalid TTL value: {}", ttl_part)))
-                    }
-                } else {
-                    Err(Error::Config(format!("Invalid TTL format: {}", exec_str)))
-                }
-            } else if exec_str.starts_with("black_hole") {
-                Ok(Arc::new(
-                    crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
-                ))
-            } else if let Some(target) = exec_str.strip_prefix("jump ") {
-                // jump target_name
-                let target = target.trim();
-                Ok(Arc::new(crate::plugins::JumpPlugin::new(target)))
-            } else if exec_str == "prefer_ipv4" {
-                Ok(Arc::new(crate::plugins::PreferIpv4Plugin::new()))
-            } else if exec_str == "prefer_ipv6" {
-                Ok(Arc::new(crate::plugins::PreferIpv6Plugin::new()))
-            } else {
-                Err(Error::Config(format!("Unknown exec action: {}", exec_str)))
-            }
-        }
-        _ => Err(Error::Config("exec value must be string".to_string())),
-    }
-}
-#[allow(clippy::type_complexity)]
-fn parse_condition(
-    builder: &PluginBuilder,
-    condition_str: &str,
-) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
-    // Simple condition parsing - this is a basic implementation
-    // In a full implementation, this would need to handle more complex expressions
-
-    if condition_str == "has_resp" {
-        Ok(Arc::new(|ctx: &crate::plugin::Context| ctx.has_response()))
-    } else if let Some(ip_set_ref) = condition_str.strip_prefix("resp_ip ") {
-        let ip_set_name = if let Some(name) = ip_set_ref.strip_prefix('$') {
-            name
-        } else {
-            ip_set_ref
+        // Build primary and secondary helper plugins (use 'accept' as a benign plugin type)
+        let primary_cfg = PluginConfig {
+            tag: None,
+            plugin_type: "accept".to_string(),
+            args: Value::Mapping(Mapping::new()),
+            name: Some("primary".to_string()),
+            priority: 100,
+            config: HashMap::new(),
         };
-        // Get the IP set plugin and create a matcher
-        if let Some(plugin) = builder.get_plugin(ip_set_name) {
-            if plugin.name() == "ip_set" {
-                let plugin_clone = Arc::clone(&plugin);
-                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-                    if let Some(matcher) = plugin_clone
-                        .as_ref()
-                        .as_any()
-                        .downcast_ref::<crate::plugins::data_provider::IpSetPlugin>(
-                    ) {
-                        matcher.matches_context(ctx)
-                    } else {
-                        false
-                    }
-                }))
-            } else {
-                warn!("Plugin '{}' is not an IP set plugin", ip_set_name);
-                Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
-            }
-        } else {
-            warn!("IP set plugin '{}' not found", ip_set_name);
-            Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
-        }
-    } else if let Some(ip_set_ref) = condition_str.strip_prefix("!resp_ip ") {
-        let ip_set_name = if let Some(name) = ip_set_ref.strip_prefix('$') {
-            name
-        } else {
-            ip_set_ref
+        let secondary_cfg = PluginConfig {
+            tag: None,
+            plugin_type: "accept".to_string(),
+            args: Value::Mapping(Mapping::new()),
+            name: Some("secondary".to_string()),
+            priority: 100,
+            config: HashMap::new(),
         };
-        // Negated IP matching
-        if let Some(plugin) = builder.get_plugin(ip_set_name) {
-            if plugin.name() == "ip_set" {
-                let plugin_clone = Arc::clone(&plugin);
-                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-                    if let Some(matcher) = plugin_clone
-                        .as_ref()
-                        .as_any()
-                        .downcast_ref::<crate::plugins::data_provider::IpSetPlugin>(
-                    ) {
-                        !matcher.matches_context(ctx)
-                    } else {
-                        true
-                    }
-                }))
-            } else {
-                warn!("Plugin '{}' is not an IP set plugin", ip_set_name);
-                Ok(Arc::new(|_ctx: &crate::plugin::Context| true))
-            }
-        } else {
-            warn!("IP set plugin '{}' not found", ip_set_name);
-            Ok(Arc::new(|_ctx: &crate::plugin::Context| true))
-        }
-    } else if let Some(domain_set_ref) = condition_str.strip_prefix("qname ") {
-        let domain_set_name = if let Some(name) = domain_set_ref.strip_prefix('$') {
-            name
-        } else {
-            domain_set_ref
+        builder.build(&primary_cfg).unwrap();
+        builder.build(&secondary_cfg).unwrap();
+
+        // Create fallback config referencing the above by name
+        let mut args_map = Mapping::new();
+        args_map.insert(
+            Value::String("primary".to_string()),
+            Value::String("primary".to_string()),
+        );
+        args_map.insert(
+            Value::String("secondary".to_string()),
+            Value::String("secondary".to_string()),
+        );
+
+        let fb_cfg = PluginConfig {
+            tag: None,
+            plugin_type: "fallback".to_string(),
+            args: Value::Mapping(args_map),
+            name: Some("my_fallback".to_string()),
+            priority: 100,
+            config: HashMap::new(),
         };
-        // Domain matching
-        if let Some(plugin) = builder.get_plugin(domain_set_name) {
-            if plugin.name() == "domain_set" {
-                let plugin_clone = Arc::clone(&plugin);
-                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-                    if let Some(matcher) = plugin_clone
-                        .as_ref()
-                        .as_any()
-                        .downcast_ref::<crate::plugins::data_provider::DomainSetPlugin>(
-                    ) {
-                        matcher.matches_context(ctx)
-                    } else {
-                        false
-                    }
-                }))
-            } else {
-                warn!("Plugin '{}' is not a domain set plugin", domain_set_name);
-                Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
-            }
+
+        builder.build(&fb_cfg).unwrap();
+
+        // Resolve references
+        builder
+            .resolve_references(&[primary_cfg, secondary_cfg, fb_cfg])
+            .unwrap();
+
+        // Verify fallback has resolved children
+        let plugin = builder
+            .get_plugin("my_fallback")
+            .expect("fallback plugin present");
+        if let Some(fp) = plugin
+            .as_ref()
+            .as_any()
+            .downcast_ref::<crate::plugins::executable::FallbackPlugin>()
+        {
+            assert_eq!(fp.resolved_child_count(), 2);
+            assert_eq!(fp.pending_child_count(), 0);
         } else {
-            warn!("Domain set plugin '{}' not found", domain_set_name);
-            Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
+            panic!("fallback plugin is wrong type");
         }
-    } else if let Some(domain) = condition_str.strip_prefix("!qname ") {
-        // Negated domain matching - for single domain, not domain set
-        let domain_lower = domain.to_lowercase();
-        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-            if let Some(question) = ctx.request().questions().first() {
-                let qname = question.qname().to_string().to_lowercase();
-                !qname.eq(&domain_lower)
-            } else {
-                true
-            }
-        }))
-    } else if condition_str.starts_with("qtype ") {
-        // qtype 12 65 - query type matching
-        let type_str = condition_str.strip_prefix("qtype ").unwrap_or_default();
-        let mut qtypes = Vec::new();
-
-        // Parse space-separated type numbers
-        for type_part in type_str.split_whitespace() {
-            match type_part.parse::<u16>() {
-                Ok(qtype_num) => {
-                    qtypes.push(qtype_num);
-                }
-                Err(_) => {
-                    return Err(Error::Config(format!(
-                        "Invalid query type number '{}': {}",
-                        type_part, condition_str
-                    )));
-                }
-            }
-        }
-
-        if qtypes.is_empty() {
-            return Err(Error::Config(format!(
-                "No query types specified: {}",
-                condition_str
-            )));
-        }
-
-        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-            if let Some(question) = ctx.request().questions().first() {
-                let qtype = question.qtype().to_u16();
-                qtypes.contains(&qtype)
-            } else {
-                false
-            }
-        }))
-    } else {
-        Err(Error::Config(format!(
-            "Unknown condition: {}",
-            condition_str
-        )))
     }
 }

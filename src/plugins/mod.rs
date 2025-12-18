@@ -30,11 +30,10 @@
 //! ```
 
 pub mod acl;
-pub mod cache;
-pub mod control_flow;
-pub mod data_provider;
+pub mod dataset;
 pub mod domain_matcher;
 pub mod executable;
+pub mod flow;
 pub mod forward;
 pub mod geoip;
 pub mod geosite;
@@ -42,45 +41,43 @@ pub mod hosts;
 pub mod ip_matcher;
 pub mod mark;
 pub mod matcher;
-pub mod ratelimit;
 pub mod server;
 // utils module moved to crate-level `src/utils.rs`
 
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
-pub use cache::{CachePlugin, CacheStorePlugin};
-pub use control_flow::{
+pub use dataset::{DomainSetPlugin, IpSetPlugin};
+pub use domain_matcher::DomainMatcherPlugin;
+pub use flow::{
     AcceptPlugin, GotoPlugin, IfPlugin, JumpPlugin, ParallelPlugin, PreferIpv4Plugin,
     PreferIpv6Plugin, RejectPlugin, ReturnPlugin,
 };
-pub use data_provider::{DomainSetPlugin, IpSetPlugin};
-pub use domain_matcher::DomainMatcherPlugin;
 pub use forward::LoadBalanceStrategy;
 pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
 pub use ip_matcher::IpMatcherPlugin;
 pub use mark::MarkPlugin;
-pub use ratelimit::RateLimitPlugin;
 
 // Re-export matcher plugins
 pub use matcher::{
     BaseIntMatcherPlugin, ClientIpMatcherPlugin, CnameMatcherPlugin, EnvMatcherPlugin,
-    HasRespMatcherPlugin, HasWantedAnsMatcherPlugin, IntComparison, PtrIpMatcherPlugin,
+    HasRespPlugin, HasWantedAnsMatcherPlugin, IntComparison, PtrIpMatcherPlugin,
     QClassMatcherPlugin, QNameMatcherPlugin, QTypeMatcherPlugin, RCodeMatcherPlugin,
     RandomMatcherPlugin, StringExpMatcherPlugin, StringExpression,
 };
 
 // Re-export executable plugins
 pub use executable::{
-    ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin,
-    Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, ForwardPluginBuilder,
-    HostsPlugin, IpPreference, NftSetPlugin, QuerySummaryPlugin, RedirectPlugin,
-    ReverseLookupPlugin, RosAddrListPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
+    ArbitraryPlugin, BlackholePlugin, CachePlugin, DebugPrintPlugin, DropRespPlugin,
+    DualSelectorPlugin, Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin,
+    HostsPlugin, IpPreference, NftSetPlugin, QuerySummaryPlugin, RateLimitPlugin, RedirectPlugin,
+    ReverseLookupPlugin, RosAddrlistPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 // Re-export server plugins
 pub use server::{TcpServerPlugin, UdpServerPlugin};
 
+// Re-add tests module at file end to satisfy lints
 #[cfg(test)]
 mod tests {
     use super::*;
