@@ -292,62 +292,6 @@ impl ConfigPluginBuilder {
                 Arc::new(plugin)
             }
 
-            "domain_set" => {
-                let args = &config.effective_args();
-                let tag = get_string_arg(args, "tag", "")?;
-                let name = if !tag.is_empty() {
-                    tag
-                } else {
-                    plugin_type.clone()
-                };
-
-                let mut plugin = DomainSetPlugin::new(name);
-
-                if let Some(files) = get_optional_string_array_arg(args, "files") {
-                    plugin = plugin.with_files(files);
-                }
-
-                if let Some(auto_reload) = get_optional_bool_arg(args, "auto_reload") {
-                    plugin = plugin.with_auto_reload(auto_reload);
-                }
-
-                // Load domains immediately
-                plugin.load_domains()?;
-
-                // Start file watcher if auto-reload is enabled
-                plugin.start_file_watcher();
-
-                Arc::new(plugin)
-            }
-
-            "ip_set" => {
-                let args = &config.effective_args();
-                let tag = get_string_arg(args, "tag", "")?;
-                let name = if !tag.is_empty() {
-                    tag
-                } else {
-                    plugin_type.clone()
-                };
-
-                let mut plugin = IpSetPlugin::new(name);
-
-                if let Some(files) = get_optional_string_array_arg(args, "files") {
-                    plugin = plugin.with_files(files);
-                }
-
-                if let Some(auto_reload) = get_optional_bool_arg(args, "auto_reload") {
-                    plugin = plugin.with_auto_reload(auto_reload);
-                }
-
-                // Load IPs immediately
-                plugin.load_networks()?;
-
-                // Start file watcher if auto-reload is enabled
-                plugin.start_file_watcher();
-
-                Arc::new(plugin)
-            }
-
             "ros_addrlist" => {
                 let args = &config.effective_args();
                 let addrlist = get_string_arg(args, "addrlist", "default")?;
