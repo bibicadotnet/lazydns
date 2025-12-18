@@ -2,6 +2,9 @@ use crate::dns::RecordType;
 use crate::plugin::Plugin;
 use async_trait::async_trait;
 
+// Auto-register using the register macro
+crate::register_plugin_builder!(PreferIpv4Plugin);
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PreferIpv4Plugin;
 
@@ -15,6 +18,12 @@ impl PreferIpv4Plugin {
 impl Plugin for PreferIpv4Plugin {
     fn name(&self) -> &str {
         "prefer_ipv4"
+    }
+
+    fn init(
+        _config: &crate::config::types::PluginConfig,
+    ) -> crate::Result<std::sync::Arc<dyn Plugin>> {
+        Ok(std::sync::Arc::new(PreferIpv4Plugin::new()))
     }
 
     async fn execute(&self, ctx: &mut crate::plugin::Context) -> crate::Result<()> {

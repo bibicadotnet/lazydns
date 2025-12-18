@@ -12,6 +12,10 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::{error, info};
 
+// Auto-register using the register macro
+crate::register_plugin_builder!(UdpServerPlugin);
+crate::register_plugin_builder!(TcpServerPlugin);
+
 /// UDP server plugin
 ///
 /// Starts a UDP DNS server that listens for queries and processes them
@@ -94,6 +98,28 @@ impl std::fmt::Debug for UdpServerPlugin {
 impl Plugin for UdpServerPlugin {
     fn name(&self) -> &str {
         "udp_server"
+    }
+
+    fn init(config: &crate::config::types::PluginConfig) -> Result<Arc<dyn Plugin>> {
+        use std::sync::Arc;
+
+        let args = config.effective_args();
+        let listen = args.get("listen")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0.0.0.0:53");
+        let entry = args.get("entry")
+            .and_then(|v| v.as_str())
+            .unwrap_or("main_sequence");
+        // Accept shorthand like ":5353" and normalize to "0.0.0.0:5353"
+        let listen_parse_str = if listen.starts_with(':') {
+            format!("0.0.0.0{}", listen)
+        } else {
+            listen.to_string()
+        };
+        let addr = listen_parse_str.parse().map_err(|e| {
+            crate::Error::Config(format!("Invalid listen address '{}': {}", listen, e))
+        })?;
+        Ok(Arc::new(UdpServerPlugin::new(addr, entry.to_string())))
     }
 
     async fn execute(&self, _ctx: &mut Context) -> Result<()> {
@@ -184,6 +210,28 @@ impl std::fmt::Debug for TcpServerPlugin {
 impl Plugin for TcpServerPlugin {
     fn name(&self) -> &str {
         "tcp_server"
+    }
+
+    fn init(config: &crate::config::types::PluginConfig) -> Result<Arc<dyn Plugin>> {
+        use std::sync::Arc;
+
+        let args = config.effective_args();
+        let listen = args.get("listen")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0.0.0.0:53");
+        let entry = args.get("entry")
+            .and_then(|v| v.as_str())
+            .unwrap_or("main_sequence");
+        // Accept shorthand like ":5353" and normalize to "0.0.0.0:5353"
+        let listen_parse_str = if listen.starts_with(':') {
+            format!("0.0.0.0{}", listen)
+        } else {
+            listen.to_string()
+        };
+        let addr = listen_parse_str.parse().map_err(|e| {
+            crate::Error::Config(format!("Invalid listen address '{}': {}", listen, e))
+        })?;
+        Ok(Arc::new(TcpServerPlugin::new(addr, entry.to_string())))
     }
 
     async fn execute(&self, _ctx: &mut Context) -> Result<()> {

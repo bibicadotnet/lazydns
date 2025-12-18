@@ -8,6 +8,9 @@ use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;
 
+// Auto-register using the register macro
+crate::register_plugin_builder!(RedirectPlugin);
+
 /// Plugin that redirects queries from one domain to another
 ///
 /// # Example
@@ -94,6 +97,63 @@ impl fmt::Debug for RedirectPlugin {
 impl Plugin for RedirectPlugin {
     fn name(&self) -> &str {
         "redirect"
+    }
+
+    fn init(config: &crate::config::types::PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
+        use serde_yaml::Value;
+        use std::sync::Arc;
+
+        // Expect `rules` to be an array. Each entry can be a simple string
+        // like "from to" or a mapping with `from`/`to` keys. We'll use
+        // the first rule if multiple are provided.
+        let args = config.effective_args();
+        if let Some(Value::Sequence(seq)) = args.get("rules") {
+            if seq.is_empty() {
+                return Err(crate::Error::Config(
+                    "redirect requires at least one rule".to_string(),
+                ));
+            }
+
+            let first = &seq[0];
+            if let Value::String(s) = first {
+                let parts: Vec<&str> = s.split_whitespace().collect();
+                if parts.len() == 2 {
+                    Ok(Arc::new(RedirectPlugin::new(
+                        parts[0].to_string(),
+                        parts[1].to_string(),
+                    )))
+                } else {
+                    Err(crate::Error::Config(
+                        "redirect rule must be 'from to'".to_string(),
+                    ))
+                }
+            } else if let Value::Mapping(map) = first {
+                let from = map
+                    .get(Value::String("from".to_string()))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        crate::Error::Config("redirect rule mapping missing 'from'".to_string())
+                    })?;
+                let to = map
+                    .get(Value::String("to".to_string()))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        crate::Error::Config("redirect rule mapping missing 'to'".to_string())
+                    })?;
+                Ok(Arc::new(RedirectPlugin::new(
+                    from.to_string(),
+                    to.to_string(),
+                )))
+            } else {
+                Err(crate::Error::Config(
+                    "unsupported redirect rule format".to_string(),
+                ))
+            }
+        } else {
+            Err(crate::Error::Config(
+                "redirect plugin requires 'rules' array".to_string(),
+            ))
+        }
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {

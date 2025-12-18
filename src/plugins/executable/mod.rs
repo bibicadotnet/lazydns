@@ -37,7 +37,7 @@ pub use nftset::NftSetPlugin;
 pub use query_summary::QuerySummaryPlugin;
 pub use redirect::RedirectPlugin;
 pub use reverse_lookup::ReverseLookupPlugin;
-pub use ros_addrlist::RosAddrListPlugin;
+pub use ros_addrlist::RosAddrlistPlugin;
 pub use sequence::SequencePlugin;
 pub use sequence::SequenceStep;
 pub use sleep::SleepPlugin;

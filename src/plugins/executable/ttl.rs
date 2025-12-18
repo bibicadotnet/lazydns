@@ -1,3 +1,4 @@
+use crate::config::PluginConfig;
 /// TTL plugin: fix or clamp TTLs on responses.
 ///
 /// This plugin can either set a fixed TTL for all response records,
@@ -10,6 +11,10 @@ use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
+use std::sync::Arc;
+
+// Auto-register using the register macro
+crate::register_plugin_builder!(TtlPlugin);
 
 /// TTL plugin: fix or clamp TTLs on responses
 /// TTL plugin configuration.
@@ -125,6 +130,13 @@ impl Plugin for TtlPlugin {
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         self.apply(ctx);
         Ok(())
+    }
+
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+
+        let ttl = args.get("ttl").and_then(|v| v.as_i64()).unwrap_or(300) as u32;
+        Ok(Arc::new(TtlPlugin::new(ttl, 0, 0)))
     }
 }
 

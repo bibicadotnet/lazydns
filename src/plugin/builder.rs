@@ -24,15 +24,26 @@ use tracing::{debug, info, warn};
 /// # Example
 ///
 /// ```ignore
-/// use lazydns::plugin::builder::PluginBuilder;
 /// use lazydns::plugin::Plugin;
-/// use lazydns::config::types::PluginConfig;
+/// use lazydns::config::PluginConfig;
 /// use std::sync::Arc;
+/// use async_trait::async_trait;
 ///
+/// #[derive(Debug)]
 /// struct MyPlugin { config: String }
 ///
-/// impl PluginBuilder for MyPlugin {
-///     fn create_from_config(config: &PluginConfig) -> lazydns::Result<Arc<dyn Plugin>> {
+/// #[async_trait]
+/// impl Plugin for MyPlugin {
+///     async fn execute(&self, ctx: &mut lazydns::plugin::Context) -> lazydns::Result<()> {
+///         // Plugin logic here
+///         Ok(())
+///     }
+///
+///     fn name(&self) -> &str {
+///         "my_plugin"
+///     }
+///
+///     fn init(config: &PluginConfig) -> lazydns::Result<Arc<dyn Plugin>> {
 ///         let args = config.effective_args();
 ///         let my_config = args.get("config")
 ///             .and_then(|v| v.as_str())
@@ -40,14 +51,7 @@ use tracing::{debug, info, warn};
 ///             .to_string();
 ///         Ok(Arc::new(Self { config: my_config }))
 ///     }
-///     
-///     fn plugin_type() -> &'static str {
-///         "my_plugin"
-///     }
 /// }
-// `PluginBuilder` trait has been moved to `plugin::traits`.
-/// // Auto-register with macro
-/// lazydns::register_plugin_builder!(MyPlugin);
 /// ```
 /// Internal trait for dynamic dispatch of PluginBuilder implementations
 #[doc(hidden)]
@@ -124,19 +128,33 @@ pub fn initialize() {
 /// Macro to register a plugin builder
 ///
 /// This macro automatically creates a builder wrapper for types that
-/// implement `PluginBuilder` and registers it.
+/// implement `Plugin` with an `init` method and registers it.
 ///
 /// # Example
 ///
 /// ```ignore
 /// use lazydns::register_plugin_builder;
+/// use lazydns::plugin::Plugin;
+/// use lazydns::config::PluginConfig;
+/// use std::sync::Arc;
+/// use async_trait::async_trait;
 ///
+/// #[derive(Debug)]
 /// struct MyPlugin;
-/// impl PluginBuilder for MyPlugin {
-///     fn create_from_config(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+///
+/// #[async_trait]
+/// impl Plugin for MyPlugin {
+///     async fn execute(&self, ctx: &mut lazydns::plugin::Context) -> lazydns::Result<()> {
+///         Ok(())
+///     }
+///
+///     fn name(&self) -> &str {
+///         "my_plugin"
+///     }
+///
+///     fn init(_config: &PluginConfig) -> lazydns::Result<Arc<dyn Plugin>> {
 ///         Ok(Arc::new(Self))
 ///     }
-///     fn plugin_type() -> &'static str { "my_plugin" }
 /// }
 ///
 /// register_plugin_builder!(MyPlugin);
@@ -269,50 +287,6 @@ impl ConfigPluginBuilder {
                 Arc::new(CachePlugin::new(size as usize))
             }
 
-            "hosts" => {
-                let args = &config.effective_args();
-                let mut plugin = HostsPlugin::new();
-
-                if let Some(files) = get_optional_string_array_arg(args, "files") {
-                    plugin = plugin.with_files(files);
-                }
-
-                if let Some(auto_reload) = get_optional_bool_arg(args, "auto_reload") {
-                    plugin = plugin.with_auto_reload(auto_reload);
-                }
-
-                // Load hosts immediately
-                if let Err(e) = plugin.load_hosts() {
-                    warn!(error = %e, "Failed to load hosts, continuing");
-                }
-
-                // Start file watcher if auto-reload is enabled
-                plugin.start_file_watcher();
-
-                Arc::new(plugin)
-            }
-
-            "ros_addrlist" => {
-                let args = &config.effective_args();
-                let addrlist = get_string_arg(args, "addrlist", "default")?;
-                let mut plugin = RosAddrListPlugin::new(addrlist);
-                if let Some(server) = args.get("server").and_then(|v| v.as_str()) {
-                    plugin = plugin.with_server(server.to_string());
-                }
-                if let Some(user) = args.get("user").and_then(|v| v.as_str()) {
-                    if let Some(pass) = args.get("passwd").and_then(|v| v.as_str()) {
-                        plugin = plugin.with_auth(user.to_string(), pass.to_string());
-                    }
-                }
-                if let Some(mask4) = args.get("mask4").and_then(|v| v.as_i64()) {
-                    plugin = plugin.with_mask4(mask4 as u8);
-                }
-                if let Some(mask6) = args.get("mask6").and_then(|v| v.as_i64()) {
-                    plugin = plugin.with_mask6(mask6 as u8);
-                }
-                Arc::new(plugin)
-            }
-
             "sequence" => {
                 // Handle different sequence formats
                 if let Value::Mapping(map) = &config.args {
@@ -368,12 +342,6 @@ impl ConfigPluginBuilder {
                 Arc::new(FallbackPlugin::new(Vec::new()))
             }
 
-            "ttl" => {
-                let args = &config.effective_args();
-                let ttl = get_int_arg(args, "ttl", 300)? as u32;
-                Arc::new(TtlPlugin::new(ttl, 0, 0))
-            }
-
             "drop_resp" => Arc::new(DropRespPlugin::new()),
             "accept" => Arc::new(AcceptPlugin::new()),
 
@@ -381,10 +349,6 @@ impl ConfigPluginBuilder {
                 let args = &config.effective_args();
                 let rcode = get_int_arg(args, "rcode", 3)? as u8;
                 Arc::new(RejectPlugin::new(rcode))
-            }
-
-            "black_hole" | "blackhole" => {
-                Arc::new(BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap())
             }
 
             "redirect" => {
@@ -662,45 +626,6 @@ fn get_int_arg(args: &HashMap<String, Value>, key: &str, default: i64) -> Result
         ))),
         None => Ok(default),
     }
-}
-
-fn get_optional_bool_arg(args: &HashMap<String, Value>, key: &str) -> Option<bool> {
-    match args.get(key) {
-        Some(Value::Bool(b)) => Some(*b),
-        _ => None,
-    }
-}
-
-fn get_string_array_arg(args: &HashMap<String, Value>, key: &str) -> Result<Vec<String>> {
-    match args.get(key) {
-        Some(Value::Sequence(seq)) => {
-            let mut result = Vec::new();
-            for item in seq {
-                match item {
-                    Value::String(s) => result.push(s.clone()),
-                    Value::Mapping(map) => {
-                        // Handle upstream format like "- addr: udp://8.8.8.8"
-                        if let Some(Value::String(addr)) =
-                            map.get(Value::String("addr".to_string()))
-                        {
-                            result.push(addr.clone());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Ok(result)
-        }
-        Some(_) => Err(Error::Config(format!(
-            "Expected array for '{}', got different type",
-            key
-        ))),
-        None => Ok(Vec::new()),
-    }
-}
-
-fn get_optional_string_array_arg(args: &HashMap<String, Value>, key: &str) -> Option<Vec<String>> {
-    get_string_array_arg(args, key).ok()
 }
 
 #[allow(clippy::items_after_test_module)]

@@ -5,16 +5,20 @@
 //! `Message` responses. The parsing and lookup core is implemented in
 //! `crate::plugins::hosts::Hosts` (kept lightweight and testable).
 
+use crate::config::PluginConfig;
 use crate::dns::{Message, Question, RData, RecordType, ResourceRecord};
-use crate::error::Error;
 use crate::plugin::{Context, Plugin};
 use crate::plugins::hosts::Hosts;
+use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
+
+// Auto-register using the register macro
+crate::register_plugin_builder!(HostsPlugin);
 
 /// Hosts plugin wrapper: lifecycle, file watching and Plugin impl
 pub struct HostsPlugin {
@@ -67,7 +71,7 @@ impl HostsPlugin {
     }
 
     /// Load hosts from configured files (aggregated)
-    pub fn load_hosts(&self) -> Result<(), Error> {
+    pub fn load_hosts(&self) -> Result<()> {
         let mut combined = String::new();
         for file_path in &self.files {
             match std::fs::read_to_string(file_path) {
@@ -197,7 +201,7 @@ impl fmt::Debug for HostsPlugin {
 
 #[async_trait]
 impl Plugin for HostsPlugin {
-    async fn execute(&self, context: &mut Context) -> Result<(), Error> {
+    async fn execute(&self, context: &mut Context) -> Result<()> {
         if context.response().is_some() {
             return Ok(());
         }
@@ -232,6 +236,43 @@ impl Plugin for HostsPlugin {
 
     fn priority(&self) -> i32 {
         100
+    }
+
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+        use serde_yaml::Value;
+
+        let mut plugin = HostsPlugin::new();
+
+        if let Some(files_val) = args.get("files") {
+            match files_val {
+                Value::Sequence(seq) => {
+                    let files: Vec<String> = seq
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect();
+                    plugin = plugin.with_files(files);
+                }
+                Value::String(s) => {
+                    plugin = plugin.with_files(vec![s.clone()]);
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(Value::Bool(b)) = args.get("auto_reload") {
+            plugin = plugin.with_auto_reload(*b);
+        }
+
+        // Load hosts immediately
+        if let Err(e) = plugin.load_hosts() {
+            tracing::warn!(error = %e, "Failed to load hosts during init, continuing");
+        }
+
+        // Start file watcher if auto-reload is enabled
+        plugin.start_file_watcher();
+
+        Ok(Arc::new(plugin))
     }
 }
 

@@ -69,6 +69,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::debug;
 
+// Auto-register using the register macro
+crate::register_plugin_builder!(CachePlugin);
+
 /// Cache entry storing a DNS response with metadata
 #[derive(Clone)]
 struct CacheEntry {
@@ -1038,6 +1041,3 @@ plugins:
         assert!(cache.cache.contains_key(&key));
     }
 }
-
-// Auto-register using the new simplified macro
-crate::register_plugin_builder!(CachePlugin);
