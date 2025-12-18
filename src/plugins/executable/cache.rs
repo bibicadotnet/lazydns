@@ -474,10 +474,7 @@ impl Plugin for CachePlugin {
         50
     }
 
-    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>>
-    where
-        Self: Sized,
-    {
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         let args = config.effective_args();
         use serde_yaml::Value;
 
