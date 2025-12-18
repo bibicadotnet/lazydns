@@ -41,7 +41,6 @@ pub mod hosts;
 pub mod ip_matcher;
 pub mod mark;
 pub mod matcher;
-pub mod ratelimit;
 pub mod server;
 // utils module moved to crate-level `src/utils.rs`
 
@@ -58,12 +57,11 @@ pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
 pub use ip_matcher::IpMatcherPlugin;
 pub use mark::MarkPlugin;
-pub use ratelimit::RateLimitPlugin;
 
 // Re-export matcher plugins
 pub use matcher::{
     BaseIntMatcherPlugin, ClientIpMatcherPlugin, CnameMatcherPlugin, EnvMatcherPlugin,
-    HasRespMatcherPlugin, HasWantedAnsMatcherPlugin, IntComparison, PtrIpMatcherPlugin,
+    HasRespPlugin, HasWantedAnsMatcherPlugin, IntComparison, PtrIpMatcherPlugin,
     QClassMatcherPlugin, QNameMatcherPlugin, QTypeMatcherPlugin, RCodeMatcherPlugin,
     RandomMatcherPlugin, StringExpMatcherPlugin, StringExpression,
 };
@@ -72,7 +70,7 @@ pub use matcher::{
 pub use executable::{
     ArbitraryPlugin, BlackholePlugin, CachePlugin, DebugPrintPlugin, DropRespPlugin,
     DualSelectorPlugin, Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin,
-    HostsPlugin, IpPreference, NftSetPlugin, QuerySummaryPlugin, RedirectPlugin,
+    HostsPlugin, IpPreference, NftSetPlugin, QuerySummaryPlugin, RateLimitPlugin, RedirectPlugin,
     ReverseLookupPlugin, RosAddrlistPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
 };
 
@@ -125,9 +123,10 @@ pub fn initialize_all_builders() {
         Lazy::force(&executable::redirect::REDIRECT_PLUGIN_BUILDER);
         // Lazy::force(&executable::sequence::SEQUENCE_PLUGIN_BUILDER);
         Lazy::force(&executable::fallback::FALLBACK_PLUGIN_BUILDER);
-        Lazy::force(&matcher::has_resp::HAS_RESP_MATCHER_PLUGIN_BUILDER);
+        Lazy::force(&matcher::has_resp::HAS_RESP_PLUGIN_BUILDER);
         Lazy::force(&server::UDP_SERVER_PLUGIN_BUILDER);
         Lazy::force(&server::TCP_SERVER_PLUGIN_BUILDER);
+        Lazy::force(&executable::ratelimit::RATE_LIMIT_PLUGIN_BUILDER);
 
         // Initialize the builder system
         crate::plugin::builder::initialize();
