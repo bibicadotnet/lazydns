@@ -1,17 +1,17 @@
 //! Integration tests for the plugin builder system
 
 use lazydns::config::types::PluginConfig;
-use lazydns::plugin::builder;
-use lazydns::plugins::initialize_all_builders;
+use lazydns::plugin::factory;
+use lazydns::plugin::factory::initialize_all_factories;
 use std::collections::HashMap;
 
 #[test]
 fn test_builder_initialization() {
     // Initialize builders
-    initialize_all_builders();
+    initialize_all_factories();
 
     // Verify that builders are registered
-    let types = builder::get_all_plugin_types();
+    let types = factory::get_all_plugin_types();
 
     println!("Registered plugin types: {:?}", types);
 
@@ -26,7 +26,7 @@ fn test_builder_initialization() {
 
 #[test]
 fn test_create_cache_plugin_from_builder() {
-    initialize_all_builders();
+    initialize_all_factories();
 
     let mut config_map = HashMap::new();
     config_map.insert("size".to_string(), serde_yaml::Value::Number(2048.into()));
@@ -40,7 +40,7 @@ fn test_create_cache_plugin_from_builder() {
         config: config_map,
     };
 
-    let builder_obj = builder::get_builder("cache").expect("cache builder should be registered");
+    let builder_obj = factory::get_plugin_factory("cache").expect("cache builder should be registered");
     let plugin = builder_obj
         .create(&config)
         .expect("plugin creation should succeed");
@@ -50,7 +50,7 @@ fn test_create_cache_plugin_from_builder() {
 
 #[test]
 fn test_create_forward_plugin_from_builder() {
-    initialize_all_builders();
+    initialize_all_factories();
 
     let mut config_map = HashMap::new();
     let upstreams = vec![
@@ -72,7 +72,7 @@ fn test_create_forward_plugin_from_builder() {
     };
 
     let builder_obj =
-        builder::get_builder("forward").expect("forward builder should be registered");
+        factory::get_plugin_factory("forward").expect("forward builder should be registered");
     let plugin = builder_obj
         .create(&config)
         .expect("plugin creation should succeed");
@@ -82,7 +82,7 @@ fn test_create_forward_plugin_from_builder() {
 
 #[test]
 fn test_create_reject_plugin_from_builder() {
-    initialize_all_builders();
+    initialize_all_factories();
 
     let mut config_map = HashMap::new();
     config_map.insert("rcode".to_string(), serde_yaml::Value::Number(3.into()));
@@ -96,7 +96,7 @@ fn test_create_reject_plugin_from_builder() {
         config: config_map,
     };
 
-    let builder_obj = builder::get_builder("reject").expect("reject builder should be registered");
+    let builder_obj = factory::get_plugin_factory("reject").expect("reject builder should be registered");
     let plugin = builder_obj
         .create(&config)
         .expect("plugin creation should succeed");
@@ -106,30 +106,30 @@ fn test_create_reject_plugin_from_builder() {
 
 #[test]
 fn test_control_flow_plugins_from_builder() {
-    initialize_all_builders();
+    initialize_all_factories();
 
     // Test accept
     let accept_config = PluginConfig::new("accept".to_string());
-    let accept_builder = builder::get_builder("accept").expect("accept builder");
+    let accept_builder = factory::get_plugin_factory("accept").expect("accept builder");
     let accept_plugin = accept_builder.create(&accept_config).unwrap();
     assert_eq!(accept_plugin.name(), "accept");
 
     // Test return
     let return_config = PluginConfig::new("return".to_string());
-    let return_builder = builder::get_builder("return").expect("return builder");
+    let return_builder = factory::get_plugin_factory("return").expect("return builder");
     let return_plugin = return_builder.create(&return_config).unwrap();
     assert_eq!(return_plugin.name(), "return");
 
     // Test drop_resp
     let drop_config = PluginConfig::new("drop_resp".to_string());
-    let drop_builder = builder::get_builder("drop_resp").expect("drop_resp builder");
+    let drop_builder = factory::get_plugin_factory("drop_resp").expect("drop_resp builder");
     let drop_plugin = drop_builder.create(&drop_config).unwrap();
     assert_eq!(drop_plugin.name(), "drop_resp");
 }
 
 #[test]
 fn test_jump_plugin_from_builder() {
-    initialize_all_builders();
+    initialize_all_factories();
 
     let mut config_map = HashMap::new();
     config_map.insert(
@@ -146,7 +146,7 @@ fn test_jump_plugin_from_builder() {
         config: config_map,
     };
 
-    let builder_obj = builder::get_builder("jump").expect("jump builder should be registered");
+    let builder_obj = factory::get_plugin_factory("jump").expect("jump builder should be registered");
     let plugin = builder_obj
         .create(&config)
         .expect("plugin creation should succeed");
@@ -159,10 +159,10 @@ async fn test_plugin_from_builder_executes() {
     use lazydns::dns::Message;
     use lazydns::plugin::Context;
 
-    initialize_all_builders();
+    initialize_all_factories();
 
     let config = PluginConfig::new("accept".to_string());
-    let builder_obj = builder::get_builder("accept").expect("accept builder");
+    let builder_obj = factory::get_plugin_factory("accept").expect("accept builder");
     let plugin = builder_obj.create(&config).unwrap();
 
     let mut ctx = Context::new(Message::new());
@@ -171,9 +171,9 @@ async fn test_plugin_from_builder_executes() {
 
 #[test]
 fn test_builder_not_found() {
-    initialize_all_builders();
+    initialize_all_factories();
 
-    let result = builder::get_builder("nonexistent_plugin");
+    let result = factory::get_plugin_factory("nonexistent_plugin");
     assert!(result.is_none());
 }
 
@@ -181,12 +181,12 @@ fn test_builder_not_found() {
 fn test_builder_thread_safety() {
     use std::thread;
 
-    initialize_all_builders();
+    initialize_all_factories();
 
     let handles: Vec<_> = (0..10)
         .map(|_| {
             thread::spawn(|| {
-                let types = builder::get_all_plugin_types();
+                let types = factory::get_all_plugin_types();
                 assert!(!types.is_empty());
             })
         })

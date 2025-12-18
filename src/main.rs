@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize plugin builder system
     info!("Initializing plugin builder system...");
-    lazydns::plugins::initialize_all_builders();
+    lazydns::plugin::factory::initialize_all_factories();
 
     // Ensure rustls has a process-level CryptoProvider installed (ring)
     #[cfg(feature = "tls")]

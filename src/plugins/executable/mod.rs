@@ -52,4 +52,4 @@ pub use forward::ForwardPlugin;
 
 // Re-export builder initialization statics
 #[allow(unused_imports)]
-pub(crate) use forward::FORWARD_PLUGIN_BUILDER;
+pub(crate) use forward::FORWARD_PLUGIN_FACTORY;

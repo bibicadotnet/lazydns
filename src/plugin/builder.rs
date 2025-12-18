@@ -1,7 +1,7 @@
 //! Plugin builder system
 //!
 //! This module provides a builder pattern for creating plugin instances from configuration.
-//! It supports both the new PluginBuilder trait pattern and legacy hardcoded plugins.
+//! It supports both the new Plugin trait pattern and legacy hardcoded plugins.
 
 use crate::config::types::PluginConfig;
 use crate::plugin::traits::Matcher;
@@ -10,228 +10,10 @@ use crate::plugins::executable::SequenceStep;
 use crate::plugins::*;
 use crate::Error;
 use crate::Result;
-use once_cell::sync::Lazy;
 use serde_yaml::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tracing::{debug, info, warn};
-
-/// Plugin builder trait for self-registering plugins
-///
-/// Implement this trait directly on your plugin type to enable automatic
-/// registration without needing a separate factory struct.
-///
-/// # Example
-///
-/// ```ignore
-/// use lazydns::plugin::Plugin;
-/// use lazydns::config::PluginConfig;
-/// use std::sync::Arc;
-/// use async_trait::async_trait;
-///
-/// #[derive(Debug)]
-/// struct MyPlugin { config: String }
-///
-/// #[async_trait]
-/// impl Plugin for MyPlugin {
-///     async fn execute(&self, ctx: &mut lazydns::plugin::Context) -> lazydns::Result<()> {
-///         // Plugin logic here
-///         Ok(())
-///     }
-///
-///     fn name(&self) -> &str {
-///         "my_plugin"
-///     }
-///
-///     fn init(config: &PluginConfig) -> lazydns::Result<Arc<dyn Plugin>> {
-///         let args = config.effective_args();
-///         let my_config = args.get("config")
-///             .and_then(|v| v.as_str())
-///             .unwrap_or("default")
-///             .to_string();
-///         Ok(Arc::new(Self { config: my_config }))
-///     }
-/// }
-/// ```
-/// Internal trait for dynamic dispatch of PluginBuilder implementations
-#[doc(hidden)]
-pub trait PluginBuilderFactory: Send + Sync {
-    fn create(&self, config: &PluginConfig) -> Result<Arc<dyn Plugin>>;
-    fn plugin_type(&self) -> &'static str;
-    fn aliases(&self) -> Vec<&'static str>;
-}
-
-/// Global plugin builder registry
-static PLUGIN_BUILDERS: Lazy<RwLock<HashMap<String, Arc<dyn PluginBuilderFactory>>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
-
-/// Register a plugin builder (internal use)
-#[doc(hidden)]
-pub fn register_builder(builder: Arc<dyn PluginBuilderFactory>) {
-    let mut builders = PLUGIN_BUILDERS
-        .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-    let plugin_type = builder.plugin_type();
-    // Check for duplicates
-    if builders.contains_key(plugin_type) {
-        panic!("Duplicate plugin builder registration: {}", plugin_type);
-    }
-
-    // Register primary name
-    builders.insert(plugin_type.to_string(), Arc::clone(&builder));
-
-    // Register aliases
-    for alias in builder.aliases() {
-        if builders.contains_key(alias) {
-            panic!(
-                "Duplicate plugin builder alias: {} (for {})",
-                alias, plugin_type
-            );
-        }
-        builders.insert(alias.to_string(), Arc::clone(&builder));
-    }
-}
-
-/// Get a plugin builder by type name
-pub fn get_builder(plugin_type: &str) -> Option<Arc<dyn PluginBuilderFactory>> {
-    let builders = PLUGIN_BUILDERS
-        .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-    builders.get(plugin_type).cloned()
-}
-
-/// Get all registered plugin types
-pub fn get_all_plugin_types() -> Vec<String> {
-    let builders = PLUGIN_BUILDERS
-        .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-    let mut types: Vec<String> = builders
-        .values()
-        .map(|b| b.plugin_type().to_string())
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
-
-    types.sort();
-    types
-}
-
-/// Initialize the plugin builder system
-pub fn initialize() {
-    // Force lazy initialization
-    Lazy::force(&PLUGIN_BUILDERS);
-}
-
-/// Macro to register a plugin builder
-///
-/// This macro automatically creates a builder wrapper for types that
-/// implement `Plugin` with an `init` method and registers it.
-///
-/// # Example
-///
-/// ```ignore
-/// use lazydns::register_plugin_builder;
-/// use lazydns::plugin::Plugin;
-/// use lazydns::config::PluginConfig;
-/// use std::sync::Arc;
-/// use async_trait::async_trait;
-///
-/// #[derive(Debug)]
-/// struct MyPlugin;
-///
-/// #[async_trait]
-/// impl Plugin for MyPlugin {
-///     async fn execute(&self, ctx: &mut lazydns::plugin::Context) -> lazydns::Result<()> {
-///         Ok(())
-///     }
-///
-///     fn name(&self) -> &str {
-///         "my_plugin"
-///     }
-///
-///     fn init(_config: &PluginConfig) -> lazydns::Result<Arc<dyn Plugin>> {
-///         Ok(Arc::new(Self))
-///     }
-/// }
-///
-/// register_plugin_builder!(MyPlugin);
-/// ```
-#[macro_export]
-macro_rules! register_plugin_builder {
-    ($plugin_type:ty) => {
-        $crate::paste::paste! {
-            // Create an auto-generated builder wrapper
-            #[derive(Default)]
-            struct [<$plugin_type BuilderWrapper>];
-
-            impl $crate::plugin::builder::PluginBuilderFactory for [<$plugin_type BuilderWrapper>] {
-                fn create(&self, config: &$crate::config::types::PluginConfig)
-                    -> $crate::Result<std::sync::Arc<dyn $crate::plugin::Plugin>>
-                {
-                    <$plugin_type as $crate::plugin::Plugin>::init(config)
-                }
-
-                fn plugin_type(&self) -> &'static str {
-                    // Derive a canonical plugin name from the Rust type name and cache it as a
-                    // `'static` string so it can be used by the global registry.
-                    //
-                    // Name derivation rules:
-                    //  - Use the last path segment of the Rust type name (e.g. "crate::plugins::forward::ForwardPlugin" -> "ForwardPlugin").
-                    //  - If the last segment ends with the suffix "Plugin", strip that suffix ("ForwardPlugin" -> "Forward").
-                    //  - Convert PascalCase/CamelCase to snake_case by inserting '_' before uppercase
-                    //    letters (except the first character) and lowercasing ("DropResp" -> "drop_resp").
-                    //  - The computed `String` is stored in a `once_cell::sync::Lazy<&'static str>` and
-                    //    leaked to produce a `&'static str` on demand.
-                    //
-                    // Note: `register_builder` will panic if a duplicate canonical name is registered.
-                    //       That means two different Rust types that derive the same canonical name
-                    //       will cause a registration-time panic; the tests below check for accidental
-                    //       collisions among existing plugin types.
-                    $crate::paste::paste! {
-                        static [<$plugin_type:snake:upper _DERIVED>]: once_cell::sync::Lazy<&'static str> =
-                            once_cell::sync::Lazy::new(|| {
-                                let t = std::any::type_name::<$plugin_type>();
-                                let last = t.rsplit("::").next().unwrap_or(t);
-                                let base = last.strip_suffix("Plugin").unwrap_or(last);
-                                // PascalCase/CamelCase -> snake_case
-                                let mut s = String::new();
-                                for (i, ch) in base.chars().enumerate() {
-                                    if ch.is_uppercase() {
-                                        if i != 0 {
-                                            s.push('_');
-                                        }
-                                        for lc in ch.to_lowercase() {
-                                            s.push(lc);
-                                        }
-                                    } else {
-                                        s.push(ch);
-                                    }
-                                }
-                                Box::leak(s.into_boxed_str())
-                            });
-
-                        [<$plugin_type:snake:upper _DERIVED>].clone()
-                    }
-                }
-
-                fn aliases(&self) -> Vec<&'static str> {
-                    Vec::new()
-                }
-            }
-
-            // Auto-register using lazy static
-            pub(crate) static [<$plugin_type:snake:upper _BUILDER>]: once_cell::sync::Lazy<()> =
-                once_cell::sync::Lazy::new(|| {
-                    $crate::plugin::builder::register_builder(
-                        std::sync::Arc::new([<$plugin_type BuilderWrapper>]::default())
-                    );
-                });
-        }
-    };
-}
 
 // ============================================================================
 // Main Plugin Builder (Configuration-based Plugin Creation)
@@ -260,10 +42,10 @@ impl PluginBuilder {
         let plugin_type = config.plugin_type.trim().to_lowercase();
 
         // Ensure plugin builders from plugin modules are initialized (register themselves)
-        crate::plugins::initialize_all_builders();
+        crate::plugin::factory::initialize_all_factories();
 
         // Try to get builder from registry first
-        if let Some(builder) = get_builder(&plugin_type) {
+        if let Some(builder) = crate::plugin::factory::get_plugin_factory(&plugin_type) {
             info!("Creating plugin '{}' using registered builder", plugin_type);
             let plugin = builder.create(config)?;
 
@@ -870,12 +652,12 @@ mod tests {
     #[test]
     fn test_derived_plugin_type_names() {
         // Ensure the macro-based derivation registers canonical names derived from type names
-        crate::plugins::initialize_all_builders();
-        let types = get_all_plugin_types();
+        crate::plugin::factory::initialize_all_factories();
+        let types = crate::plugin::factory::get_all_plugin_types();
         assert!(types.contains(&"drop_resp".to_string()));
         assert!(types.contains(&"forward".to_string()));
-        assert!(get_builder("drop_resp").is_some());
-        assert!(get_builder("forward").is_some());
+        assert!(crate::plugin::factory::get_plugin_factory("drop_resp").is_some());
+        assert!(crate::plugin::factory::get_plugin_factory("forward").is_some());
     }
 
     #[test]
