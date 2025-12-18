@@ -30,7 +30,7 @@
 //! ```
 
 pub mod acl;
-pub mod data_provider;
+pub mod dataset;
 pub mod domain_matcher;
 pub mod executable;
 pub mod flow;
@@ -47,7 +47,7 @@ pub mod server;
 
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
-pub use data_provider::{DomainSetPlugin, IpSetPlugin};
+pub use dataset::{DomainSetPlugin, IpSetPlugin};
 pub use domain_matcher::DomainMatcherPlugin;
 pub use flow::{
     AcceptPlugin, GotoPlugin, IfPlugin, JumpPlugin, ParallelPlugin, PreferIpv4Plugin,
@@ -79,12 +79,6 @@ pub use executable::{
 // Re-export server plugins
 pub use server::{TcpServerPlugin, UdpServerPlugin};
 
-// tests module moved to the end of the file to satisfy lint expectations
-
-// ============================================================================
-// Plugin Factory System Initialization
-// ============================================================================
-
 /// Initialize all plugin factories
 ///
 /// This function ensures that all plugin factory registrations are triggered.
@@ -115,6 +109,8 @@ pub fn initialize_all_builders() {
     Lazy::force(&flow::return_plugin::RETURN_PLUGIN_BUILDER);
     Lazy::force(&flow::jump::JUMP_PLUGIN_BUILDER);
     Lazy::force(&executable::drop_resp::DROP_RESP_PLUGIN_BUILDER);
+    Lazy::force(&dataset::domain_set::DOMAIN_SET_PLUGIN_BUILDER);
+    Lazy::force(&dataset::ip_set::IP_SET_PLUGIN_BUILDER);
 
     // Initialize the builder system
     crate::plugin::builder::initialize();
@@ -123,12 +119,6 @@ pub fn initialize_all_builders() {
     if count > 0 {
         tracing::info!("Initialized {} plugin builders", count);
     }
-}
-
-// Keep the old name for backward compatibility
-#[deprecated(since = "0.1.23", note = "Use initialize_all_builders instead")]
-pub fn initialize_all_factories() {
-    initialize_all_builders();
 }
 
 // Re-add tests module at file end to satisfy lints

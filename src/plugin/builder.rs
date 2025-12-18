@@ -1011,7 +1011,7 @@ mod tests {
         );
         assert_eq!(derive::<crate::plugins::CachePlugin>(), "cache");
         assert_eq!(
-            derive::<crate::plugins::data_provider::DomainSetPlugin>(),
+            derive::<crate::plugins::dataset::DomainSetPlugin>(),
             "domain_set"
         );
     }
@@ -1049,7 +1049,7 @@ mod tests {
             derive::<crate::plugins::flow::prefer_ipv4::PreferIpv4Plugin>(),
             derive::<crate::plugins::flow::prefer_ipv6::PreferIpv6Plugin>(),
             derive::<crate::plugins::executable::CachePlugin>(),
-            derive::<crate::plugins::data_provider::DomainSetPlugin>(),
+            derive::<crate::plugins::dataset::DomainSetPlugin>(),
             derive::<crate::plugins::geoip::GeoIpPlugin>(),
             derive::<crate::plugins::geosite::GeoSitePlugin>(),
             derive::<crate::plugins::executable::HostsPlugin>(),
@@ -1348,8 +1348,8 @@ fn parse_condition(
                     if let Some(matcher) = plugin_clone
                         .as_ref()
                         .as_any()
-                        .downcast_ref::<crate::plugins::data_provider::IpSetPlugin>(
-                    ) {
+                        .downcast_ref::<crate::plugins::dataset::IpSetPlugin>()
+                    {
                         matcher.matches_context(ctx)
                     } else {
                         false
@@ -1377,8 +1377,8 @@ fn parse_condition(
                     if let Some(matcher) = plugin_clone
                         .as_ref()
                         .as_any()
-                        .downcast_ref::<crate::plugins::data_provider::IpSetPlugin>(
-                    ) {
+                        .downcast_ref::<crate::plugins::dataset::IpSetPlugin>()
+                    {
                         !matcher.matches_context(ctx)
                     } else {
                         true
@@ -1406,7 +1406,7 @@ fn parse_condition(
                     if let Some(matcher) = plugin_clone
                         .as_ref()
                         .as_any()
-                        .downcast_ref::<crate::plugins::data_provider::DomainSetPlugin>(
+                        .downcast_ref::<crate::plugins::dataset::DomainSetPlugin>(
                     ) {
                         matcher.matches_context(ctx)
                     } else {
