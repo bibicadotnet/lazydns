@@ -40,7 +40,8 @@ fn test_create_cache_plugin_from_builder() {
         config: config_map,
     };
 
-    let builder_obj = factory::get_plugin_factory("cache").expect("cache builder should be registered");
+    let builder_obj =
+        factory::get_plugin_factory("cache").expect("cache builder should be registered");
     let plugin = builder_obj
         .create(&config)
         .expect("plugin creation should succeed");
@@ -96,7 +97,8 @@ fn test_create_reject_plugin_from_builder() {
         config: config_map,
     };
 
-    let builder_obj = factory::get_plugin_factory("reject").expect("reject builder should be registered");
+    let builder_obj =
+        factory::get_plugin_factory("reject").expect("reject builder should be registered");
     let plugin = builder_obj
         .create(&config)
         .expect("plugin creation should succeed");
@@ -146,7 +148,8 @@ fn test_jump_plugin_from_builder() {
         config: config_map,
     };
 
-    let builder_obj = factory::get_plugin_factory("jump").expect("jump builder should be registered");
+    let builder_obj =
+        factory::get_plugin_factory("jump").expect("jump builder should be registered");
     let plugin = builder_obj
         .create(&config)
         .expect("plugin creation should succeed");

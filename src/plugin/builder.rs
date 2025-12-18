@@ -13,7 +13,7 @@ use crate::Result;
 use serde_yaml::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 // ============================================================================
 // Main Plugin Builder (Configuration-based Plugin Creation)
@@ -46,7 +46,11 @@ impl PluginBuilder {
 
         // Try to get builder from registry first
         if let Some(builder) = crate::plugin::factory::get_plugin_factory(&plugin_type) {
-            info!("Creating plugin '{}' using registered builder", plugin_type);
+            debug!(
+                name = %config.effective_name(),
+                plugin_type = %plugin_type,
+                "Creating plugin using registered builder"
+            );
             let plugin = builder.create(config)?;
 
             // Store in registry if it has a tag or name
@@ -57,9 +61,10 @@ impl PluginBuilder {
         }
 
         // Fallback to legacy hardcoded match for backward compatibility
-        warn!(
-            "Plugin type '{}' not found in builder registry, using legacy match",
-            plugin_type
+        debug!(
+            name = %config.effective_name(),
+            plugin_type = %plugin_type,
+            "Plugin type not found in builder registry, using legacy match",
         );
 
         let plugin: Arc<dyn Plugin> = match plugin_type.as_str() {
@@ -229,7 +234,7 @@ impl Default for PluginBuilder {
 /// Parse complex sequence steps from YAML sequence
 fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
     use crate::plugins::executable::SequenceStep;
-    info!("Parsing {} sequence steps", sequence.len());
+    debug!("Parsing {} sequence steps", sequence.len());
     let mut steps = Vec::new();
 
     for step_value in sequence {
