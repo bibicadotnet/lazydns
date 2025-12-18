@@ -153,12 +153,25 @@ macro_rules! register_plugin_builder {
                 fn create(&self, config: &$crate::config::types::PluginConfig)
                     -> $crate::Result<std::sync::Arc<dyn $crate::plugin::Plugin>>
                 {
-                    <$plugin_type as $crate::plugin::Plugin>::create(config)
+                    <$plugin_type as $crate::plugin::Plugin>::init(config)
                 }
 
                 fn plugin_type(&self) -> &'static str {
-                    // Derive a canonical name from the Rust type name, e.g. "ForwardPlugin" -> "forward".
-                    // Compute once and return a &'static str.
+                    // Derive a canonical plugin name from the Rust type name and cache it as a
+                    // `'static` string so it can be used by the global registry.
+                    //
+                    // Name derivation rules:
+                    //  - Use the last path segment of the Rust type name (e.g. "crate::plugins::forward::ForwardPlugin" -> "ForwardPlugin").
+                    //  - If the last segment ends with the suffix "Plugin", strip that suffix ("ForwardPlugin" -> "Forward").
+                    //  - Convert PascalCase/CamelCase to snake_case by inserting '_' before uppercase
+                    //    letters (except the first character) and lowercasing ("DropResp" -> "drop_resp").
+                    //  - The computed `String` is stored in a `once_cell::sync::Lazy<&'static str>` and
+                    //    leaked to produce a `&'static str` on demand.
+                    //
+                    // Note: `register_builder` will panic if a duplicate canonical name is registered.
+                    //       That means two different Rust types that derive the same canonical name
+                    //       will cause a registration-time panic; the tests below check for accidental
+                    //       collisions among existing plugin types.
                     $crate::paste::paste! {
                         static [<$plugin_type:snake:upper _DERIVED>]: once_cell::sync::Lazy<&'static str> =
                             once_cell::sync::Lazy::new(|| {
@@ -945,6 +958,120 @@ mod tests {
         assert!(types.contains(&"forward".to_string()));
         assert!(get_builder("drop_resp").is_some());
         assert!(get_builder("forward").is_some());
+    }
+
+    #[test]
+    fn test_derived_plugin_name_mapping() {
+        // Local helper that mirrors the macro's derivation algorithm
+        fn derive<T: 'static>() -> String {
+            let t = std::any::type_name::<T>();
+            let last = t.rsplit("::").next().unwrap_or(t);
+            let base = last.strip_suffix("Plugin").unwrap_or(last);
+            let mut s = String::new();
+            for (i, ch) in base.chars().enumerate() {
+                if ch.is_uppercase() {
+                    if i != 0 {
+                        s.push('_');
+                    }
+                    for lc in ch.to_lowercase() {
+                        s.push(lc);
+                    }
+                } else {
+                    s.push(ch);
+                }
+            }
+            s
+        }
+
+        assert_eq!(
+            derive::<crate::plugins::executable::DropRespPlugin>(),
+            "drop_resp"
+        );
+        assert_eq!(
+            derive::<crate::plugins::executable::ForwardPlugin>(),
+            "forward"
+        );
+        assert_eq!(derive::<crate::plugins::AcceptPlugin>(), "accept");
+        assert_eq!(
+            derive::<crate::plugins::flow::return_plugin::ReturnPlugin>(),
+            "return"
+        );
+        assert_eq!(derive::<crate::plugins::flow::jump::JumpPlugin>(), "jump");
+        assert_eq!(
+            derive::<crate::plugins::flow::reject::RejectPlugin>(),
+            "reject"
+        );
+        assert_eq!(
+            derive::<crate::plugins::flow::prefer_ipv4::PreferIpv4Plugin>(),
+            "prefer_ipv4"
+        );
+        assert_eq!(
+            derive::<crate::plugins::flow::prefer_ipv6::PreferIpv6Plugin>(),
+            "prefer_ipv6"
+        );
+        assert_eq!(derive::<crate::plugins::cache::CachePlugin>(), "cache");
+        assert_eq!(
+            derive::<crate::plugins::data_provider::DomainSetPlugin>(),
+            "domain_set"
+        );
+    }
+
+    #[test]
+    fn test_no_derived_name_collisions() {
+        fn derive<T: 'static>() -> String {
+            let t = std::any::type_name::<T>();
+            let last = t.rsplit("::").next().unwrap_or(t);
+            let base = last.strip_suffix("Plugin").unwrap_or(last);
+            let mut s = String::new();
+            for (i, ch) in base.chars().enumerate() {
+                if ch.is_uppercase() {
+                    if i != 0 {
+                        s.push('_');
+                    }
+                    for lc in ch.to_lowercase() {
+                        s.push(lc);
+                    }
+                } else {
+                    s.push(ch);
+                }
+            }
+            s
+        }
+
+        // A representative set of plugin types to check for accidental collisions
+        let derived = vec![
+            derive::<crate::plugins::executable::DropRespPlugin>(),
+            derive::<crate::plugins::executable::ForwardPlugin>(),
+            derive::<crate::plugins::AcceptPlugin>(),
+            derive::<crate::plugins::flow::return_plugin::ReturnPlugin>(),
+            derive::<crate::plugins::flow::jump::JumpPlugin>(),
+            derive::<crate::plugins::flow::reject::RejectPlugin>(),
+            derive::<crate::plugins::flow::prefer_ipv4::PreferIpv4Plugin>(),
+            derive::<crate::plugins::flow::prefer_ipv6::PreferIpv6Plugin>(),
+            derive::<crate::plugins::cache::CachePlugin>(),
+            derive::<crate::plugins::data_provider::DomainSetPlugin>(),
+            derive::<crate::plugins::geoip::GeoIpPlugin>(),
+            derive::<crate::plugins::geosite::GeoSitePlugin>(),
+            derive::<crate::plugins::executable::HostsPlugin>(),
+        ];
+
+        let set: std::collections::HashSet<_> = derived.iter().cloned().collect();
+        assert_eq!(
+            set.len(),
+            derived.len(),
+            "Derived plugin names collided: {:?}",
+            {
+                // Build a list of duplicates for better diagnostics
+                let mut counts = std::collections::HashMap::new();
+                for name in &derived {
+                    *counts.entry(name.clone()).or_insert(0usize) += 1;
+                }
+                counts
+                    .into_iter()
+                    .filter_map(|(k, v)| if v > 1 { Some(k) } else { None })
+                    .collect::<Vec<_>>()
+            }
+        );
     }
 
     #[test]

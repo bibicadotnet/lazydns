@@ -44,7 +44,7 @@ impl Plugin for DropRespPlugin {
         Ok(())
     }
 
-    fn create(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+    fn init(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         Ok(Arc::new(DropRespPlugin::new()))
     }
 }

@@ -92,12 +92,12 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
         &()
     }
 
-    /// factory method to create a plugin instance from configuration.
+    /// factory method to init a plugin instance from configuration.
     ///
     /// Default implementation returns an error indicating no builder is
     /// provided for this plugin type. Implementations that support
     /// configuration-based construction should override this method.
-    fn create(_config: &PluginConfig) -> Result<Arc<dyn Plugin>>
+    fn init(_config: &PluginConfig) -> Result<Arc<dyn Plugin>>
     where
         Self: Sized,
     {

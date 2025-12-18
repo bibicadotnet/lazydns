@@ -447,7 +447,7 @@ impl Plugin for CachePlugin {
         50
     }
 
-    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>>
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>>
     where
         Self: Sized,
     {

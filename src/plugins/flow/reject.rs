@@ -50,7 +50,7 @@ impl Plugin for RejectPlugin {
         Ok(())
     }
 
-    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         let args = config.effective_args();
 
         let rcode = match args.get("rcode") {

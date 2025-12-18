@@ -28,7 +28,7 @@ impl Plugin for JumpPlugin {
         "jump"
     }
 
-    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         let args = config.effective_args();
 
         let target = match args.get("target") {

@@ -233,7 +233,7 @@ impl ForwardPlugin {
 
 #[async_trait]
 impl Plugin for ForwardPlugin {
-    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         let args = config.effective_args();
 
         // Reuse centralized core parser to build Forward

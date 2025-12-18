@@ -27,7 +27,7 @@ impl Plugin for AcceptPlugin {
         Ok(())
     }
 
-    fn create(_config: &PluginConfig) -> Result<Arc<dyn Plugin>>
+    fn init(_config: &PluginConfig) -> Result<Arc<dyn Plugin>>
     where
         Self: Sized,
     {
