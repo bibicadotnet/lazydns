@@ -444,6 +444,260 @@ impl Default for PluginBuilder {
     }
 }
 
+/// Parse complex sequence steps from YAML sequence
+fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
+    use crate::plugins::executable::SequenceStep;
+    info!("Parsing {} sequence steps", sequence.len());
+    let mut steps = Vec::new();
+
+    for step_value in sequence {
+        match step_value {
+            Value::Mapping(map) => {
+                // Check if it's a conditional step (has "matches" key)
+                if let Some(matches_value) = map.get(Value::String("matches".to_string())) {
+                    if let Value::String(condition_str) = matches_value {
+                        // Parse condition
+                        let condition = parse_condition(builder, condition_str)?;
+
+                        // Get the exec action
+                        if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
+                            let action = parse_exec_action(builder, exec_value)?;
+                            steps.push(SequenceStep::If {
+                                condition,
+                                action,
+                                desc: condition_str.to_string(),
+                            });
+                        } else {
+                            return Err(Error::Config("matches step must have exec".to_string()));
+                        }
+                    } else {
+                        return Err(Error::Config("matches value must be string".to_string()));
+                    }
+                } else if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
+                    // Simple exec step
+                    let plugin = parse_exec_action(builder, exec_value)?;
+                    steps.push(SequenceStep::Exec(plugin));
+                } else {
+                    return Err(Error::Config(
+                        "sequence step must have exec or matches".to_string(),
+                    ));
+                }
+            }
+            _ => return Err(Error::Config("sequence step must be a mapping".to_string())),
+        }
+    }
+
+    Ok(steps)
+}
+
+/// Parse exec action from YAML value
+fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<dyn Plugin>> {
+    match exec_value {
+        Value::String(exec_str) => {
+            // Handle different exec formats
+            if let Some(plugin_name) = exec_str.strip_prefix('$') {
+                // Plugin reference: $plugin_name
+                if let Some(plugin) = builder.get_plugin(plugin_name) {
+                    Ok(plugin)
+                } else {
+                    Err(Error::Config(format!(
+                        "Referenced plugin '{}' not found",
+                        plugin_name
+                    )))
+                }
+            } else if exec_str == "accept" {
+                Ok(Arc::new(crate::plugins::AcceptPlugin::new()))
+            } else if exec_str == "drop_resp" {
+                Ok(Arc::new(crate::plugins::DropRespPlugin::new()))
+            } else if exec_str.starts_with("reject") {
+                // reject [rcode] - default to 3 (NXDOMAIN)
+                let rcode = if let Some(rest) = exec_str.strip_prefix("reject") {
+                    rest.trim().parse::<u8>().unwrap_or(3)
+                } else {
+                    3
+                };
+                Ok(Arc::new(crate::plugins::RejectPlugin::new(rcode)))
+            } else if let Some(ttl_part) = exec_str.strip_prefix("ttl ") {
+                // ttl 300-3600 format - take the first number
+                if let Some(first_num) = ttl_part.split('-').next() {
+                    if let Ok(ttl) = first_num.parse::<u32>() {
+                        Ok(Arc::new(crate::plugins::TtlPlugin::new(ttl, 0, 0)))
+                    } else {
+                        Err(Error::Config(format!("Invalid TTL value: {}", ttl_part)))
+                    }
+                } else {
+                    Err(Error::Config(format!("Invalid TTL format: {}", exec_str)))
+                }
+            } else if exec_str.starts_with("black_hole") {
+                Ok(Arc::new(
+                    crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
+                ))
+            } else if let Some(target) = exec_str.strip_prefix("jump ") {
+                // jump target_name
+                let target = target.trim();
+                Ok(Arc::new(crate::plugins::JumpPlugin::new(target)))
+            } else if exec_str == "prefer_ipv4" {
+                Ok(Arc::new(crate::plugins::PreferIpv4Plugin::new()))
+            } else if exec_str == "prefer_ipv6" {
+                Ok(Arc::new(crate::plugins::PreferIpv6Plugin::new()))
+            } else {
+                Err(Error::Config(format!("Unknown exec action: {}", exec_str)))
+            }
+        }
+        _ => Err(Error::Config("exec value must be string".to_string())),
+    }
+}
+#[allow(clippy::type_complexity)]
+fn parse_condition(
+    builder: &PluginBuilder,
+    condition_str: &str,
+) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
+    // Simple condition parsing - this is a basic implementation
+    // In a full implementation, this would need to handle more complex expressions
+
+    if condition_str == "has_resp" {
+        Ok(Arc::new(|ctx: &crate::plugin::Context| ctx.has_response()))
+    } else if let Some(ip_set_ref) = condition_str.strip_prefix("resp_ip ") {
+        let ip_set_name = if let Some(name) = ip_set_ref.strip_prefix('$') {
+            name
+        } else {
+            ip_set_ref
+        };
+        // Get the IP set plugin and create a matcher
+        if let Some(plugin) = builder.get_plugin(ip_set_name) {
+            if plugin.name() == "ip_set" {
+                let plugin_clone = Arc::clone(&plugin);
+                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+                    if let Some(matcher) = plugin_clone
+                        .as_ref()
+                        .as_any()
+                        .downcast_ref::<crate::plugins::dataset::IpSetPlugin>()
+                    {
+                        matcher.matches_context(ctx)
+                    } else {
+                        false
+                    }
+                }))
+            } else {
+                warn!("Plugin '{}' is not an IP set plugin", ip_set_name);
+                Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
+            }
+        } else {
+            warn!("IP set plugin '{}' not found", ip_set_name);
+            Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
+        }
+    } else if let Some(ip_set_ref) = condition_str.strip_prefix("!resp_ip ") {
+        let ip_set_name = if let Some(name) = ip_set_ref.strip_prefix('$') {
+            name
+        } else {
+            ip_set_ref
+        };
+        // Negated IP matching
+        if let Some(plugin) = builder.get_plugin(ip_set_name) {
+            if plugin.name() == "ip_set" {
+                let plugin_clone = Arc::clone(&plugin);
+                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+                    if let Some(matcher) = plugin_clone
+                        .as_ref()
+                        .as_any()
+                        .downcast_ref::<crate::plugins::dataset::IpSetPlugin>()
+                    {
+                        !matcher.matches_context(ctx)
+                    } else {
+                        true
+                    }
+                }))
+            } else {
+                warn!("Plugin '{}' is not an IP set plugin", ip_set_name);
+                Ok(Arc::new(|_ctx: &crate::plugin::Context| true))
+            }
+        } else {
+            warn!("IP set plugin '{}' not found", ip_set_name);
+            Ok(Arc::new(|_ctx: &crate::plugin::Context| true))
+        }
+    } else if let Some(domain_set_ref) = condition_str.strip_prefix("qname ") {
+        let domain_set_name = if let Some(name) = domain_set_ref.strip_prefix('$') {
+            name
+        } else {
+            domain_set_ref
+        };
+        // Domain matching
+        if let Some(plugin) = builder.get_plugin(domain_set_name) {
+            if plugin.name() == "domain_set" {
+                let plugin_clone = Arc::clone(&plugin);
+                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+                    if let Some(matcher) = plugin_clone
+                        .as_ref()
+                        .as_any()
+                        .downcast_ref::<crate::plugins::dataset::DomainSetPlugin>(
+                    ) {
+                        matcher.matches_context(ctx)
+                    } else {
+                        false
+                    }
+                }))
+            } else {
+                warn!("Plugin '{}' is not a domain set plugin", domain_set_name);
+                Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
+            }
+        } else {
+            warn!("Domain set plugin '{}' not found", domain_set_name);
+            Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
+        }
+    } else if let Some(domain) = condition_str.strip_prefix("!qname ") {
+        // Negated domain matching - for single domain, not domain set
+        let domain_lower = domain.to_lowercase();
+        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+            if let Some(question) = ctx.request().questions().first() {
+                let qname = question.qname().to_string().to_lowercase();
+                !qname.eq(&domain_lower)
+            } else {
+                true
+            }
+        }))
+    } else if condition_str.starts_with("qtype ") {
+        // qtype 12 65 - query type matching
+        let type_str = condition_str.strip_prefix("qtype ").unwrap_or_default();
+        let mut qtypes = Vec::new();
+
+        // Parse space-separated type numbers
+        for type_part in type_str.split_whitespace() {
+            match type_part.parse::<u16>() {
+                Ok(qtype_num) => {
+                    qtypes.push(qtype_num);
+                }
+                Err(_) => {
+                    return Err(Error::Config(format!(
+                        "Invalid query type number '{}': {}",
+                        type_part, condition_str
+                    )));
+                }
+            }
+        }
+
+        if qtypes.is_empty() {
+            return Err(Error::Config(format!(
+                "No query types specified: {}",
+                condition_str
+            )));
+        }
+
+        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+            if let Some(question) = ctx.request().questions().first() {
+                let qtype = question.qtype().to_u16();
+                qtypes.contains(&qtype)
+            } else {
+                false
+            }
+        }))
+    } else {
+        Err(Error::Config(format!(
+            "Unknown condition: {}",
+            condition_str
+        )))
+    }
+}
+
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
@@ -946,259 +1200,5 @@ mod tests {
         } else {
             panic!("fallback plugin is wrong type");
         }
-    }
-}
-
-/// Parse complex sequence steps from YAML sequence
-fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
-    use crate::plugins::executable::SequenceStep;
-    info!("Parsing {} sequence steps", sequence.len());
-    let mut steps = Vec::new();
-
-    for step_value in sequence {
-        match step_value {
-            Value::Mapping(map) => {
-                // Check if it's a conditional step (has "matches" key)
-                if let Some(matches_value) = map.get(Value::String("matches".to_string())) {
-                    if let Value::String(condition_str) = matches_value {
-                        // Parse condition
-                        let condition = parse_condition(builder, condition_str)?;
-
-                        // Get the exec action
-                        if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
-                            let action = parse_exec_action(builder, exec_value)?;
-                            steps.push(SequenceStep::If {
-                                condition,
-                                action,
-                                desc: condition_str.to_string(),
-                            });
-                        } else {
-                            return Err(Error::Config("matches step must have exec".to_string()));
-                        }
-                    } else {
-                        return Err(Error::Config("matches value must be string".to_string()));
-                    }
-                } else if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
-                    // Simple exec step
-                    let plugin = parse_exec_action(builder, exec_value)?;
-                    steps.push(SequenceStep::Exec(plugin));
-                } else {
-                    return Err(Error::Config(
-                        "sequence step must have exec or matches".to_string(),
-                    ));
-                }
-            }
-            _ => return Err(Error::Config("sequence step must be a mapping".to_string())),
-        }
-    }
-
-    Ok(steps)
-}
-
-/// Parse exec action from YAML value
-fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<dyn Plugin>> {
-    match exec_value {
-        Value::String(exec_str) => {
-            // Handle different exec formats
-            if let Some(plugin_name) = exec_str.strip_prefix('$') {
-                // Plugin reference: $plugin_name
-                if let Some(plugin) = builder.get_plugin(plugin_name) {
-                    Ok(plugin)
-                } else {
-                    Err(Error::Config(format!(
-                        "Referenced plugin '{}' not found",
-                        plugin_name
-                    )))
-                }
-            } else if exec_str == "accept" {
-                Ok(Arc::new(crate::plugins::AcceptPlugin::new()))
-            } else if exec_str == "drop_resp" {
-                Ok(Arc::new(crate::plugins::DropRespPlugin::new()))
-            } else if exec_str.starts_with("reject") {
-                // reject [rcode] - default to 3 (NXDOMAIN)
-                let rcode = if let Some(rest) = exec_str.strip_prefix("reject") {
-                    rest.trim().parse::<u8>().unwrap_or(3)
-                } else {
-                    3
-                };
-                Ok(Arc::new(crate::plugins::RejectPlugin::new(rcode)))
-            } else if let Some(ttl_part) = exec_str.strip_prefix("ttl ") {
-                // ttl 300-3600 format - take the first number
-                if let Some(first_num) = ttl_part.split('-').next() {
-                    if let Ok(ttl) = first_num.parse::<u32>() {
-                        Ok(Arc::new(crate::plugins::TtlPlugin::new(ttl, 0, 0)))
-                    } else {
-                        Err(Error::Config(format!("Invalid TTL value: {}", ttl_part)))
-                    }
-                } else {
-                    Err(Error::Config(format!("Invalid TTL format: {}", exec_str)))
-                }
-            } else if exec_str.starts_with("black_hole") {
-                Ok(Arc::new(
-                    crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
-                ))
-            } else if let Some(target) = exec_str.strip_prefix("jump ") {
-                // jump target_name
-                let target = target.trim();
-                Ok(Arc::new(crate::plugins::JumpPlugin::new(target)))
-            } else if exec_str == "prefer_ipv4" {
-                Ok(Arc::new(crate::plugins::PreferIpv4Plugin::new()))
-            } else if exec_str == "prefer_ipv6" {
-                Ok(Arc::new(crate::plugins::PreferIpv6Plugin::new()))
-            } else {
-                Err(Error::Config(format!("Unknown exec action: {}", exec_str)))
-            }
-        }
-        _ => Err(Error::Config("exec value must be string".to_string())),
-    }
-}
-#[allow(clippy::type_complexity)]
-fn parse_condition(
-    builder: &PluginBuilder,
-    condition_str: &str,
-) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
-    // Simple condition parsing - this is a basic implementation
-    // In a full implementation, this would need to handle more complex expressions
-
-    if condition_str == "has_resp" {
-        Ok(Arc::new(|ctx: &crate::plugin::Context| ctx.has_response()))
-    } else if let Some(ip_set_ref) = condition_str.strip_prefix("resp_ip ") {
-        let ip_set_name = if let Some(name) = ip_set_ref.strip_prefix('$') {
-            name
-        } else {
-            ip_set_ref
-        };
-        // Get the IP set plugin and create a matcher
-        if let Some(plugin) = builder.get_plugin(ip_set_name) {
-            if plugin.name() == "ip_set" {
-                let plugin_clone = Arc::clone(&plugin);
-                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-                    if let Some(matcher) = plugin_clone
-                        .as_ref()
-                        .as_any()
-                        .downcast_ref::<crate::plugins::dataset::IpSetPlugin>()
-                    {
-                        matcher.matches_context(ctx)
-                    } else {
-                        false
-                    }
-                }))
-            } else {
-                warn!("Plugin '{}' is not an IP set plugin", ip_set_name);
-                Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
-            }
-        } else {
-            warn!("IP set plugin '{}' not found", ip_set_name);
-            Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
-        }
-    } else if let Some(ip_set_ref) = condition_str.strip_prefix("!resp_ip ") {
-        let ip_set_name = if let Some(name) = ip_set_ref.strip_prefix('$') {
-            name
-        } else {
-            ip_set_ref
-        };
-        // Negated IP matching
-        if let Some(plugin) = builder.get_plugin(ip_set_name) {
-            if plugin.name() == "ip_set" {
-                let plugin_clone = Arc::clone(&plugin);
-                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-                    if let Some(matcher) = plugin_clone
-                        .as_ref()
-                        .as_any()
-                        .downcast_ref::<crate::plugins::dataset::IpSetPlugin>()
-                    {
-                        !matcher.matches_context(ctx)
-                    } else {
-                        true
-                    }
-                }))
-            } else {
-                warn!("Plugin '{}' is not an IP set plugin", ip_set_name);
-                Ok(Arc::new(|_ctx: &crate::plugin::Context| true))
-            }
-        } else {
-            warn!("IP set plugin '{}' not found", ip_set_name);
-            Ok(Arc::new(|_ctx: &crate::plugin::Context| true))
-        }
-    } else if let Some(domain_set_ref) = condition_str.strip_prefix("qname ") {
-        let domain_set_name = if let Some(name) = domain_set_ref.strip_prefix('$') {
-            name
-        } else {
-            domain_set_ref
-        };
-        // Domain matching
-        if let Some(plugin) = builder.get_plugin(domain_set_name) {
-            if plugin.name() == "domain_set" {
-                let plugin_clone = Arc::clone(&plugin);
-                Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-                    if let Some(matcher) = plugin_clone
-                        .as_ref()
-                        .as_any()
-                        .downcast_ref::<crate::plugins::dataset::DomainSetPlugin>(
-                    ) {
-                        matcher.matches_context(ctx)
-                    } else {
-                        false
-                    }
-                }))
-            } else {
-                warn!("Plugin '{}' is not a domain set plugin", domain_set_name);
-                Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
-            }
-        } else {
-            warn!("Domain set plugin '{}' not found", domain_set_name);
-            Ok(Arc::new(|_ctx: &crate::plugin::Context| false))
-        }
-    } else if let Some(domain) = condition_str.strip_prefix("!qname ") {
-        // Negated domain matching - for single domain, not domain set
-        let domain_lower = domain.to_lowercase();
-        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-            if let Some(question) = ctx.request().questions().first() {
-                let qname = question.qname().to_string().to_lowercase();
-                !qname.eq(&domain_lower)
-            } else {
-                true
-            }
-        }))
-    } else if condition_str.starts_with("qtype ") {
-        // qtype 12 65 - query type matching
-        let type_str = condition_str.strip_prefix("qtype ").unwrap_or_default();
-        let mut qtypes = Vec::new();
-
-        // Parse space-separated type numbers
-        for type_part in type_str.split_whitespace() {
-            match type_part.parse::<u16>() {
-                Ok(qtype_num) => {
-                    qtypes.push(qtype_num);
-                }
-                Err(_) => {
-                    return Err(Error::Config(format!(
-                        "Invalid query type number '{}': {}",
-                        type_part, condition_str
-                    )));
-                }
-            }
-        }
-
-        if qtypes.is_empty() {
-            return Err(Error::Config(format!(
-                "No query types specified: {}",
-                condition_str
-            )));
-        }
-
-        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
-            if let Some(question) = ctx.request().questions().first() {
-                let qtype = question.qtype().to_u16();
-                qtypes.contains(&qtype)
-            } else {
-                false
-            }
-        }))
-    } else {
-        Err(Error::Config(format!(
-            "Unknown condition: {}",
-            condition_str
-        )))
     }
 }

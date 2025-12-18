@@ -107,26 +107,29 @@ pub fn initialize_all_builders() {
         // Note: Macro generates names like CACHE_PLUGIN_BUILDER from CachePlugin
         Lazy::force(&executable::cache::CACHE_PLUGIN_BUILDER);
         Lazy::force(&executable::forward::FORWARD_PLUGIN_BUILDER);
-        Lazy::force(&flow::accept::ACCEPT_PLUGIN_BUILDER);
-        Lazy::force(&flow::reject::REJECT_PLUGIN_BUILDER);
-        Lazy::force(&flow::return_plugin::RETURN_PLUGIN_BUILDER);
-        Lazy::force(&flow::jump::JUMP_PLUGIN_BUILDER);
-        Lazy::force(&flow::prefer_ipv4::PREFER_IPV4_PLUGIN_BUILDER);
-        Lazy::force(&flow::prefer_ipv6::PREFER_IPV6_PLUGIN_BUILDER);
+        Lazy::force(&executable::ratelimit::RATE_LIMIT_PLUGIN_BUILDER);
         Lazy::force(&executable::drop_resp::DROP_RESP_PLUGIN_BUILDER);
         Lazy::force(&dataset::domain_set::DOMAIN_SET_PLUGIN_BUILDER);
         Lazy::force(&dataset::ip_set::IP_SET_PLUGIN_BUILDER);
         Lazy::force(&executable::hosts::HOSTS_PLUGIN_BUILDER);
         Lazy::force(&executable::ros_addrlist::ROS_ADDRLIST_PLUGIN_BUILDER);
         Lazy::force(&executable::ttl::TTL_PLUGIN_BUILDER);
+
+        // Exec/Flow plugins
+        // TODO: try other ways?
+        // SeeAlso: src/plugin/builder.rs: 494 fn parse_exec_action
         Lazy::force(&executable::black_hole::BLACKHOLE_PLUGIN_BUILDER);
-        Lazy::force(&executable::redirect::REDIRECT_PLUGIN_BUILDER);
-        // Lazy::force(&executable::sequence::SEQUENCE_PLUGIN_BUILDER);
         Lazy::force(&executable::fallback::FALLBACK_PLUGIN_BUILDER);
         Lazy::force(&matcher::has_resp::HAS_RESP_PLUGIN_BUILDER);
+        Lazy::force(&executable::redirect::REDIRECT_PLUGIN_BUILDER);
         Lazy::force(&server::UDP_SERVER_PLUGIN_BUILDER);
         Lazy::force(&server::TCP_SERVER_PLUGIN_BUILDER);
-        Lazy::force(&executable::ratelimit::RATE_LIMIT_PLUGIN_BUILDER);
+        Lazy::force(&flow::accept::ACCEPT_PLUGIN_BUILDER);
+        Lazy::force(&flow::reject::REJECT_PLUGIN_BUILDER);
+        Lazy::force(&flow::return_plugin::RETURN_PLUGIN_BUILDER);
+        Lazy::force(&flow::jump::JUMP_PLUGIN_BUILDER);
+        Lazy::force(&flow::prefer_ipv4::PREFER_IPV4_PLUGIN_BUILDER);
+        Lazy::force(&flow::prefer_ipv6::PREFER_IPV6_PLUGIN_BUILDER);
 
         // Initialize the builder system
         crate::plugin::builder::initialize();
