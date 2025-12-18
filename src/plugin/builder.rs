@@ -1009,7 +1009,7 @@ mod tests {
             derive::<crate::plugins::flow::prefer_ipv6::PreferIpv6Plugin>(),
             "prefer_ipv6"
         );
-        assert_eq!(derive::<crate::plugins::cache::CachePlugin>(), "cache");
+        assert_eq!(derive::<crate::plugins::CachePlugin>(), "cache");
         assert_eq!(
             derive::<crate::plugins::data_provider::DomainSetPlugin>(),
             "domain_set"
@@ -1048,7 +1048,7 @@ mod tests {
             derive::<crate::plugins::flow::reject::RejectPlugin>(),
             derive::<crate::plugins::flow::prefer_ipv4::PreferIpv4Plugin>(),
             derive::<crate::plugins::flow::prefer_ipv6::PreferIpv6Plugin>(),
-            derive::<crate::plugins::cache::CachePlugin>(),
+            derive::<crate::plugins::executable::CachePlugin>(),
             derive::<crate::plugins::data_provider::DomainSetPlugin>(),
             derive::<crate::plugins::geoip::GeoIpPlugin>(),
             derive::<crate::plugins::geosite::GeoSitePlugin>(),

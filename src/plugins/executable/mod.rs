@@ -24,7 +24,7 @@ pub mod ttl;
 
 pub use arbitrary::ArbitraryPlugin;
 pub use black_hole::BlackholePlugin;
-pub use cache::{ExecCache, ExecCacheStore};
+pub use cache::CachePlugin;
 pub use collector::MetricsCollectorPlugin;
 pub use debug_print::DebugPrintPlugin;
 pub use drop_resp::DropRespPlugin;
