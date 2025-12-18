@@ -8,6 +8,9 @@ use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;
 
+// Auto-register using the register macro
+crate::register_plugin_builder!(HasRespMatcherPlugin);
+
 /// Plugin that checks if a response exists in the context
 ///
 /// # Example
@@ -69,6 +72,17 @@ impl Plugin for HasRespMatcherPlugin {
         ctx.set_metadata(self.metadata_key.clone(), has_response);
 
         Ok(())
+    }
+
+    fn init(config: &crate::config::PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
+        let args = config.effective_args();
+        let metadata_key = args
+            .get("key")
+            .and_then(|v| v.as_str())
+            .unwrap_or("has_resp")
+            .to_string();
+
+        Ok(std::sync::Arc::new(Self { metadata_key }))
     }
 }
 

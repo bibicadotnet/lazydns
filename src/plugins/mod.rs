@@ -123,6 +123,9 @@ pub fn initialize_all_builders() {
         Lazy::force(&executable::ttl::TTL_PLUGIN_BUILDER);
         Lazy::force(&executable::black_hole::BLACKHOLE_PLUGIN_BUILDER);
         Lazy::force(&executable::redirect::REDIRECT_PLUGIN_BUILDER);
+        // Lazy::force(&executable::sequence::SEQUENCE_PLUGIN_BUILDER);
+        Lazy::force(&executable::fallback::FALLBACK_PLUGIN_BUILDER);
+        Lazy::force(&matcher::has_resp::HAS_RESP_MATCHER_PLUGIN_BUILDER);
         Lazy::force(&server::UDP_SERVER_PLUGIN_BUILDER);
         Lazy::force(&server::TCP_SERVER_PLUGIN_BUILDER);
 

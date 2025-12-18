@@ -29,7 +29,7 @@
 //!
 //! ```rust,no_run
 //! use lazydns::config::Config;
-//! use lazydns::plugin::builder::ConfigPluginBuilder;
+//! use lazydns::plugin::PluginBuilder;
 //! use lazydns::server::ServerLauncher;
 //! use std::sync::Arc;
 //!
@@ -38,7 +38,7 @@
 //! let config = Config::from_file("config.yaml")?;
 //!
 //! // Build plugins
-//! let mut builder = ConfigPluginBuilder::new();
+//! let mut builder = PluginBuilder::new();
 //! for plugin_config in &config.plugins {
 //!     builder.build(plugin_config);
 //! }

@@ -45,7 +45,7 @@ pub mod traits;
 pub const RETURN_FLAG: &str = "__return_flag";
 
 // Re-export commonly used types
-pub use builder::{get_all_plugin_types, get_builder, initialize, ConfigPluginBuilder};
+pub use builder::{get_all_plugin_types, get_builder, initialize, PluginBuilder};
 pub use context::Context;
 pub use executor::Executor;
 pub use registry::Registry;

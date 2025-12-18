@@ -238,14 +238,14 @@ macro_rules! register_plugin_builder {
 // ============================================================================
 
 /// Plugin builder that creates plugin instances from configuration
-pub struct ConfigPluginBuilder {
+pub struct PluginBuilder {
     /// Registry of named plugins for reference
     plugins: HashMap<String, Arc<dyn Plugin>>,
     /// Server plugin tags
     server_plugin_tags: Vec<String>,
 }
 
-impl ConfigPluginBuilder {
+impl PluginBuilder {
     /// Create a new plugin builder
     pub fn new() -> Self {
         Self {
@@ -281,12 +281,6 @@ impl ConfigPluginBuilder {
         );
 
         let plugin: Arc<dyn Plugin> = match plugin_type.as_str() {
-            "cache" => {
-                let args = &config.effective_args();
-                let size = get_int_arg(args, "size", 1024)?;
-                Arc::new(CachePlugin::new(size as usize))
-            }
-
             "sequence" => {
                 // Handle different sequence formats
                 if let Value::Mapping(map) = &config.args {
@@ -332,131 +326,7 @@ impl ConfigPluginBuilder {
                 }
             }
 
-            "fallback" => {
-                // Fallback plugins reference other plugins by name
-                // We'll handle this in a second pass
-                let args = &config.effective_args();
-                let primary = get_string_arg(args, "primary", "")?;
-                let secondary = get_string_arg(args, "secondary", "")?;
-                info!("Creating fallback plugin (will resolve references later): primary={}, secondary={}", primary, secondary);
-                Arc::new(FallbackPlugin::new(Vec::new()))
-            }
-
-            "drop_resp" => Arc::new(DropRespPlugin::new()),
-            "accept" => Arc::new(AcceptPlugin::new()),
-
-            "reject" => {
-                let args = &config.effective_args();
-                let rcode = get_int_arg(args, "rcode", 3)? as u8;
-                Arc::new(RejectPlugin::new(rcode))
-            }
-
-            "redirect" => {
-                let args = &config.effective_args();
-                // Expect `rules` to be an array. Each entry can be a simple string
-                // like "from to" or a mapping with `from`/`to` keys. We'll use
-                // the first rule if multiple are provided.
-                if let Some(Value::Sequence(seq)) = args.get("rules") {
-                    if seq.is_empty() {
-                        return Err(Error::Config(
-                            "redirect requires at least one rule".to_string(),
-                        ));
-                    }
-
-                    let first = &seq[0];
-                    if let Value::String(s) = first {
-                        let parts: Vec<&str> = s.split_whitespace().collect();
-                        if parts.len() == 2 {
-                            Arc::new(crate::plugins::executable::RedirectPlugin::new(
-                                parts[0].to_string(),
-                                parts[1].to_string(),
-                            ))
-                        } else {
-                            return Err(Error::Config(
-                                "redirect rule must be 'from to'".to_string(),
-                            ));
-                        }
-                    } else if let Value::Mapping(map) = first {
-                        let from = map
-                            .get(Value::String("from".to_string()))
-                            .and_then(|v| v.as_str())
-                            .ok_or_else(|| {
-                                Error::Config("redirect rule mapping missing 'from'".to_string())
-                            })?;
-                        let to = map
-                            .get(Value::String("to".to_string()))
-                            .and_then(|v| v.as_str())
-                            .ok_or_else(|| {
-                                Error::Config("redirect rule mapping missing 'to'".to_string())
-                            })?;
-                        Arc::new(crate::plugins::executable::RedirectPlugin::new(
-                            from.to_string(),
-                            to.to_string(),
-                        ))
-                    } else {
-                        return Err(Error::Config(
-                            "unsupported redirect rule format".to_string(),
-                        ));
-                    }
-                } else {
-                    return Err(Error::Config(
-                        "redirect plugin requires 'rules' array".to_string(),
-                    ));
-                }
-            }
-
-            "prefer_ipv4" => Arc::new(PreferIpv4Plugin::new()),
-            "prefer_ipv6" => Arc::new(PreferIpv6Plugin::new()),
-
-            "jump" => {
-                let args = &config.effective_args();
-                let target = get_string_arg(args, "target", "")?;
-                Arc::new(JumpPlugin::new(target))
-            }
-
-            "return" => Arc::new(ReturnPlugin::new()),
-
-            // Matcher plugins
-            "has_resp" => Arc::new(HasRespMatcherPlugin::new()),
-
-            // Server plugins
-            "udp_server" => {
-                let args = &config.effective_args();
-                let listen = get_string_arg(args, "listen", "0.0.0.0:53")?;
-                let entry = get_string_arg(args, "entry", "main_sequence")?;
-                // Accept shorthand like ":5353" and normalize to "0.0.0.0:5353"
-                let listen_parse_str = if listen.starts_with(':') {
-                    format!("0.0.0.0{}", listen)
-                } else {
-                    listen.clone()
-                };
-                let addr = listen_parse_str.parse().map_err(|e| {
-                    Error::Config(format!("Invalid listen address '{}': {}", listen, e))
-                })?;
-                let tag = config.effective_name().to_string();
-                self.server_plugin_tags.push(tag);
-                Arc::new(UdpServerPlugin::new(addr, entry))
-            }
-
-            "tcp_server" => {
-                let args = &config.effective_args();
-                let listen = get_string_arg(args, "listen", "0.0.0.0:53")?;
-                let entry = get_string_arg(args, "entry", "main_sequence")?;
-                // Accept shorthand like ":5353" and normalize to "0.0.0.0:5353"
-                let listen_parse_str = if listen.starts_with(':') {
-                    format!("0.0.0.0{}", listen)
-                } else {
-                    listen.clone()
-                };
-                let addr = listen_parse_str.parse().map_err(|e| {
-                    Error::Config(format!("Invalid listen address '{}': {}", listen, e))
-                })?;
-                let tag = config.effective_name().to_string();
-                self.server_plugin_tags.push(tag);
-                Arc::new(TcpServerPlugin::new(addr, entry))
-            }
-
-            // Accept doh/dot server plugin types at build time so configuration
+            // Accept doh/dot/doq server plugin types at build time so configuration
             // parsing succeeds. The actual servers are started by the application
             // runtime (main.rs) when TLS and certs are available. Here we return
             // a benign plugin instance (AcceptPlugin) so the name is registered
@@ -486,46 +356,21 @@ impl ConfigPluginBuilder {
     /// (for example, `fallback` refers to other plugins by name).
     /// This also re-parses sequences to update plugin references after fallback resolution.
     pub fn resolve_references(&mut self, configs: &[PluginConfig]) -> Result<()> {
-        // First pass: resolve fallback plugins
+        // First pass: ask fallback plugins to resolve their pending child references
         for config in configs {
             if config.plugin_type == "fallback" {
-                let args = config.effective_args();
-                let primary = get_string_arg(&args, "primary", "")?;
-                let secondary = get_string_arg(&args, "secondary", "")?;
-
-                debug!(
-                    "Resolving fallback references: primary={}, secondary={}",
-                    primary, secondary
-                );
-                debug!(
-                    "Available plugins: {:?}",
-                    self.plugins.keys().collect::<Vec<_>>()
-                );
-
-                let mut children: Vec<Arc<dyn Plugin>> = Vec::new();
-
-                if !primary.is_empty() {
-                    if let Some(p) = self.plugins.get(&primary).cloned() {
-                        debug!("Found primary plugin: {}", primary);
-                        children.push(p);
-                    } else {
-                        warn!(primary = %primary, "Fallback primary plugin not found");
-                    }
-                }
-
-                if !secondary.is_empty() {
-                    if let Some(p) = self.plugins.get(&secondary).cloned() {
-                        debug!("Found secondary plugin: {}", secondary);
-                        children.push(p);
-                    } else {
-                        warn!(secondary = %secondary, "Fallback secondary plugin not found");
-                    }
-                }
-
-                debug!("Fallback plugin resolved with {} children", children.len());
-                let fallback_plugin = Arc::new(FallbackPlugin::new(children));
                 let name = config.effective_name().to_string();
-                self.plugins.insert(name, fallback_plugin);
+                debug!("Resolving fallback plugin: {}", name);
+                if let Some(plugin) = self.plugins.get(&name).cloned() {
+                    // Attempt to downcast to FallbackPlugin and let it resolve itself
+                    if let Some(fp) = plugin.as_ref().as_any().downcast_ref::<FallbackPlugin>() {
+                        fp.resolve_children(&self.plugins);
+                    } else {
+                        warn!(plugin = %name, "Plugin registered under name is not a FallbackPlugin");
+                    }
+                } else {
+                    warn!(plugin = %name, "Fallback plugin not found in registry");
+                }
             }
         }
 
@@ -593,38 +438,9 @@ impl ConfigPluginBuilder {
     }
 }
 
-impl Default for ConfigPluginBuilder {
+impl Default for PluginBuilder {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-// For backward compatibility, create a type alias
-pub type PluginConfigBuilder = ConfigPluginBuilder;
-
-// Helper functions for extracting configuration values
-
-fn get_string_arg(args: &HashMap<String, Value>, key: &str, default: &str) -> Result<String> {
-    match args.get(key) {
-        Some(Value::String(s)) => Ok(s.clone()),
-        Some(_) => Err(Error::Config(format!(
-            "Expected string for '{}', got different type",
-            key
-        ))),
-        None => Ok(default.to_string()),
-    }
-}
-
-fn get_int_arg(args: &HashMap<String, Value>, key: &str, default: i64) -> Result<i64> {
-    match args.get(key) {
-        Some(Value::Number(n)) => n
-            .as_i64()
-            .ok_or_else(|| Error::Config(format!("Invalid integer value for '{}'", key))),
-        Some(_) => Err(Error::Config(format!(
-            "Expected integer for '{}', got different type",
-            key
-        ))),
-        None => Ok(default),
     }
 }
 
@@ -638,13 +454,13 @@ mod tests {
 
     #[test]
     fn test_plugin_builder_creation() {
-        let builder = ConfigPluginBuilder::new();
+        let builder = PluginBuilder::new();
         assert_eq!(builder.plugins.len(), 0);
     }
 
     #[test]
     fn test_build_cache_plugin() {
-        let mut builder = ConfigPluginBuilder::new();
+        let mut builder = PluginBuilder::new();
         let mut config_map = HashMap::new();
         config_map.insert("size".to_string(), Value::Number(2048.into()));
 
@@ -663,7 +479,7 @@ mod tests {
 
     #[test]
     fn test_build_forward_plugin() {
-        let mut builder = ConfigPluginBuilder::new();
+        let mut builder = PluginBuilder::new();
         let mut config_map = HashMap::new();
 
         let upstreams = vec![
@@ -687,7 +503,7 @@ mod tests {
 
     #[test]
     fn test_build_forward_plugin_with_default_port() {
-        let mut builder = ConfigPluginBuilder::new();
+        let mut builder = PluginBuilder::new();
         let mut config_map = HashMap::new();
 
         let upstreams = vec![Value::String("udp://119.29.29.29".to_string())];
@@ -717,7 +533,7 @@ mod tests {
 
     #[test]
     fn test_parse_condition_qtype_single_and_multiple() {
-        let builder = ConfigPluginBuilder::new();
+        let builder = PluginBuilder::new();
 
         // Single type
         let cond = parse_condition(&builder, "qtype 1").unwrap();
@@ -744,7 +560,7 @@ mod tests {
 
     #[test]
     fn test_parse_condition_qtype_invalid() {
-        let builder = ConfigPluginBuilder::new();
+        let builder = PluginBuilder::new();
 
         assert!(parse_condition(&builder, "qtype").is_err());
         assert!(parse_condition(&builder, "qtype abc").is_err());
@@ -753,7 +569,7 @@ mod tests {
 
     #[test]
     fn test_build_control_flow_plugins() {
-        let mut builder = ConfigPluginBuilder::new();
+        let mut builder = PluginBuilder::new();
 
         // Test accept
         let config = PluginConfig::new("accept".to_string());
@@ -772,29 +588,8 @@ mod tests {
     }
 
     #[test]
-    fn test_get_string_arg() {
-        let mut args = HashMap::new();
-        args.insert("key".to_string(), Value::String("value".to_string()));
-
-        assert_eq!(get_string_arg(&args, "key", "default").unwrap(), "value");
-        assert_eq!(
-            get_string_arg(&args, "missing", "default").unwrap(),
-            "default"
-        );
-    }
-
-    #[test]
-    fn test_get_int_arg() {
-        let mut args = HashMap::new();
-        args.insert("key".to_string(), Value::Number(42.into()));
-
-        assert_eq!(get_int_arg(&args, "key", 0).unwrap(), 42);
-        assert_eq!(get_int_arg(&args, "missing", 100).unwrap(), 100);
-    }
-
-    #[test]
     fn test_build_udp_server_with_shorthand_listen() {
-        let mut builder = ConfigPluginBuilder::new();
+        let mut builder = PluginBuilder::new();
         let mut args_map = Mapping::new();
         args_map.insert(
             Value::String("listen".to_string()),
@@ -945,7 +740,7 @@ mod tests {
 
     #[test]
     fn test_build_tcp_server_with_shorthand_listen() {
-        let mut builder = ConfigPluginBuilder::new();
+        let mut builder = PluginBuilder::new();
         let mut args_map = Mapping::new();
         args_map.insert(
             Value::String("listen".to_string()),
@@ -971,7 +766,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_redirect_from_string_rule_executes() {
-        let mut builder = ConfigPluginBuilder::new();
+        let mut builder = PluginBuilder::new();
         let mut args_map = Mapping::new();
         args_map.insert(
             Value::String("rules".to_string()),
@@ -1013,7 +808,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_redirect_from_mapping_rule_executes() {
-        let mut builder = ConfigPluginBuilder::new();
+        let mut builder = PluginBuilder::new();
         let mut args_map = Mapping::new();
 
         let mut rule_map = Mapping::new();
@@ -1066,7 +861,7 @@ mod tests {
 
     #[test]
     fn test_build_plugin_type_case_insensitive() {
-        let mut builder = ConfigPluginBuilder::new();
+        let mut builder = PluginBuilder::new();
         let mut args_map = Mapping::new();
         args_map.insert(
             Value::String("rules".to_string()),
@@ -1085,13 +880,77 @@ mod tests {
         let plugin = builder.build(&config).expect("build redirect plugin");
         assert_eq!(plugin.name(), "redirect");
     }
+
+    #[test]
+    fn test_fallback_resolves_children() {
+        let mut builder = PluginBuilder::new();
+
+        // Build primary and secondary helper plugins (use 'accept' as a benign plugin type)
+        let primary_cfg = PluginConfig {
+            tag: None,
+            plugin_type: "accept".to_string(),
+            args: Value::Mapping(Mapping::new()),
+            name: Some("primary".to_string()),
+            priority: 100,
+            config: HashMap::new(),
+        };
+        let secondary_cfg = PluginConfig {
+            tag: None,
+            plugin_type: "accept".to_string(),
+            args: Value::Mapping(Mapping::new()),
+            name: Some("secondary".to_string()),
+            priority: 100,
+            config: HashMap::new(),
+        };
+        builder.build(&primary_cfg).unwrap();
+        builder.build(&secondary_cfg).unwrap();
+
+        // Create fallback config referencing the above by name
+        let mut args_map = Mapping::new();
+        args_map.insert(
+            Value::String("primary".to_string()),
+            Value::String("primary".to_string()),
+        );
+        args_map.insert(
+            Value::String("secondary".to_string()),
+            Value::String("secondary".to_string()),
+        );
+
+        let fb_cfg = PluginConfig {
+            tag: None,
+            plugin_type: "fallback".to_string(),
+            args: Value::Mapping(args_map),
+            name: Some("my_fallback".to_string()),
+            priority: 100,
+            config: HashMap::new(),
+        };
+
+        builder.build(&fb_cfg).unwrap();
+
+        // Resolve references
+        builder
+            .resolve_references(&vec![primary_cfg, secondary_cfg, fb_cfg])
+            .unwrap();
+
+        // Verify fallback has resolved children
+        let plugin = builder
+            .get_plugin("my_fallback")
+            .expect("fallback plugin present");
+        if let Some(fp) = plugin
+            .as_ref()
+            .as_any()
+            .downcast_ref::<crate::plugins::executable::FallbackPlugin>()
+        {
+            assert_eq!(fp.resolved_child_count(), 2);
+            assert_eq!(fp.pending_child_count(), 0);
+        } else {
+            panic!("fallback plugin is wrong type");
+        }
+    }
 }
 
 /// Parse complex sequence steps from YAML sequence
-fn parse_sequence_steps(
-    builder: &ConfigPluginBuilder,
-    sequence: &[Value],
-) -> Result<Vec<SequenceStep>> {
+fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
     use crate::plugins::executable::SequenceStep;
     info!("Parsing {} sequence steps", sequence.len());
     let mut steps = Vec::new();
@@ -1137,7 +996,7 @@ fn parse_sequence_steps(
 }
 
 /// Parse exec action from YAML value
-fn parse_exec_action(builder: &ConfigPluginBuilder, exec_value: &Value) -> Result<Arc<dyn Plugin>> {
+fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<dyn Plugin>> {
     match exec_value {
         Value::String(exec_str) => {
             // Handle different exec formats
@@ -1195,7 +1054,7 @@ fn parse_exec_action(builder: &ConfigPluginBuilder, exec_value: &Value) -> Resul
 }
 #[allow(clippy::type_complexity)]
 fn parse_condition(
-    builder: &ConfigPluginBuilder,
+    builder: &PluginBuilder,
     condition_str: &str,
 ) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
     // Simple condition parsing - this is a basic implementation

@@ -14,7 +14,7 @@ mod cli;
 use crate::cli::parse_args;
 use lazydns::config::Config;
 use lazydns::logging;
-use lazydns::plugin::ConfigPluginBuilder;
+use lazydns::plugin::PluginBuilder;
 use lazydns::server::ServerLauncher;
 use std::sync::Arc;
 use tracing::{debug, error, info};
@@ -83,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     // Build plugins from configuration
-    let mut builder = ConfigPluginBuilder::new();
+    let mut builder = PluginBuilder::new();
     let mut plugin_count = 0;
 
     for plugin_config in &config.plugins {

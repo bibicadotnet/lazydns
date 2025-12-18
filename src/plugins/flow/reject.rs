@@ -6,6 +6,9 @@ use async_trait::async_trait;
 use serde_yaml::Value;
 use std::sync::Arc;
 
+// Plugin builder registration for RejectPlugin
+crate::register_plugin_builder!(RejectPlugin);
+
 #[derive(Debug, Clone, Copy)]
 pub struct RejectPlugin {
     rcode: u8,
@@ -105,5 +108,3 @@ mod tests {
         assert_eq!(servfail.rcode, 2);
     }
 }
-
-crate::register_plugin_builder!(RejectPlugin);

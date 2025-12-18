@@ -5,6 +5,9 @@ use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 
+// Plugin builder registration for DropRespPlugin
+crate::register_plugin_builder!(DropRespPlugin);
+
 /// Plugin that clears any existing response from the execution `Context`.
 ///
 /// This is a lightweight control-flow helper used in sequences or other
@@ -48,8 +51,6 @@ impl Plugin for DropRespPlugin {
         Ok(Arc::new(DropRespPlugin::new()))
     }
 }
-
-crate::register_plugin_builder!(DropRespPlugin);
 
 #[cfg(test)]
 mod tests {

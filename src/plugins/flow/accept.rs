@@ -6,6 +6,9 @@ use crate::{
 use async_trait::async_trait;
 use std::sync::Arc;
 
+// Plugin builder registration for AcceptPlugin
+crate::register_plugin_builder!(AcceptPlugin);
+
 /// Accept plugin - accepts the current response and stops execution
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AcceptPlugin;
@@ -51,9 +54,3 @@ mod tests {
         assert_eq!(ctx.get_metadata::<bool>(RETURN_FLAG), Some(&true));
     }
 }
-
-// ============================================================================
-// Plugin Factory Registration
-// ============================================================================
-
-crate::register_plugin_builder!(AcceptPlugin);

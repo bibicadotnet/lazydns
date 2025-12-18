@@ -978,7 +978,7 @@ plugins:
 
         let cfg = crate::config::Config::from_yaml(yaml).expect("parse yaml");
 
-        let mut builder = crate::plugin::builder::ConfigPluginBuilder::new();
+        let mut builder = crate::plugin::builder::PluginBuilder::new();
 
         // Build all plugins from config
         for pc in &cfg.plugins {

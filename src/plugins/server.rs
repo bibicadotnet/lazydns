@@ -104,10 +104,12 @@ impl Plugin for UdpServerPlugin {
         use std::sync::Arc;
 
         let args = config.effective_args();
-        let listen = args.get("listen")
+        let listen = args
+            .get("listen")
             .and_then(|v| v.as_str())
             .unwrap_or("0.0.0.0:53");
-        let entry = args.get("entry")
+        let entry = args
+            .get("entry")
             .and_then(|v| v.as_str())
             .unwrap_or("main_sequence");
         // Accept shorthand like ":5353" and normalize to "0.0.0.0:5353"
@@ -216,10 +218,12 @@ impl Plugin for TcpServerPlugin {
         use std::sync::Arc;
 
         let args = config.effective_args();
-        let listen = args.get("listen")
+        let listen = args
+            .get("listen")
             .and_then(|v| v.as_str())
             .unwrap_or("0.0.0.0:53");
-        let entry = args.get("entry")
+        let entry = args
+            .get("entry")
             .and_then(|v| v.as_str())
             .unwrap_or("main_sequence");
         // Accept shorthand like ":5353" and normalize to "0.0.0.0:5353"
