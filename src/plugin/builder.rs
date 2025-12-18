@@ -224,6 +224,9 @@ impl ConfigPluginBuilder {
         // Normalize plugin type for more forgiving parsing (trim and lowercase)
         let plugin_type = config.plugin_type.trim().to_lowercase();
 
+        // Ensure plugin builders from plugin modules are initialized (register themselves)
+        crate::plugins::initialize_all_builders();
+
         // Try to get builder from registry first
         if let Some(builder) = get_builder(&plugin_type) {
             info!("Creating plugin '{}' using registered builder", plugin_type);
@@ -249,38 +252,6 @@ impl ConfigPluginBuilder {
                 Arc::new(CachePlugin::new(size as usize))
             }
 
-            // "forward" => {
-            //     let args = &config.effective_args();
-            //     let upstreams = get_string_array_arg(args, "upstreams")?;
-            //     let _concurrent = get_int_arg(args, "concurrent", 1)? as usize;
-
-            //     let mut builder = ForwardPluginBuilder::new();
-            //     for upstream in upstreams {
-            //         // Parse upstream address - handle udp:// and tcp:// prefixes
-            //         let mut addr = upstream
-            //             .trim_start_matches("udp://")
-            //             .trim_start_matches("tcp://")
-            //             .to_string();
-
-            //         // Ensure the address includes a port. If parsing as a SocketAddr
-            //         // fails, try appending the default DNS port 53.
-            //         if addr.parse::<std::net::SocketAddr>().is_err() {
-            //             let with_port = format!("{}:53", addr);
-            //             if with_port.parse::<std::net::SocketAddr>().is_ok() {
-            //                 addr = with_port;
-            //             }
-            //         }
-
-            //         builder = builder.add_upstream(addr);
-            //     }
-
-            //     // Build plugin and log configured upstream addresses for visibility
-            //     let fp = Arc::new(builder.build());
-            //     if let Some(fwd) = fp.as_ref().as_any().downcast_ref::<ForwardPlugin>() {
-            //         debug!(upstreams = ?fwd.upstream_addrs(), "Built forward plugin with upstreams");
-            //     }
-            //     fp
-            // }
             "hosts" => {
                 let args = &config.effective_args();
                 let mut plugin = HostsPlugin::new();

@@ -8,7 +8,6 @@ use crate::dns::Message;
 use crate::plugin::builder::PluginBuilder;
 use crate::plugin::{Context, Plugin};
 use crate::plugins::forward::{ForwardCore, LoadBalanceStrategy, Upstream};
-use crate::Error;
 use crate::Result;
 use async_trait::async_trait;
 use serde_yaml::Value;
@@ -496,88 +495,22 @@ impl PluginBuilder for ForwardPlugin {
     fn create(config: &PluginConfig) -> crate::Result<StdArc<dyn Plugin>> {
         let args = config.effective_args();
 
-        // Parse upstreams (required)
-        let upstreams = match args.get("upstreams") {
-            Some(Value::Sequence(seq)) => {
-                let mut result = Vec::new();
-                for item in seq {
-                    match item {
-                        Value::String(s) => {
-                            let mut upstream = s.clone();
-                            // Add default port if not specified
-                            if !upstream.contains(':') && !upstream.starts_with("http") {
-                                upstream.push_str(":53");
-                            }
-                            result.push(upstream);
-                        }
-                        _ => {
-                            return Err(Error::Config(
-                                "upstreams must be array of strings".to_string(),
-                            ))
-                        }
-                    }
-                }
-                result
-            }
-            Some(_) => return Err(Error::Config("upstreams must be an array".to_string())),
-            None => {
-                return Err(Error::Config(
-                    "upstreams is required for forward plugin".to_string(),
-                ))
-            }
+        // Reuse centralized core parser to build ForwardCore
+        let core = crate::plugins::forward::ForwardCoreBuilder::from_args(&args)?;
+
+        // Parse concurrent flag (legacy behavior: concurrent > 1 -> race)
+        let concurrent = match args.get("concurrent") {
+            Some(Value::Number(n)) => n.as_i64().unwrap_or(1) > 1,
+            _ => false,
         };
 
-        let mut builder = ForwardPluginBuilder::new();
+        let plugin = ForwardPlugin {
+            core,
+            current: AtomicUsize::new(0),
+            concurrent_queries: concurrent,
+        };
 
-        // Add upstreams
-        for upstream in upstreams {
-            builder = builder.add_upstream(upstream);
-        }
-
-        // Parse timeout (default: 5s)
-        if let Some(Value::Number(n)) = args.get("timeout") {
-            let secs = n
-                .as_i64()
-                .ok_or_else(|| Error::Config("Invalid timeout value".to_string()))?;
-            builder = builder.timeout(Duration::from_secs(secs as u64));
-        }
-
-        // Parse concurrent (default: 1)
-        if let Some(Value::Number(n)) = args.get("concurrent") {
-            let concurrent = n
-                .as_i64()
-                .ok_or_else(|| Error::Config("Invalid concurrent value".to_string()))?;
-            if concurrent > 1 {
-                builder = builder.concurrent_queries(true);
-            }
-        }
-
-        // Parse strategy (default: round_robin)
-        if let Some(Value::String(s)) = args.get("strategy") {
-            let strategy = match s.as_str() {
-                "round_robin" | "roundrobin" => LoadBalanceStrategy::RoundRobin,
-                "random" => LoadBalanceStrategy::Random,
-                "fastest" => LoadBalanceStrategy::Fastest,
-                _ => return Err(Error::Config(format!("Unknown strategy: {}", s))),
-            };
-            builder = builder.strategy(strategy);
-        }
-
-        // Parse health_checks (default: false)
-        if let Some(Value::Bool(enabled)) = args.get("health_checks") {
-            builder = builder.enable_health_checks(*enabled);
-        }
-
-        // Parse max_attempts (default: 3)
-        if let Some(Value::Number(n)) = args.get("max_attempts") {
-            let max = n
-                .as_i64()
-                .ok_or_else(|| Error::Config("Invalid max_attempts value".to_string()))?
-                as usize;
-            builder = builder.max_attempts(max);
-        }
-
-        Ok(StdArc::new(builder.build()))
+        Ok(StdArc::new(plugin))
     }
 
     fn plugin_type() -> &'static str {

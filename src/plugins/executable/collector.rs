@@ -147,6 +147,7 @@ pub fn quick_setup_with_registry(reg: &Registry, name: &str) -> Result<Arc<dyn P
         .map_err(|e| crate::Error::Other(format!("failed to register response_latency: {}", e)))?;
 
     // Plugin that updates Prometheus metrics using the same semantics.
+    #[allow(dead_code)]
     #[derive(Debug)]
     struct PromCollector {
         query_total: Counter,
