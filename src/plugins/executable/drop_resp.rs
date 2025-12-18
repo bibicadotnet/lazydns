@@ -1,4 +1,7 @@
-use crate::plugin::{Context, Plugin};
+use std::sync::Arc;
+
+use crate::config::PluginConfig;
+use crate::plugin::{Context, Plugin, PluginBuilder};
 use crate::Result;
 use async_trait::async_trait;
 
@@ -41,6 +44,19 @@ impl Plugin for DropRespPlugin {
         Ok(())
     }
 }
+
+/// Implement PluginBuilder for DropRespPlugin
+impl PluginBuilder for DropRespPlugin {
+    fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
+        Ok(Arc::new(DropRespPlugin::new()))
+    }
+
+    fn plugin_type() -> &'static str {
+        "drop_resp"
+    }
+}
+
+crate::register_plugin_builder!(DropRespPlugin);
 
 #[cfg(test)]
 mod tests {

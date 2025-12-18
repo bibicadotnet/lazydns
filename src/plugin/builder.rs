@@ -45,13 +45,10 @@ use tracing::{debug, info, warn};
 ///         "my_plugin"
 ///     }
 /// }
-///
+// `PluginBuilder` trait has been moved to `plugin::traits`.
 /// // Auto-register with macro
 /// lazydns::register_plugin_builder!(MyPlugin);
 /// ```
-/// ```
-// `PluginBuilder` trait has been moved to `plugin::traits`.
-
 /// Internal trait for dynamic dispatch of PluginBuilder implementations
 #[doc(hidden)]
 pub trait PluginBuilderFactory: Send + Sync {
@@ -72,7 +69,6 @@ pub fn register_builder(builder: Arc<dyn PluginBuilderFactory>) {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     let plugin_type = builder.plugin_type();
-
     // Check for duplicates
     if builders.contains_key(plugin_type) {
         panic!("Duplicate plugin builder registration: {}", plugin_type);

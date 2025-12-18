@@ -2,11 +2,11 @@
 //!
 //! Defines the core Plugin trait that all plugins must implement.
 
+use crate::config::types::PluginConfig;
 use crate::plugin::Context;
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt::Debug;
-use crate::config::types::PluginConfig;
 use std::sync::Arc;
 
 /// Core plugin trait

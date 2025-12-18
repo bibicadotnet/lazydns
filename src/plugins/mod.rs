@@ -31,10 +31,10 @@
 
 pub mod acl;
 pub mod cache;
-pub mod control_flow;
 pub mod data_provider;
 pub mod domain_matcher;
 pub mod executable;
+pub mod flow;
 pub mod forward;
 pub mod geoip;
 pub mod geosite;
@@ -49,12 +49,12 @@ pub mod server;
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
 pub use cache::{CachePlugin, CacheStorePlugin};
-pub use control_flow::{
+pub use data_provider::{DomainSetPlugin, IpSetPlugin};
+pub use domain_matcher::DomainMatcherPlugin;
+pub use flow::{
     AcceptPlugin, GotoPlugin, IfPlugin, JumpPlugin, ParallelPlugin, PreferIpv4Plugin,
     PreferIpv6Plugin, RejectPlugin, ReturnPlugin,
 };
-pub use data_provider::{DomainSetPlugin, IpSetPlugin};
-pub use domain_matcher::DomainMatcherPlugin;
 pub use forward::LoadBalanceStrategy;
 pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
@@ -112,11 +112,11 @@ pub fn initialize_all_builders() {
     // Note: Macro generates names like CACHE_PLUGIN_BUILDER from CachePlugin
     Lazy::force(&cache::CACHE_PLUGIN_BUILDER);
     Lazy::force(&executable::forward::FORWARD_PLUGIN_BUILDER);
-    Lazy::force(&control_flow::ACCEPT_PLUGIN_BUILDER);
-    Lazy::force(&control_flow::REJECT_PLUGIN_BUILDER);
-    Lazy::force(&control_flow::RETURN_PLUGIN_BUILDER);
-    Lazy::force(&control_flow::JUMP_PLUGIN_BUILDER);
-    Lazy::force(&control_flow::DROP_RESP_PLUGIN_BUILDER);
+    Lazy::force(&flow::accept::ACCEPT_PLUGIN_BUILDER);
+    Lazy::force(&flow::reject::REJECT_PLUGIN_BUILDER);
+    Lazy::force(&flow::return_plugin::RETURN_PLUGIN_BUILDER);
+    Lazy::force(&flow::jump::JUMP_PLUGIN_BUILDER);
+    Lazy::force(&executable::drop_resp::DROP_RESP_PLUGIN_BUILDER);
 
     // Initialize the builder system
     crate::plugin::builder::initialize();
