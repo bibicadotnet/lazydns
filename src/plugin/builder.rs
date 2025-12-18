@@ -5,7 +5,7 @@
 use crate::config::types::PluginConfig;
 use crate::plugin::traits::Matcher;
 use crate::plugin::{Context, Plugin};
-use crate::plugins::advanced::SequenceStep;
+use crate::plugins::executable::SequenceStep;
 use crate::plugins::*;
 use crate::Error;
 use crate::Result;
@@ -70,11 +70,7 @@ impl PluginBuilder {
 
                 // Build plugin and log configured upstream addresses for visibility
                 let fp = Arc::new(builder.build());
-                if let Some(fwd) = fp
-                    .as_ref()
-                    .as_any()
-                    .downcast_ref::<crate::plugins::forward::ForwardPlugin>()
-                {
+                if let Some(fwd) = fp.as_ref().as_any().downcast_ref::<ForwardPlugin>() {
                     debug!(upstreams = ?fwd.upstream_addrs(), "Built forward plugin with upstreams");
                 }
                 fp
@@ -238,10 +234,10 @@ impl PluginBuilder {
             "ttl" => {
                 let args = &config.effective_args();
                 let ttl = get_int_arg(args, "ttl", 300)? as u32;
-                Arc::new(TtlPlugin::new(ttl))
+                Arc::new(TtlPlugin::new(ttl, 0, 0))
             }
 
-            "drop_resp" => Arc::new(DropResponsePlugin::new()),
+            "drop_resp" => Arc::new(DropRespPlugin::new()),
             "accept" => Arc::new(AcceptPlugin::new()),
 
             "reject" => {
@@ -250,7 +246,9 @@ impl PluginBuilder {
                 Arc::new(RejectPlugin::new(rcode))
             }
 
-            "black_hole" | "blackhole" => Arc::new(BlackholePlugin),
+            "black_hole" | "blackhole" => {
+                Arc::new(BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap())
+            }
 
             "redirect" => {
                 let args = &config.effective_args();
@@ -643,11 +641,7 @@ mod tests {
         assert_eq!(plugin.name(), "forward");
 
         // Downcast to ForwardPlugin to inspect upstreams
-        if let Some(fp) = plugin
-            .as_ref()
-            .as_any()
-            .downcast_ref::<crate::plugins::forward::ForwardPlugin>()
-        {
+        if let Some(fp) = plugin.as_ref().as_any().downcast_ref::<ForwardPlugin>() {
             let addrs = fp.upstream_addrs();
             assert_eq!(addrs.len(), 1);
             assert_eq!(addrs[0], "119.29.29.29:53");
@@ -905,7 +899,7 @@ mod tests {
 
 /// Parse complex sequence steps from YAML sequence
 fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
-    use crate::plugins::advanced::SequenceStep;
+    use crate::plugins::executable::SequenceStep;
     info!("Parsing {} sequence steps", sequence.len());
     let mut steps = Vec::new();
 
@@ -967,7 +961,7 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
             } else if exec_str == "accept" {
                 Ok(Arc::new(crate::plugins::AcceptPlugin::new()))
             } else if exec_str == "drop_resp" {
-                Ok(Arc::new(crate::plugins::DropResponsePlugin::new()))
+                Ok(Arc::new(crate::plugins::DropRespPlugin::new()))
             } else if exec_str.starts_with("reject") {
                 // reject [rcode] - default to 3 (NXDOMAIN)
                 let rcode = if let Some(rest) = exec_str.strip_prefix("reject") {
@@ -980,7 +974,7 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
                 // ttl 300-3600 format - take the first number
                 if let Some(first_num) = ttl_part.split('-').next() {
                     if let Ok(ttl) = first_num.parse::<u32>() {
-                        Ok(Arc::new(crate::plugins::TtlPlugin::new(ttl)))
+                        Ok(Arc::new(crate::plugins::TtlPlugin::new(ttl, 0, 0)))
                     } else {
                         Err(Error::Config(format!("Invalid TTL value: {}", ttl_part)))
                     }
@@ -988,7 +982,9 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
                     Err(Error::Config(format!("Invalid TTL format: {}", exec_str)))
                 }
             } else if exec_str.starts_with("black_hole") {
-                Ok(Arc::new(crate::plugins::BlackholePlugin::new()))
+                Ok(Arc::new(
+                    crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
+                ))
             } else if let Some(target) = exec_str.strip_prefix("jump ") {
                 // jump target_name
                 let target = target.trim();

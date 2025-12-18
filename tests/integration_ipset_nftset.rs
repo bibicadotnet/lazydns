@@ -6,8 +6,8 @@ async fn integration_ipset_sequence() {
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
     use lazydns::plugin::Context;
     use lazydns::plugin::Plugin;
-    use lazydns::plugins::advanced::{ArbitraryPlugin, SequencePlugin, SequenceStep};
     use lazydns::plugins::executable::ipset::{IpSetArgs, IpSetPlugin};
+    use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
     // no cwd changes required — tests use constructed messages
 
@@ -35,7 +35,21 @@ async fn integration_ipset_sequence() {
         RData::A("203.0.113.7".parse().unwrap()),
     ));
 
-    let arb = Arc::new(ArbitraryPlugin::new(resp.clone()));
+    // Construct rule-based ArbitraryPlugin from the response's answers
+    use lazydns::plugins::executable::arbitrary::ArbitraryArgs;
+    let mut rules = Vec::new();
+    for rr in resp.answers() {
+        match rr.rdata() {
+            RData::A(ip) => rules.push(format!("{} A {}", rr.name(), ip)),
+            RData::AAAA(ip) => rules.push(format!("{} AAAA {}", rr.name(), ip)),
+            _ => {}
+        }
+    }
+    let args = ArbitraryArgs {
+        rules: Some(rules),
+        files: None,
+    };
+    let arb = Arc::new(ArbitraryPlugin::new(args).unwrap());
 
     let arb_plugin: Arc<dyn lazydns::plugin::Plugin> = arb;
     let ipset_plugin: Arc<dyn lazydns::plugin::Plugin> = ipset;
@@ -62,8 +76,8 @@ async fn integration_nftset_sequence() {
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
     use lazydns::plugin::Context;
     use lazydns::plugin::Plugin;
-    use lazydns::plugins::advanced::{ArbitraryPlugin, SequencePlugin, SequenceStep};
     use lazydns::plugins::executable::nftset::{NftSetArgs, NftSetPlugin, SetArgs};
+    use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
     // no cwd changes required — tests use constructed messages
 
@@ -93,7 +107,20 @@ async fn integration_nftset_sequence() {
         RData::A("198.51.100.9".parse().unwrap()),
     ));
 
-    let arb = Arc::new(ArbitraryPlugin::new(resp.clone()));
+    use lazydns::plugins::executable::arbitrary::ArbitraryArgs;
+    let mut rules = Vec::new();
+    for rr in resp.answers() {
+        match rr.rdata() {
+            RData::A(ip) => rules.push(format!("{} A {}", rr.name(), ip)),
+            RData::AAAA(ip) => rules.push(format!("{} AAAA {}", rr.name(), ip)),
+            _ => {}
+        }
+    }
+    let args = ArbitraryArgs {
+        rules: Some(rules),
+        files: None,
+    };
+    let arb = Arc::new(ArbitraryPlugin::new(args).unwrap());
 
     let arb_plugin: Arc<dyn lazydns::plugin::Plugin> = arb;
     let nft_plugin: Arc<dyn lazydns::plugin::Plugin> = nft;

@@ -6,6 +6,7 @@ use crate::dns::{Message, RecordType, ResponseCode};
 use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use crate::Result;
 use async_trait::async_trait;
+use std::sync::Arc;
 
 /// Accept plugin - accepts the current response and stops execution
 ///
@@ -42,6 +43,82 @@ impl Plugin for AcceptPlugin {
     }
 }
 
+/// Signals the executor to stop executing subsequent plugins.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ReturnPlugin;
+
+/// Stop execution helper.
+///
+/// `ReturnPlugin` is a tiny utility plugin that simply sets the executor
+/// return flag. It is useful when a configuration wants to stop further
+/// plugin processing in a sequence without constructing a full response.
+impl ReturnPlugin {
+    /// Create a new return plugin.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl Plugin for ReturnPlugin {
+    async fn execute(&self, ctx: &mut Context) -> Result<()> {
+        ctx.set_metadata(RETURN_FLAG, true);
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "return"
+    }
+}
+
+/// Executes plugins in "parallel" (sequential fallback) until a response or return flag is set.
+#[derive(Debug, Default)]
+pub struct ParallelPlugin {
+    plugins: Vec<Arc<dyn Plugin>>,
+}
+
+impl ParallelPlugin {
+    /// Create a new parallel plugin with the provided plugins.
+    pub fn new(plugins: Vec<Arc<dyn Plugin>>) -> Self {
+        Self { plugins }
+    }
+}
+
+#[async_trait]
+impl Plugin for ParallelPlugin {
+    async fn execute(&self, ctx: &mut Context) -> Result<()> {
+        run_plugins(&self.plugins, ctx, true, true).await
+    }
+
+    fn name(&self) -> &str {
+        "parallel"
+    }
+}
+
+/// Parallel/sequential executor helper.
+///
+/// `ParallelPlugin` runs a list of plugins in order but with the semantics of
+/// "parallel" from a configuration perspective: the first plugin to set a
+/// response or the return flag short-circuits the remaining plugins.
+/// This helper is implemented as a small wrapper around the `run_plugins`
+/// helper to keep behaviour consistent across call sites.
+async fn run_plugins(
+    plugins: &[Arc<dyn Plugin>],
+    ctx: &mut Context,
+    stop_on_return: bool,
+    stop_on_response: bool,
+) -> Result<()> {
+    for plugin in plugins {
+        plugin.execute(ctx).await?;
+        if stop_on_return && matches!(ctx.get_metadata::<bool>(RETURN_FLAG), Some(true)) {
+            break;
+        }
+        if stop_on_response && ctx.has_response() {
+            break;
+        }
+    }
+    Ok(())
+}
 /// Reject plugin - rejects the query with a specific response code
 ///
 /// This plugin generates a DNS response with the specified response code
@@ -149,6 +226,81 @@ impl JumpPlugin {
     }
 }
 
+/// Conditional execution plugin.
+pub struct IfPlugin {
+    condition: Arc<dyn Fn(&Context) -> bool + Send + Sync>,
+    inner: Arc<dyn Plugin>,
+}
+
+/// Conditional plugin that executes `inner` only when `condition` is true.
+///
+/// Use `IfPlugin::new(condition, inner)` to create a plugin which evaluates
+/// the runtime `condition` against the current `Context` and executes the
+/// provided `inner` plugin when the condition returns true.
+impl std::fmt::Debug for IfPlugin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IfPlugin").finish()
+    }
+}
+
+impl IfPlugin {
+    /// Create a new conditional plugin.
+    pub fn new(
+        condition: Arc<dyn Fn(&Context) -> bool + Send + Sync>,
+        inner: Arc<dyn Plugin>,
+    ) -> Self {
+        Self { condition, inner }
+    }
+}
+
+#[async_trait]
+impl Plugin for IfPlugin {
+    async fn execute(&self, ctx: &mut Context) -> Result<()> {
+        if (self.condition)(ctx) {
+            self.inner.execute(ctx).await?;
+        }
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "if"
+    }
+}
+
+/// Goto plugin: records a target label for higher-level executors.
+#[derive(Debug, Clone)]
+pub struct GotoPlugin {
+    label: String,
+}
+
+/// Goto plugin for executor control flow.
+///
+/// `GotoPlugin` records a `goto_label` in the `Context` metadata and sets
+/// the return flag so that higher-level executors (or sequence handlers)
+/// can perform a jump/transfer to the named label. This is an internal
+/// control-flow primitive used by sequence implementations.
+impl GotoPlugin {
+    /// Create a new goto plugin with target label.
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl Plugin for GotoPlugin {
+    async fn execute(&self, ctx: &mut Context) -> Result<()> {
+        ctx.set_metadata("goto_label", self.label.clone());
+        ctx.set_metadata(RETURN_FLAG, true);
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "goto"
+    }
+}
+
 #[async_trait]
 impl Plugin for JumpPlugin {
     fn name(&self) -> &str {
@@ -252,6 +404,9 @@ impl Plugin for PreferIpv6Plugin {
 mod tests {
     use super::*;
     use crate::dns::{Message, RData, RecordClass, ResourceRecord};
+    use crate::plugin::Executor;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_accept_plugin() {
@@ -380,5 +535,130 @@ mod tests {
         let response = ctx.response().unwrap();
         assert_eq!(response.answers().len(), 1);
         assert!(matches!(response.answers()[0].rtype(), RecordType::AAAA));
+    }
+
+    #[tokio::test]
+    async fn test_return_plugin_stops_execution() {
+        #[derive(Debug)]
+        struct Counter {
+            counter: Arc<AtomicUsize>,
+        }
+
+        #[async_trait]
+        impl Plugin for Counter {
+            async fn execute(&self, _ctx: &mut Context) -> Result<()> {
+                self.counter.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                "counter"
+            }
+        }
+
+        let mut executor = Executor::new();
+        executor.add_plugin(Arc::new(ReturnPlugin::new()));
+        let counter = Arc::new(AtomicUsize::new(0));
+        executor.add_plugin(Arc::new(Counter {
+            counter: counter.clone(),
+        }));
+
+        let mut ctx = Context::new(Message::new());
+        executor.execute(&mut ctx).await.unwrap();
+
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            ctx.get_metadata::<bool>(RETURN_FLAG),
+            Some(&true),
+            "return flag should be set"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_parallel_plugin_stops_on_response() {
+        #[derive(Debug)]
+        struct Responder;
+
+        #[async_trait]
+        impl Plugin for Responder {
+            async fn execute(&self, ctx: &mut Context) -> Result<()> {
+                let mut resp = Message::new();
+                resp.set_response(true);
+                ctx.set_response(Some(resp));
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                "responder"
+            }
+        }
+
+        #[derive(Debug)]
+        struct ShouldNotRun {
+            hit: Arc<AtomicUsize>,
+        }
+
+        #[async_trait]
+        impl Plugin for ShouldNotRun {
+            async fn execute(&self, _ctx: &mut Context) -> Result<()> {
+                self.hit.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                "after"
+            }
+        }
+
+        let hit = Arc::new(AtomicUsize::new(0));
+        let plugin = ParallelPlugin::new(vec![
+            Arc::new(Responder),
+            Arc::new(ShouldNotRun { hit: hit.clone() }),
+        ]);
+
+        let mut ctx = Context::new(Message::new());
+        plugin.execute(&mut ctx).await.unwrap();
+
+        assert!(ctx.has_response());
+        assert_eq!(hit.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn test_if_plugin_executes_conditionally() {
+        #[derive(Debug)]
+        struct FlagSetter;
+
+        #[async_trait]
+        impl Plugin for FlagSetter {
+            async fn execute(&self, ctx: &mut Context) -> Result<()> {
+                ctx.set_metadata("flag", true);
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                "flag"
+            }
+        }
+
+        let inner = Arc::new(FlagSetter);
+        let cond = Arc::new(|_ctx: &Context| true);
+        let plugin = IfPlugin::new(cond, inner);
+
+        let mut ctx = Context::new(Message::new());
+        plugin.execute(&mut ctx).await.unwrap();
+        assert_eq!(ctx.get_metadata::<bool>("flag"), Some(&true));
+    }
+
+    #[tokio::test]
+    async fn test_goto_sets_label_and_return() {
+        let plugin = GotoPlugin::new("target");
+        let mut ctx = Context::new(Message::new());
+        plugin.execute(&mut ctx).await.unwrap();
+
+        assert_eq!(
+            ctx.get_metadata::<String>("goto_label"),
+            Some(&"target".into())
+        );
+        assert_eq!(ctx.get_metadata::<bool>(RETURN_FLAG), Some(&true));
     }
 }

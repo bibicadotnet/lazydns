@@ -7,8 +7,8 @@ async fn integration_sequence_save_hook() {
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
     use lazydns::plugin::Context;
     use lazydns::plugin::PluginBuilder;
-    use lazydns::plugins::advanced::{ArbitraryPlugin, SequencePlugin, SequenceStep};
-    use lazydns::plugins::executable::ReverseLookup;
+    use lazydns::plugins::executable::ReverseLookupPlugin;
+    use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
     // Use examples/etc as working directory and load its config
     std::env::set_current_dir("examples/etc").expect("chdir examples/etc");
@@ -25,7 +25,7 @@ async fn integration_sequence_save_hook() {
 
     // Get registry and register a ReverseLookup instance for testing
     let mut registry = builder.get_registry();
-    let rl = Arc::new(ReverseLookup::quick_setup("64"));
+    let rl = Arc::new(ReverseLookupPlugin::quick_setup("64"));
     registry.register_replace_with_name("reverse_lookup", rl.clone());
 
     // Create an arbitrary response message that contains an A answer for example.com
@@ -44,7 +44,20 @@ async fn integration_sequence_save_hook() {
     ));
 
     // Build an ArbitraryPlugin that will set the response when executed
-    let arb = Arc::new(ArbitraryPlugin::new(resp.clone()));
+    use lazydns::plugins::executable::arbitrary::ArbitraryArgs;
+    let mut rules = Vec::new();
+    for rr in resp.answers() {
+        match rr.rdata() {
+            RData::A(ip) => rules.push(format!("{} A {}", rr.name(), ip)),
+            RData::AAAA(ip) => rules.push(format!("{} AAAA {}", rr.name(), ip)),
+            _ => {}
+        }
+    }
+    let args = ArbitraryArgs {
+        rules: Some(rules),
+        files: None,
+    };
+    let arb = Arc::new(ArbitraryPlugin::new(args).unwrap());
 
     // Sequence with single exec of arbitrary plugin
     let seq = Arc::new(SequencePlugin::with_steps(vec![SequenceStep::Exec(arb)]));
@@ -61,7 +74,8 @@ async fn integration_sequence_save_hook() {
         for name in registry.plugin_names() {
             if let Some(p) = registry.get(&name) {
                 if p.name() == "reverse_lookup" {
-                    if let Some(rldown) = p.as_ref().as_any().downcast_ref::<ReverseLookup>() {
+                    if let Some(rldown) = p.as_ref().as_any().downcast_ref::<ReverseLookupPlugin>()
+                    {
                         rldown.save_ips_after(ctx.request(), resp_ref);
                     }
                 }

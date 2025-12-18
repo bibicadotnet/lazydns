@@ -30,7 +30,6 @@
 //! ```
 
 pub mod acl;
-pub mod advanced;
 pub mod cache;
 pub mod control_flow;
 pub mod data_provider;
@@ -49,19 +48,14 @@ pub mod server;
 
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
-pub use advanced::{
-    ArbitraryPlugin, ArbitraryRecordBuilder, BlackholePlugin, DropResponsePlugin, EcsPlugin,
-    GotoPlugin, IfPlugin, IpsetPlugin, MetricsCollectorPlugin, NftsetPlugin, ParallelPlugin,
-    QuerySummaryPlugin, ReturnPlugin, ReverseLookupPlugin, SequencePlugin, TtlPlugin,
-};
 pub use cache::{CachePlugin, CacheStorePlugin};
 pub use control_flow::{
-    AcceptPlugin, JumpPlugin, PreferIpv4Plugin, PreferIpv6Plugin, RejectPlugin,
+    AcceptPlugin, GotoPlugin, IfPlugin, JumpPlugin, ParallelPlugin, PreferIpv4Plugin,
+    PreferIpv6Plugin, RejectPlugin, ReturnPlugin,
 };
 pub use data_provider::{DomainSetPlugin, IpSetPlugin};
 pub use domain_matcher::DomainMatcherPlugin;
-pub use executable::HostsPlugin;
-pub use forward::{ForwardPlugin, ForwardPluginBuilder, LoadBalanceStrategy};
+pub use forward::LoadBalanceStrategy;
 pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
 pub use ip_matcher::IpMatcherPlugin;
@@ -78,8 +72,10 @@ pub use matcher::{
 
 // Re-export executable plugins
 pub use executable::{
-    DebugPrintPlugin, DualSelectorPlugin, Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin,
-    IpPreference, RedirectPlugin, RosAddrListPlugin, SleepPlugin,
+    ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin,
+    Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, ForwardPluginBuilder,
+    HostsPlugin, IpPreference, NftSetPlugin, QuerySummaryPlugin, RedirectPlugin,
+    ReverseLookupPlugin, RosAddrListPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 // Re-export server plugins
@@ -136,9 +132,11 @@ mod tests {
     #[test]
     fn test_advanced_plugins_accessible() {
         // Verify advanced plugin types are accessible
-        let _blackhole = BlackholePlugin;
-        let _ttl = TtlPlugin::new(300);
-        let _return = ReturnPlugin;
+        // BlackholePlugin is implemented in `plugins::executable::black_hole` and
+        // provides `new_from_strs` constructor.
+        let _blackhole = BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap();
+        let _ttl = TtlPlugin::new(300, 0, 0);
+        let _return = ReturnPlugin::new();
     }
 
     #[test]

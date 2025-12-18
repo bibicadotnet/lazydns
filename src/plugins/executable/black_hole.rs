@@ -6,12 +6,12 @@ use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// Black hole plugin: returns configured A/AAAA answers for a query
-pub struct BlackHolePlugin {
+pub struct BlackholePlugin {
     ipv4: Vec<Ipv4Addr>,
     ipv6: Vec<Ipv6Addr>,
 }
 
-impl BlackHolePlugin {
+impl BlackholePlugin {
     /// Create from iterator of address strings
     pub fn new_from_strs<I, S>(ips: I) -> Result<Self>
     where
@@ -82,7 +82,7 @@ impl BlackHolePlugin {
     }
 }
 
-impl fmt::Debug for BlackHolePlugin {
+impl fmt::Debug for BlackholePlugin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BlackHolePlugin")
             .field("ipv4_count", &self.ipv4.len())
@@ -92,7 +92,7 @@ impl fmt::Debug for BlackHolePlugin {
 }
 
 #[async_trait]
-impl Plugin for BlackHolePlugin {
+impl Plugin for BlackholePlugin {
     fn name(&self) -> &str {
         "black_hole"
     }
@@ -116,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_black_hole_a() {
-        let plugin = BlackHolePlugin::new_from_strs(["192.0.2.1"]).unwrap();
+        let plugin = BlackholePlugin::new_from_strs(["192.0.2.1"]).unwrap();
         let mut req = Message::new();
         req.add_question(crate::dns::question::Question::new(
             "example.com".to_string(),

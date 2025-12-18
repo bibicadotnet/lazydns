@@ -102,11 +102,11 @@ impl RequestHandler for PluginHandler {
                 for name in self.registry.plugin_names() {
                     if let Some(p) = self.registry.get(&name) {
                         if p.name() == "reverse_lookup" {
-                            if let Some(rl) =
-                                p.as_ref()
-                                    .as_any()
-                                    .downcast_ref::<crate::plugins::executable::ReverseLookup>()
-                            {
+                            if let Some(rl) = p
+                                .as_ref()
+                                .as_any()
+                                .downcast_ref::<crate::plugins::executable::ReverseLookupPlugin>(
+                            ) {
                                 rl.save_ips_after(ctx.request(), resp);
                             }
                         }

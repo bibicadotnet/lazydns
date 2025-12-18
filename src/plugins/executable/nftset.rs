@@ -1,3 +1,17 @@
+//! NftSet executable plugin.
+//!
+//! This plugin inspects DNS response answers and emits nftables set
+//! entries (CIDR prefixes) for A/AAAA records. On Linux it will try to
+//! call the `nft` command to add elements to the configured set; on
+//! non-Linux platforms it records additions in the request `Context`
+//! metadata under `"nftset_added_v4"` and `"nftset_added_v6"`.
+//!
+//! Quick-setup accepts a compact shorthand used by some configurations:
+//! `"<family>,<table>,<set>,<addr_type>,<mask> ..."` (max two fields).
+//! Example: `"inet,my_table,my_set,ipv4_addr,24"`.
+//!
+//! Note: `SetArgs` contains optional table family and table names which
+//! are used when attempting to run `nft` with the configured parameters.
 use crate::dns::RData;
 use crate::plugin::{Context, Plugin};
 use crate::Result;
@@ -9,15 +23,21 @@ use tracing::info;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct NftSetArgs {
+    /// Optional configuration for IPv4 elements (table, set and mask).
     pub ipv4: Option<SetArgs>,
+    /// Optional configuration for IPv6 elements (table, set and mask).
     pub ipv6: Option<SetArgs>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct SetArgs {
+    /// Optional nftables table family (e.g. `inet`).
     pub table_family: Option<String>,
+    /// Optional nftables table name.
     pub table: Option<String>,
+    /// Optional nftables set name.
     pub set: Option<String>,
+    /// Prefix length mask to apply when synthesizing CIDRs.
     pub mask: Option<u8>,
 }
 
@@ -75,11 +95,12 @@ impl NftSetPlugin {
         let ip_u32 = u32::from_be_bytes(ip.octets());
         let net = ip_u32 & (!0u32 << (32 - mask as u32));
         let bytes = net.to_be_bytes();
+        // Return canonical CIDR like "192.0.2.0/24" (no spaces).
         format!(
             "{}.{}.{}.{} /{}",
             bytes[0], bytes[1], bytes[2], bytes[3], mask
         )
-        .replace(" ", "")
+        .replace(' ', "")
     }
 
     fn make_v6_prefix(ip: &Ipv6Addr, mask: u8) -> String {
@@ -101,6 +122,7 @@ impl NftSetPlugin {
         }
         use std::net::Ipv6Addr;
         let addr = Ipv6Addr::from(bytes);
+        // Return canonical IPv6 CIDR like "2001:db8::/48".
         format!("{}/{}", addr, mask)
     }
 }

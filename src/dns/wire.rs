@@ -126,7 +126,10 @@ fn convert_from_hickory(hickory_msg: hickory_proto::op::Message) -> Result<Messa
 
     // Convert questions
     for q in hickory_msg.queries() {
-        let qname = q.name().to_utf8();
+        // Normalize domain names by removing trailing dots when converting from hickory-proto,
+        // so parsed qnames match other code expectations
+        let mut qname = q.name().to_utf8();
+        qname = qname.trim_end_matches('.').to_string();
         let qtype = RecordType::from_u16(q.query_type().into());
         let qclass = RecordClass::from_u16(q.query_class().into());
 
@@ -160,8 +163,8 @@ fn convert_from_hickory(hickory_msg: hickory_proto::op::Message) -> Result<Messa
 /// Convert a hickory-proto record to our ResourceRecord type
 fn convert_hickory_record(record: &hickory_proto::rr::Record) -> Option<ResourceRecord> {
     use hickory_proto::rr::RData as HickoryRData;
-
-    let name = record.name().to_utf8();
+    let mut name = record.name().to_utf8();
+    name = name.trim_end_matches('.').to_string();
     let rtype = RecordType::from_u16(record.record_type().into());
     let rclass = RecordClass::from_u16(record.dns_class().into());
     let ttl = record.ttl();
@@ -169,13 +172,19 @@ fn convert_hickory_record(record: &hickory_proto::rr::Record) -> Option<Resource
     let rdata = match record.data() {
         Some(HickoryRData::A(ipv4)) => crate::dns::RData::A(ipv4.0),
         Some(HickoryRData::AAAA(ipv6)) => crate::dns::RData::AAAA(ipv6.0),
-        Some(HickoryRData::CNAME(name)) => crate::dns::RData::CNAME(name.to_utf8()),
+        Some(HickoryRData::CNAME(name)) => {
+            crate::dns::RData::CNAME(name.to_utf8().trim_end_matches('.').to_string())
+        }
         Some(HickoryRData::MX(mx)) => crate::dns::RData::MX {
             preference: mx.preference(),
-            exchange: mx.exchange().to_utf8(),
+            exchange: mx.exchange().to_utf8().trim_end_matches('.').to_string(),
         },
-        Some(HickoryRData::NS(ns)) => crate::dns::RData::NS(ns.to_utf8()),
-        Some(HickoryRData::PTR(ptr)) => crate::dns::RData::PTR(ptr.to_utf8()),
+        Some(HickoryRData::NS(ns)) => {
+            crate::dns::RData::NS(ns.to_utf8().trim_end_matches('.').to_string())
+        }
+        Some(HickoryRData::PTR(ptr)) => {
+            crate::dns::RData::PTR(ptr.to_utf8().trim_end_matches('.').to_string())
+        }
         Some(HickoryRData::TXT(txt)) => {
             let text_data: Vec<String> = txt
                 .iter()
@@ -184,8 +193,8 @@ fn convert_hickory_record(record: &hickory_proto::rr::Record) -> Option<Resource
             crate::dns::RData::TXT(text_data)
         }
         Some(HickoryRData::SOA(soa)) => crate::dns::RData::SOA {
-            mname: soa.mname().to_utf8(),
-            rname: soa.rname().to_utf8(),
+            mname: soa.mname().to_utf8().trim_end_matches('.').to_string(),
+            rname: soa.rname().to_utf8().trim_end_matches('.').to_string(),
             serial: soa.serial(),
             refresh: soa.refresh() as u32,
             retry: soa.retry() as u32,

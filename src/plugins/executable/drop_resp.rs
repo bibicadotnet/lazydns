@@ -2,15 +2,40 @@ use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 
+/// Plugin that clears any existing response from the execution `Context`.
+///
+/// This is a lightweight control-flow helper used in sequences or other
+/// composite plugins when you want to discard a previously-set response
+/// and continue processing with subsequent plugins.
+///
+/// Example:
+///
+/// ```rust
+/// use lazydns::plugins::executable::drop_resp::DropRespPlugin;
+/// use lazydns::plugin::Context;
+///
+/// let plugin = DropRespPlugin::new();
+/// // in executor: plugin.execute(&mut ctx).await? will clear ctx.response()
+/// ```
 #[derive(Debug, Default)]
 pub struct DropRespPlugin;
 
+impl DropRespPlugin {
+    /// Create a new `DropRespPlugin` instance.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 #[async_trait]
 impl Plugin for DropRespPlugin {
+    /// Return the canonical plugin name `drop_resp`.
     fn name(&self) -> &str {
         "drop_resp"
     }
 
+    /// Execute the plugin: clear any response currently stored in the
+    /// `Context` so subsequent plugins see an empty response state.
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         ctx.set_response(None);
         Ok(())

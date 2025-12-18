@@ -130,9 +130,11 @@ impl Plugin for TtlPlugin {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
     use super::*;
     use crate::dns::types::{RecordClass, RecordType};
-    use crate::dns::{Message, ResourceRecord};
+    use crate::dns::{Message, RData, ResourceRecord};
 
     fn make_a_record(name: &str, ttl: u32) -> ResourceRecord {
         ResourceRecord::new(
@@ -243,5 +245,35 @@ mod tests {
         plugin.execute(&mut ctx).await.unwrap();
         let resp = ctx.response().unwrap();
         assert_eq!(resp.answers()[0].ttl(), 100);
+    }
+
+    #[tokio::test]
+    async fn test_ttl_plugin_rewrites_records() {
+        let mut response = Message::new();
+        response.set_response(true);
+        response.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            RData::A(Ipv4Addr::new(192, 0, 2, 1)),
+        ));
+        response.add_additional(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+            450,
+            RData::AAAA(Ipv6Addr::LOCALHOST),
+        ));
+
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(response));
+
+        let plugin = TtlPlugin::new(60, 0, 0);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        let resp = ctx.response().unwrap();
+        assert!(resp.answers().iter().all(|r| r.ttl() == 60));
+        assert!(resp.additional().iter().all(|r| r.ttl() == 60));
     }
 }
