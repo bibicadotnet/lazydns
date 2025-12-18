@@ -149,7 +149,7 @@ impl Upstream {
 /// This struct encapsulates the upstream query forwarding logic
 /// and is used by the executable ForwardPlugin.
 #[derive(Debug)]
-pub struct ForwardCore {
+pub struct Forward {
     /// Upstream servers
     pub upstreams: Vec<Upstream>,
     /// Query timeout
@@ -162,8 +162,8 @@ pub struct ForwardCore {
     pub max_attempts: usize,
 }
 
-impl ForwardCore {
-    /// Create a new ForwardCore
+impl Forward {
+    /// Create a new Forward
     pub fn new(upstreams: Vec<Upstream>, timeout: Duration, strategy: LoadBalanceStrategy) -> Self {
         Self {
             upstreams,
@@ -320,8 +320,8 @@ impl ForwardCore {
     }
 }
 
-/// Builder for `ForwardCore` (parsing/validation of core settings)
-pub struct ForwardCoreBuilder {
+/// Builder for `Forward` (parsing/validation of core settings)
+pub struct ForwardBuilder {
     upstreams: Vec<Upstream>,
     timeout: Duration,
     strategy: LoadBalanceStrategy,
@@ -329,7 +329,7 @@ pub struct ForwardCoreBuilder {
     max_attempts: usize,
 }
 
-impl ForwardCoreBuilder {
+impl ForwardBuilder {
     /// Create a new builder with sensible defaults
     pub fn new() -> Self {
         Self {
@@ -366,15 +366,15 @@ impl ForwardCoreBuilder {
         self
     }
 
-    /// Build the `ForwardCore` from the builder
-    pub fn build(self) -> ForwardCore {
-        ForwardCore::new(self.upstreams, self.timeout, self.strategy)
+    /// Build the `Forward` from the builder
+    pub fn build(self) -> Forward {
+        Forward::new(self.upstreams, self.timeout, self.strategy)
             .with_health_checks(self.health_checks_enabled)
             .with_max_attempts(self.max_attempts)
     }
 
     /// Parse core settings from plugin args (effective args map)
-    pub fn from_args(args: &HashMap<String, Value>) -> crate::Result<ForwardCore> {
+    pub fn from_args(args: &HashMap<String, Value>) -> crate::Result<Forward> {
         // Parse upstreams (required)
         let upstreams_val = args.get("upstreams").ok_or_else(|| {
             crate::Error::Config("upstreams is required for forward plugin".to_string())
@@ -449,7 +449,7 @@ impl ForwardCoreBuilder {
         }
 
         // timeout
-        let mut builder = ForwardCoreBuilder::new();
+        let mut builder = ForwardBuilder::new();
 
         if let Some(Value::Number(n)) = args.get("timeout") {
             let secs = n
@@ -492,7 +492,7 @@ impl ForwardCoreBuilder {
     }
 }
 
-impl Default for ForwardCoreBuilder {
+impl Default for ForwardBuilder {
     fn default() -> Self {
         Self::new()
     }
@@ -505,7 +505,7 @@ mod tests {
     #[test]
     fn test_load_balance_strategies() {
         let upstreams = vec![Upstream::new("8.8.8.8:53"), Upstream::new("1.1.1.1:53")];
-        let core = ForwardCore::new(
+        let core = Forward::new(
             upstreams,
             Duration::from_secs(5),
             LoadBalanceStrategy::RoundRobin,
@@ -533,7 +533,7 @@ mod tests {
     fn test_select_upstream_random_and_fastest() {
         // Random: ensure index is in range
         let upstreams = vec![Upstream::new("8.8.8.8:53"), Upstream::new("1.1.1.1:53")];
-        let core = ForwardCore::new(
+        let core = Forward::new(
             upstreams.clone(),
             Duration::from_secs(5),
             LoadBalanceStrategy::Random,
@@ -546,7 +546,7 @@ mod tests {
         // Fastest: prefer measured faster upstream
         let ups = upstreams;
         // initially no measurements -> should return first
-        let core2 = ForwardCore::new(
+        let core2 = Forward::new(
             ups.clone(),
             Duration::from_secs(5),
             LoadBalanceStrategy::Fastest,
@@ -557,7 +557,7 @@ mod tests {
         // Record fast time on second upstream and slower on first
         ups[1].health.record_success(Duration::from_millis(5));
         ups[0].health.record_success(Duration::from_millis(100));
-        let core3 = ForwardCore::new(ups, Duration::from_secs(5), LoadBalanceStrategy::Fastest);
+        let core3 = Forward::new(ups, Duration::from_secs(5), LoadBalanceStrategy::Fastest);
         let idx_after = core3.select_upstream(0).unwrap();
         assert_eq!(idx_after, 1);
     }
@@ -574,8 +574,8 @@ mod tests {
             RecordClass::IN,
         ));
 
-        let data = ForwardCore::serialize_message(&msg).expect("serialize");
-        let parsed = ForwardCore::parse_message(&data).expect("parse");
+        let data = Forward::serialize_message(&msg).expect("serialize");
+        let parsed = Forward::parse_message(&data).expect("parse");
         assert_eq!(parsed.questions().len(), 1);
         assert_eq!(parsed.questions()[0].qname(), "example.com");
     }

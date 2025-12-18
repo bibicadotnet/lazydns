@@ -73,9 +73,9 @@ pub use matcher::{
 // Re-export executable plugins
 pub use executable::{
     ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin,
-    Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, ForwardPluginBuilder,
-    HostsPlugin, IpPreference, NftSetPlugin, QuerySummaryPlugin, RedirectPlugin,
-    ReverseLookupPlugin, RosAddrListPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
+    Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, HostsPlugin, IpPreference,
+    NftSetPlugin, QuerySummaryPlugin, RedirectPlugin, ReverseLookupPlugin, RosAddrListPlugin,
+    SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 // Re-export server plugins

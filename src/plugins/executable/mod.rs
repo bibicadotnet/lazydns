@@ -46,7 +46,7 @@ pub use ttl::TtlPlugin;
 pub mod hosts;
 pub use hosts::HostsPlugin;
 pub mod forward;
-pub use forward::{ForwardPlugin, ForwardPluginBuilder};
+pub use forward::ForwardPlugin;
 
 // Re-export builder initialization statics
 #[allow(unused_imports)]
