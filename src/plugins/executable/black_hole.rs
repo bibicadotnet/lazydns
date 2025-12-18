@@ -129,6 +129,10 @@ impl Plugin for BlackholePlugin {
         let plugin = BlackholePlugin::new_from_strs(ips)?;
         Ok(Arc::new(plugin))
     }
+
+    fn aliases() -> Vec<&'static str> {
+        vec!["sinkhole", "black_hole", "null_dns"]
+    }
 }
 
 #[cfg(test)]

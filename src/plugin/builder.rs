@@ -929,7 +929,7 @@ mod tests {
 
         // Resolve references
         builder
-            .resolve_references(&vec![primary_cfg, secondary_cfg, fb_cfg])
+            .resolve_references(&[primary_cfg, secondary_cfg, fb_cfg])
             .unwrap();
 
         // Verify fallback has resolved children
