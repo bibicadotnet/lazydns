@@ -5,7 +5,7 @@
 
 use crate::config::types::PluginConfig;
 use crate::dns::Message;
-use crate::plugin::builder::PluginBuilder;
+use crate::plugin::traits::PluginBuilder;
 use crate::plugin::{Context, Plugin};
 use crate::plugins::forward::{Forward, LoadBalanceStrategy, Upstream};
 use crate::Result;

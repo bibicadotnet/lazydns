@@ -50,25 +50,7 @@ use tracing::{debug, info, warn};
 /// lazydns::register_plugin_builder!(MyPlugin);
 /// ```
 /// ```
-pub trait PluginBuilder: Send + Sync + 'static {
-    /// Create a plugin instance from configuration
-    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>>
-    where
-        Self: Sized;
-
-    /// Get the plugin type name
-    fn plugin_type() -> &'static str
-    where
-        Self: Sized;
-
-    /// Get alternative names (optional)
-    fn aliases() -> Vec<&'static str>
-    where
-        Self: Sized,
-    {
-        Vec::new()
-    }
-}
+// `PluginBuilder` trait has been moved to `plugin::traits`.
 
 /// Internal trait for dynamic dispatch of PluginBuilder implementations
 #[doc(hidden)]
@@ -175,15 +157,15 @@ macro_rules! register_plugin_builder {
                 fn create(&self, config: &$crate::config::types::PluginConfig)
                     -> $crate::Result<std::sync::Arc<dyn $crate::plugin::Plugin>>
                 {
-                    <$plugin_type as $crate::plugin::builder::PluginBuilder>::create(config)
+                    <$plugin_type as $crate::plugin::traits::PluginBuilder>::create(config)
                 }
 
                 fn plugin_type(&self) -> &'static str {
-                    <$plugin_type as $crate::plugin::builder::PluginBuilder>::plugin_type()
+                    <$plugin_type as $crate::plugin::traits::PluginBuilder>::plugin_type()
                 }
 
                 fn aliases(&self) -> Vec<&'static str> {
-                    <$plugin_type as $crate::plugin::builder::PluginBuilder>::aliases()
+                    <$plugin_type as $crate::plugin::traits::PluginBuilder>::aliases()
                 }
             }
 

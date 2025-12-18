@@ -45,17 +45,12 @@ pub mod traits;
 pub const RETURN_FLAG: &str = "__return_flag";
 
 // Re-export commonly used types
-pub use builder::{
-    get_all_plugin_types,
-    get_builder,
-    initialize,
-    ConfigPluginBuilder,
-    PluginBuilder, // The trait
-};
+pub use builder::{get_all_plugin_types, get_builder, initialize, ConfigPluginBuilder};
 pub use context::Context;
 pub use executor::Executor;
 pub use registry::Registry;
 pub use traits::Plugin;
+pub use traits::PluginBuilder;
 
 use crate::dns::Message;
 use crate::server::RequestHandler;

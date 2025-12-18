@@ -878,7 +878,7 @@ mod tests {
 // ============================================================================
 
 use crate::config::types::PluginConfig;
-use crate::plugin::builder::PluginBuilder;
+use crate::plugin::traits::PluginBuilder;
 use serde_yaml::Value;
 
 impl PluginBuilder for CachePlugin {

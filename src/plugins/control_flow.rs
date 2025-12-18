@@ -673,7 +673,7 @@ use crate::Error;
 use serde_yaml::Value;
 
 /// Implement PluginBuilder for AcceptPlugin
-impl crate::plugin::builder::PluginBuilder for AcceptPlugin {
+impl crate::plugin::traits::PluginBuilder for AcceptPlugin {
     fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
         Ok(Arc::new(AcceptPlugin::new()))
     }
@@ -684,7 +684,7 @@ impl crate::plugin::builder::PluginBuilder for AcceptPlugin {
 }
 
 /// Implement PluginBuilder for RejectPlugin
-impl crate::plugin::builder::PluginBuilder for RejectPlugin {
+impl crate::plugin::traits::PluginBuilder for RejectPlugin {
     fn create(config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
         let args = config.effective_args();
 
@@ -707,7 +707,7 @@ impl crate::plugin::builder::PluginBuilder for RejectPlugin {
 }
 
 /// Implement PluginBuilder for ReturnPlugin
-impl crate::plugin::builder::PluginBuilder for ReturnPlugin {
+impl crate::plugin::traits::PluginBuilder for ReturnPlugin {
     fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
         Ok(Arc::new(ReturnPlugin::new()))
     }
@@ -718,7 +718,7 @@ impl crate::plugin::builder::PluginBuilder for ReturnPlugin {
 }
 
 /// Implement PluginBuilder for JumpPlugin
-impl crate::plugin::builder::PluginBuilder for JumpPlugin {
+impl crate::plugin::traits::PluginBuilder for JumpPlugin {
     fn create(config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
         let args = config.effective_args();
 
@@ -742,7 +742,7 @@ impl crate::plugin::builder::PluginBuilder for JumpPlugin {
 }
 
 /// Implement PluginBuilder for DropRespPlugin
-impl crate::plugin::builder::PluginBuilder for DropRespPlugin {
+impl crate::plugin::traits::PluginBuilder for DropRespPlugin {
     fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
         Ok(Arc::new(DropRespPlugin::new()))
     }

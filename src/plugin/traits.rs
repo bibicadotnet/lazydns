@@ -6,6 +6,8 @@ use crate::plugin::Context;
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt::Debug;
+use crate::config::types::PluginConfig;
+use std::sync::Arc;
 
 /// Core plugin trait
 ///
@@ -95,6 +97,30 @@ pub trait Plugin: Send + Sync + Debug + std::any::Any {
 pub trait Matcher: Plugin {
     /// Check if the context matches this matcher
     fn matches_context(&self, ctx: &Context) -> bool;
+}
+
+/// Plugin builder trait for self-registering plugins
+///
+/// Implement this trait on your plugin type to enable automatic
+/// registration without needing a separate factory struct.
+pub trait PluginBuilder: Send + Sync + 'static {
+    /// Create a plugin instance from configuration
+    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>>
+    where
+        Self: Sized;
+
+    /// Get the plugin type name
+    fn plugin_type() -> &'static str
+    where
+        Self: Sized;
+
+    /// Get alternative names (optional)
+    fn aliases() -> Vec<&'static str>
+    where
+        Self: Sized,
+    {
+        Vec::new()
+    }
 }
 
 #[cfg(test)]
