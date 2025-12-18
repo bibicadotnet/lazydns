@@ -872,3 +872,68 @@ mod tests {
         assert_eq!(cache.stats().hits(), 1);
     }
 }
+
+// ============================================================================
+// Plugin Factory Registration
+// ============================================================================
+
+use crate::config::types::PluginConfig;
+use crate::plugin::builder::PluginBuilder;
+use serde_yaml::Value;
+
+impl PluginBuilder for CachePlugin {
+    fn create(config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+
+        // Parse size parameter (default: 1024)
+        let size = match args.get("size") {
+            Some(Value::Number(n)) => n
+                .as_i64()
+                .ok_or_else(|| Error::Config("Invalid size value".to_string()))?
+                as usize,
+            Some(_) => return Err(Error::Config("size must be a number".to_string())),
+            None => 1024,
+        };
+
+        let mut cache = CachePlugin::new(size);
+
+        // Parse negative_cache parameter (default: false)
+        if let Some(Value::Bool(true)) = args.get("negative_cache") {
+            let negative_ttl = match args.get("negative_ttl") {
+                Some(Value::Number(n)) => n
+                    .as_i64()
+                    .ok_or_else(|| Error::Config("Invalid negative_ttl value".to_string()))?
+                    as u32,
+                Some(_) => return Err(Error::Config("negative_ttl must be a number".to_string())),
+                None => 300,
+            };
+            cache = cache.with_negative_cache(negative_ttl);
+        }
+
+        // Parse prefetch parameter (default: false)
+        if let Some(Value::Bool(true)) = args.get("enable_prefetch") {
+            let threshold = match args.get("prefetch_threshold") {
+                Some(Value::Number(n)) => n
+                    .as_f64()
+                    .ok_or_else(|| Error::Config("Invalid prefetch_threshold value".to_string()))?
+                    as f32,
+                Some(_) => {
+                    return Err(Error::Config(
+                        "prefetch_threshold must be a number".to_string(),
+                    ))
+                }
+                None => 0.1,
+            };
+            cache = cache.with_prefetch(threshold);
+        }
+
+        Ok(Arc::new(cache))
+    }
+
+    fn plugin_type() -> &'static str {
+        "cache"
+    }
+}
+
+// Auto-register using the new simplified macro
+crate::register_plugin_builder!(CachePlugin);

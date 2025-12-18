@@ -4,6 +4,7 @@
 
 use crate::dns::{Message, RecordType, ResponseCode};
 use crate::plugin::{Context, Plugin, RETURN_FLAG};
+use crate::plugins::executable::drop_resp::DropRespPlugin;
 use crate::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -662,3 +663,98 @@ mod tests {
         assert_eq!(ctx.get_metadata::<bool>(RETURN_FLAG), Some(&true));
     }
 }
+
+// ============================================================================
+// Plugin Factory Registration
+// ============================================================================
+
+use crate::config::types::PluginConfig;
+use crate::Error;
+use serde_yaml::Value;
+
+/// Implement PluginBuilder for AcceptPlugin
+impl crate::plugin::builder::PluginBuilder for AcceptPlugin {
+    fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
+        Ok(Arc::new(AcceptPlugin::new()))
+    }
+
+    fn plugin_type() -> &'static str {
+        "accept"
+    }
+}
+
+/// Implement PluginBuilder for RejectPlugin
+impl crate::plugin::builder::PluginBuilder for RejectPlugin {
+    fn create(config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+
+        // Parse rcode parameter (default: 3 = NXDOMAIN)
+        let rcode = match args.get("rcode") {
+            Some(Value::Number(n)) => n
+                .as_i64()
+                .ok_or_else(|| Error::Config("Invalid rcode value".to_string()))?
+                as u8,
+            Some(_) => return Err(Error::Config("rcode must be a number".to_string())),
+            None => 3, // NXDOMAIN
+        };
+
+        Ok(Arc::new(RejectPlugin::new(rcode)))
+    }
+
+    fn plugin_type() -> &'static str {
+        "reject"
+    }
+}
+
+/// Implement PluginBuilder for ReturnPlugin
+impl crate::plugin::builder::PluginBuilder for ReturnPlugin {
+    fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
+        Ok(Arc::new(ReturnPlugin::new()))
+    }
+
+    fn plugin_type() -> &'static str {
+        "return"
+    }
+}
+
+/// Implement PluginBuilder for JumpPlugin
+impl crate::plugin::builder::PluginBuilder for JumpPlugin {
+    fn create(config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+
+        // Parse target parameter (required)
+        let target = match args.get("target") {
+            Some(Value::String(s)) => s.clone(),
+            Some(_) => return Err(Error::Config("target must be a string".to_string())),
+            None => {
+                return Err(Error::Config(
+                    "target is required for jump plugin".to_string(),
+                ))
+            }
+        };
+
+        Ok(Arc::new(JumpPlugin::new(target)))
+    }
+
+    fn plugin_type() -> &'static str {
+        "jump"
+    }
+}
+
+/// Implement PluginBuilder for DropRespPlugin
+impl crate::plugin::builder::PluginBuilder for DropRespPlugin {
+    fn create(_config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
+        Ok(Arc::new(DropRespPlugin::new()))
+    }
+
+    fn plugin_type() -> &'static str {
+        "drop_resp"
+    }
+}
+
+// Auto-register all control flow plugins using macro
+crate::register_plugin_builder!(AcceptPlugin);
+crate::register_plugin_builder!(RejectPlugin);
+crate::register_plugin_builder!(ReturnPlugin);
+crate::register_plugin_builder!(JumpPlugin);
+crate::register_plugin_builder!(DropRespPlugin);

@@ -14,7 +14,7 @@ mod cli;
 use crate::cli::parse_args;
 use lazydns::config::Config;
 use lazydns::logging;
-use lazydns::plugin::PluginBuilder;
+use lazydns::plugin::ConfigPluginBuilder;
 use lazydns::server::ServerLauncher;
 use std::sync::Arc;
 use tracing::{debug, error, info};
@@ -74,12 +74,16 @@ async fn main() -> anyhow::Result<()> {
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
     info!("Configuration file: {}", args.config);
 
+    // Initialize plugin builder system
+    info!("Initializing plugin builder system...");
+    lazydns::plugins::initialize_all_builders();
+
     // Ensure rustls has a process-level CryptoProvider installed (ring)
     #[cfg(feature = "tls")]
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     // Build plugins from configuration
-    let mut builder = PluginBuilder::new();
+    let mut builder = ConfigPluginBuilder::new();
     let mut plugin_count = 0;
 
     for plugin_config in &config.plugins {

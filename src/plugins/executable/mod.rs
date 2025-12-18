@@ -47,3 +47,7 @@ pub mod hosts;
 pub use hosts::HostsPlugin;
 pub mod forward;
 pub use forward::{ForwardPlugin, ForwardPluginBuilder};
+
+// Re-export builder initialization statics
+#[allow(unused_imports)]
+pub(crate) use forward::FORWARD_PLUGIN_BUILDER;

@@ -128,6 +128,11 @@ impl Plugin for ArbitraryPlugin {
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
+        // If there is a question in the request, use it to select rules.
+        // Otherwise, if the plugin has at least one rule, fall back to the
+        // first rule entry so executable compositions (like Sequence) can
+        // be used in tests and quick setups where an explicit request
+        // question may not be present.
         if let Some(q) = ctx.request().questions().first() {
             let key = q.qname().trim_end_matches('.').to_string();
             if let Some(rrs) = self.map.get(&key) {
@@ -135,6 +140,18 @@ impl Plugin for ArbitraryPlugin {
                 msg.set_id(ctx.request().id());
                 msg.set_response(true);
                 msg.add_question(q.clone());
+                for rr in rrs {
+                    msg.add_answer(rr.clone());
+                }
+                ctx.set_response(Some(msg));
+            }
+        } else if !self.map.is_empty() {
+            // No request question — pick the first rule entry as a sensible default.
+            if let Some((_k, rrs)) = self.map.iter().next() {
+                let mut msg = Message::new();
+                msg.set_id(ctx.request().id());
+                msg.set_response(true);
+                // No original question available; do not add question.
                 for rr in rrs {
                     msg.add_answer(rr.clone());
                 }

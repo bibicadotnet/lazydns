@@ -1,6 +1,7 @@
-//! Plugin builder and factory
+//! Plugin builder system
 //!
-//! This module provides a factory system for creating plugin instances from configuration.
+//! This module provides a builder pattern for creating plugin instances from configuration.
+//! It supports both the new PluginBuilder trait pattern and legacy hardcoded plugins.
 
 use crate::config::types::PluginConfig;
 use crate::plugin::traits::Matcher;
@@ -9,20 +10,207 @@ use crate::plugins::executable::SequenceStep;
 use crate::plugins::*;
 use crate::Error;
 use crate::Result;
+use once_cell::sync::Lazy;
 use serde_yaml::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tracing::{debug, info, warn};
 
+/// Plugin builder trait for self-registering plugins
+///
+/// Implement this trait directly on your plugin type to enable automatic
+/// registration without needing a separate factory struct.
+///
+/// # Example
+///
+/// ```ignore
+/// use lazydns::plugin::builder::PluginBuilder;
+/// use lazydns::plugin::Plugin;
+/// use lazydns::config::types::PluginConfig;
+/// use std::sync::Arc;
+///
+/// struct MyPlugin { config: String }
+///
+/// impl PluginBuilder for MyPlugin {
+///     fn create_from_config(config: &PluginConfig) -> lazydns::Result<Arc<dyn Plugin>> {
+///         let args = config.effective_args();
+///         let my_config = args.get("config")
+///             .and_then(|v| v.as_str())
+///             .unwrap_or("default")
+///             .to_string();
+///         Ok(Arc::new(Self { config: my_config }))
+///     }
+///     
+///     fn plugin_type() -> &'static str {
+///         "my_plugin"
+///     }
+/// }
+///
+/// // Auto-register with macro
+/// lazydns::register_plugin_builder!(MyPlugin);
+/// ```
+/// ```
+pub trait PluginBuilder: Send + Sync + 'static {
+    /// Create a plugin instance from configuration
+    fn create(config: &PluginConfig) -> Result<Arc<dyn Plugin>>
+    where
+        Self: Sized;
+
+    /// Get the plugin type name
+    fn plugin_type() -> &'static str
+    where
+        Self: Sized;
+
+    /// Get alternative names (optional)
+    fn aliases() -> Vec<&'static str>
+    where
+        Self: Sized,
+    {
+        Vec::new()
+    }
+}
+
+/// Internal trait for dynamic dispatch of PluginBuilder implementations
+#[doc(hidden)]
+pub trait PluginBuilderFactory: Send + Sync {
+    fn create(&self, config: &PluginConfig) -> Result<Arc<dyn Plugin>>;
+    fn plugin_type(&self) -> &'static str;
+    fn aliases(&self) -> Vec<&'static str>;
+}
+
+/// Global plugin builder registry
+static PLUGIN_BUILDERS: Lazy<RwLock<HashMap<String, Arc<dyn PluginBuilderFactory>>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+/// Register a plugin builder (internal use)
+#[doc(hidden)]
+pub fn register_builder(builder: Arc<dyn PluginBuilderFactory>) {
+    let mut builders = PLUGIN_BUILDERS
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let plugin_type = builder.plugin_type();
+
+    // Check for duplicates
+    if builders.contains_key(plugin_type) {
+        panic!("Duplicate plugin builder registration: {}", plugin_type);
+    }
+
+    // Register primary name
+    builders.insert(plugin_type.to_string(), Arc::clone(&builder));
+
+    // Register aliases
+    for alias in builder.aliases() {
+        if builders.contains_key(alias) {
+            panic!(
+                "Duplicate plugin builder alias: {} (for {})",
+                alias, plugin_type
+            );
+        }
+        builders.insert(alias.to_string(), Arc::clone(&builder));
+    }
+}
+
+/// Get a plugin builder by type name
+pub fn get_builder(plugin_type: &str) -> Option<Arc<dyn PluginBuilderFactory>> {
+    let builders = PLUGIN_BUILDERS
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    builders.get(plugin_type).cloned()
+}
+
+/// Get all registered plugin types
+pub fn get_all_plugin_types() -> Vec<String> {
+    let builders = PLUGIN_BUILDERS
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let mut types: Vec<String> = builders
+        .values()
+        .map(|b| b.plugin_type().to_string())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    types.sort();
+    types
+}
+
+/// Initialize the plugin builder system
+pub fn initialize() {
+    // Force lazy initialization
+    Lazy::force(&PLUGIN_BUILDERS);
+}
+
+/// Macro to register a plugin builder
+///
+/// This macro automatically creates a builder wrapper for types that
+/// implement `PluginBuilder` and registers it.
+///
+/// # Example
+///
+/// ```ignore
+/// use lazydns::register_plugin_builder;
+///
+/// struct MyPlugin;
+/// impl PluginBuilder for MyPlugin {
+///     fn create_from_config(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+///         Ok(Arc::new(Self))
+///     }
+///     fn plugin_type() -> &'static str { "my_plugin" }
+/// }
+///
+/// register_plugin_builder!(MyPlugin);
+/// ```
+#[macro_export]
+macro_rules! register_plugin_builder {
+    ($plugin_type:ty) => {
+        $crate::paste::paste! {
+            // Create an auto-generated builder wrapper
+            #[derive(Default)]
+            struct [<$plugin_type BuilderWrapper>];
+
+            impl $crate::plugin::builder::PluginBuilderFactory for [<$plugin_type BuilderWrapper>] {
+                fn create(&self, config: &$crate::config::types::PluginConfig)
+                    -> $crate::Result<std::sync::Arc<dyn $crate::plugin::Plugin>>
+                {
+                    <$plugin_type as $crate::plugin::builder::PluginBuilder>::create(config)
+                }
+
+                fn plugin_type(&self) -> &'static str {
+                    <$plugin_type as $crate::plugin::builder::PluginBuilder>::plugin_type()
+                }
+
+                fn aliases(&self) -> Vec<&'static str> {
+                    <$plugin_type as $crate::plugin::builder::PluginBuilder>::aliases()
+                }
+            }
+
+            // Auto-register using lazy static
+            pub(crate) static [<$plugin_type:snake:upper _BUILDER>]: once_cell::sync::Lazy<()> =
+                once_cell::sync::Lazy::new(|| {
+                    $crate::plugin::builder::register_builder(
+                        std::sync::Arc::new([<$plugin_type BuilderWrapper>]::default())
+                    );
+                });
+        }
+    };
+}
+
+// ============================================================================
+// Main Plugin Builder (Configuration-based Plugin Creation)
+// ============================================================================
+
 /// Plugin builder that creates plugin instances from configuration
-pub struct PluginBuilder {
+pub struct ConfigPluginBuilder {
     /// Registry of named plugins for reference
     plugins: HashMap<String, Arc<dyn Plugin>>,
     /// Server plugin tags
     server_plugin_tags: Vec<String>,
 }
 
-impl PluginBuilder {
+impl ConfigPluginBuilder {
     /// Create a new plugin builder
     pub fn new() -> Self {
         Self {
@@ -36,6 +224,24 @@ impl PluginBuilder {
         // Normalize plugin type for more forgiving parsing (trim and lowercase)
         let plugin_type = config.plugin_type.trim().to_lowercase();
 
+        // Try to get builder from registry first
+        if let Some(builder) = get_builder(&plugin_type) {
+            info!("Creating plugin '{}' using registered builder", plugin_type);
+            let plugin = builder.create(config)?;
+
+            // Store in registry if it has a tag or name
+            let effective_name = config.effective_name().to_string();
+            self.plugins.insert(effective_name, Arc::clone(&plugin));
+
+            return Ok(plugin);
+        }
+
+        // Fallback to legacy hardcoded match for backward compatibility
+        warn!(
+            "Plugin type '{}' not found in builder registry, using legacy match",
+            plugin_type
+        );
+
         let plugin: Arc<dyn Plugin> = match plugin_type.as_str() {
             "cache" => {
                 let args = &config.effective_args();
@@ -43,39 +249,38 @@ impl PluginBuilder {
                 Arc::new(CachePlugin::new(size as usize))
             }
 
-            "forward" => {
-                let args = &config.effective_args();
-                let upstreams = get_string_array_arg(args, "upstreams")?;
-                let _concurrent = get_int_arg(args, "concurrent", 1)? as usize;
+            // "forward" => {
+            //     let args = &config.effective_args();
+            //     let upstreams = get_string_array_arg(args, "upstreams")?;
+            //     let _concurrent = get_int_arg(args, "concurrent", 1)? as usize;
 
-                let mut builder = ForwardPluginBuilder::new();
-                for upstream in upstreams {
-                    // Parse upstream address - handle udp:// and tcp:// prefixes
-                    let mut addr = upstream
-                        .trim_start_matches("udp://")
-                        .trim_start_matches("tcp://")
-                        .to_string();
+            //     let mut builder = ForwardPluginBuilder::new();
+            //     for upstream in upstreams {
+            //         // Parse upstream address - handle udp:// and tcp:// prefixes
+            //         let mut addr = upstream
+            //             .trim_start_matches("udp://")
+            //             .trim_start_matches("tcp://")
+            //             .to_string();
 
-                    // Ensure the address includes a port. If parsing as a SocketAddr
-                    // fails, try appending the default DNS port 53.
-                    if addr.parse::<std::net::SocketAddr>().is_err() {
-                        let with_port = format!("{}:53", addr);
-                        if with_port.parse::<std::net::SocketAddr>().is_ok() {
-                            addr = with_port;
-                        }
-                    }
+            //         // Ensure the address includes a port. If parsing as a SocketAddr
+            //         // fails, try appending the default DNS port 53.
+            //         if addr.parse::<std::net::SocketAddr>().is_err() {
+            //             let with_port = format!("{}:53", addr);
+            //             if with_port.parse::<std::net::SocketAddr>().is_ok() {
+            //                 addr = with_port;
+            //             }
+            //         }
 
-                    builder = builder.add_upstream(addr);
-                }
+            //         builder = builder.add_upstream(addr);
+            //     }
 
-                // Build plugin and log configured upstream addresses for visibility
-                let fp = Arc::new(builder.build());
-                if let Some(fwd) = fp.as_ref().as_any().downcast_ref::<ForwardPlugin>() {
-                    debug!(upstreams = ?fwd.upstream_addrs(), "Built forward plugin with upstreams");
-                }
-                fp
-            }
-
+            //     // Build plugin and log configured upstream addresses for visibility
+            //     let fp = Arc::new(builder.build());
+            //     if let Some(fwd) = fp.as_ref().as_any().downcast_ref::<ForwardPlugin>() {
+            //         debug!(upstreams = ?fwd.upstream_addrs(), "Built forward plugin with upstreams");
+            //     }
+            //     fp
+            // }
             "hosts" => {
                 let args = &config.effective_args();
                 let mut plugin = HostsPlugin::new();
@@ -492,11 +697,14 @@ impl PluginBuilder {
     }
 }
 
-impl Default for PluginBuilder {
+impl Default for ConfigPluginBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
+
+// For backward compatibility, create a type alias
+pub type PluginConfigBuilder = ConfigPluginBuilder;
 
 // Helper functions for extracting configuration values
 
@@ -573,13 +781,13 @@ mod tests {
 
     #[test]
     fn test_plugin_builder_creation() {
-        let builder = PluginBuilder::new();
+        let builder = ConfigPluginBuilder::new();
         assert_eq!(builder.plugins.len(), 0);
     }
 
     #[test]
     fn test_build_cache_plugin() {
-        let mut builder = PluginBuilder::new();
+        let mut builder = ConfigPluginBuilder::new();
         let mut config_map = HashMap::new();
         config_map.insert("size".to_string(), Value::Number(2048.into()));
 
@@ -598,7 +806,7 @@ mod tests {
 
     #[test]
     fn test_build_forward_plugin() {
-        let mut builder = PluginBuilder::new();
+        let mut builder = ConfigPluginBuilder::new();
         let mut config_map = HashMap::new();
 
         let upstreams = vec![
@@ -622,7 +830,7 @@ mod tests {
 
     #[test]
     fn test_build_forward_plugin_with_default_port() {
-        let mut builder = PluginBuilder::new();
+        let mut builder = ConfigPluginBuilder::new();
         let mut config_map = HashMap::new();
 
         let upstreams = vec![Value::String("udp://119.29.29.29".to_string())];
@@ -652,7 +860,7 @@ mod tests {
 
     #[test]
     fn test_parse_condition_qtype_single_and_multiple() {
-        let builder = PluginBuilder::new();
+        let builder = ConfigPluginBuilder::new();
 
         // Single type
         let cond = parse_condition(&builder, "qtype 1").unwrap();
@@ -679,7 +887,7 @@ mod tests {
 
     #[test]
     fn test_parse_condition_qtype_invalid() {
-        let builder = PluginBuilder::new();
+        let builder = ConfigPluginBuilder::new();
 
         assert!(parse_condition(&builder, "qtype").is_err());
         assert!(parse_condition(&builder, "qtype abc").is_err());
@@ -688,7 +896,7 @@ mod tests {
 
     #[test]
     fn test_build_control_flow_plugins() {
-        let mut builder = PluginBuilder::new();
+        let mut builder = ConfigPluginBuilder::new();
 
         // Test accept
         let config = PluginConfig::new("accept".to_string());
@@ -729,7 +937,7 @@ mod tests {
 
     #[test]
     fn test_build_udp_server_with_shorthand_listen() {
-        let mut builder = PluginBuilder::new();
+        let mut builder = ConfigPluginBuilder::new();
         let mut args_map = Mapping::new();
         args_map.insert(
             Value::String("listen".to_string()),
@@ -755,7 +963,7 @@ mod tests {
 
     #[test]
     fn test_build_tcp_server_with_shorthand_listen() {
-        let mut builder = PluginBuilder::new();
+        let mut builder = ConfigPluginBuilder::new();
         let mut args_map = Mapping::new();
         args_map.insert(
             Value::String("listen".to_string()),
@@ -781,7 +989,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_redirect_from_string_rule_executes() {
-        let mut builder = PluginBuilder::new();
+        let mut builder = ConfigPluginBuilder::new();
         let mut args_map = Mapping::new();
         args_map.insert(
             Value::String("rules".to_string()),
@@ -823,7 +1031,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_redirect_from_mapping_rule_executes() {
-        let mut builder = PluginBuilder::new();
+        let mut builder = ConfigPluginBuilder::new();
         let mut args_map = Mapping::new();
 
         let mut rule_map = Mapping::new();
@@ -876,7 +1084,7 @@ mod tests {
 
     #[test]
     fn test_build_plugin_type_case_insensitive() {
-        let mut builder = PluginBuilder::new();
+        let mut builder = ConfigPluginBuilder::new();
         let mut args_map = Mapping::new();
         args_map.insert(
             Value::String("rules".to_string()),
@@ -898,7 +1106,10 @@ mod tests {
 }
 
 /// Parse complex sequence steps from YAML sequence
-fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
+fn parse_sequence_steps(
+    builder: &ConfigPluginBuilder,
+    sequence: &[Value],
+) -> Result<Vec<SequenceStep>> {
     use crate::plugins::executable::SequenceStep;
     info!("Parsing {} sequence steps", sequence.len());
     let mut steps = Vec::new();
@@ -944,7 +1155,7 @@ fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<V
 }
 
 /// Parse exec action from YAML value
-fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<dyn Plugin>> {
+fn parse_exec_action(builder: &ConfigPluginBuilder, exec_value: &Value) -> Result<Arc<dyn Plugin>> {
     match exec_value {
         Value::String(exec_str) => {
             // Handle different exec formats
@@ -1002,7 +1213,7 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
 }
 #[allow(clippy::type_complexity)]
 fn parse_condition(
-    builder: &PluginBuilder,
+    builder: &ConfigPluginBuilder,
     condition_str: &str,
 ) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
     // Simple condition parsing - this is a basic implementation

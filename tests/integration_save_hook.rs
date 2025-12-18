@@ -5,8 +5,8 @@ async fn integration_sequence_save_hook() {
     use lazydns::config::Config;
     use lazydns::dns::types::{RecordClass, RecordType};
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
+    use lazydns::plugin::ConfigPluginBuilder;
     use lazydns::plugin::Context;
-    use lazydns::plugin::PluginBuilder;
     use lazydns::plugins::executable::ReverseLookupPlugin;
     use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
@@ -15,7 +15,7 @@ async fn integration_sequence_save_hook() {
     let cfg = Config::from_file("config.yaml").expect("load config");
 
     // Build plugins from config
-    let mut builder = PluginBuilder::new();
+    let mut builder = ConfigPluginBuilder::new();
     for p in &cfg.plugins {
         let _ = builder.build(p).expect("build plugin");
     }
