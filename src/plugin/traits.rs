@@ -6,6 +6,7 @@ use crate::config::types::PluginConfig;
 use crate::plugin::Context;
 use crate::Result;
 use async_trait::async_trait;
+use std::any::Any;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -38,7 +39,7 @@ use std::sync::Arc;
 /// }
 /// ```
 #[async_trait]
-pub trait Plugin: Send + Sync + Debug + std::any::Any {
+pub trait Plugin: Send + Sync + Debug + Any {
     /// Execute the plugin logic
     ///
     /// This method is called to process a DNS query. The plugin can:
@@ -85,10 +86,41 @@ pub trait Plugin: Send + Sync + Debug + std::any::Any {
     }
 
     /// Get the plugin as Any for downcasting
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn Any {
         // This is a default implementation that won't work for downcasting
         // Concrete implementations should override this
         &()
+    }
+
+    /// Optional factory method to create a plugin instance from configuration.
+    ///
+    /// Default implementation returns an error indicating no builder is
+    /// provided for this plugin type. Implementations that support
+    /// configuration-based construction should override this method.
+    fn create(_config: &PluginConfig) -> Result<Arc<dyn Plugin>>
+    where
+        Self: Sized,
+    {
+        Err(crate::Error::Config(format!(
+            "no builder for plugin {}",
+            std::any::type_name::<Self>()
+        )))
+    }
+
+    /// Plugin type name used for registration and configuration.
+    // fn plugin_type() -> &'static str
+    // where
+    //     Self: Sized,
+    // {
+    //     "" // Default empty type name; implementations should override
+    // }
+
+    /// Optional aliases for plugin type names.
+    fn aliases() -> Vec<&'static str>
+    where
+        Self: Sized,
+    {
+        Vec::new()
     }
 }
 

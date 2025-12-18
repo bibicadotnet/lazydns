@@ -27,6 +27,22 @@ impl Plugin for JumpPlugin {
         "jump"
     }
 
+    fn create(config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+
+        let target = match args.get("target") {
+            Some(Value::String(s)) => s.clone(),
+            Some(_) => return Err(crate::Error::Config("target must be a string".to_string())),
+            None => {
+                return Err(crate::Error::Config(
+                    "target is required for jump plugin".to_string(),
+                ))
+            }
+        };
+
+        Ok(Arc::new(JumpPlugin::new(target)))
+    }
+    
     async fn execute(&self, ctx: &mut Context) -> crate::Result<()> {
         ctx.set_metadata("jump_target", self.target.clone());
         ctx.set_metadata(RETURN_FLAG, true);
