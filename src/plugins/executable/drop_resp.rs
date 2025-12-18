@@ -34,7 +34,7 @@ impl DropRespPlugin {
 impl Plugin for DropRespPlugin {
     /// Return the canonical plugin name `drop_resp`.
     fn name(&self) -> &str {
-        DropRespPlugin::plugin_type()
+        "drop_resp"
     }
 
     /// Execute the plugin: clear any response currently stored in the
@@ -46,10 +46,6 @@ impl Plugin for DropRespPlugin {
 
     fn create(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         Ok(Arc::new(DropRespPlugin::new()))
-    }
-
-    fn plugin_type() -> &'static str {
-        "drop_resp"
     }
 }
 

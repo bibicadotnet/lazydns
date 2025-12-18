@@ -254,10 +254,6 @@ impl Plugin for ForwardPlugin {
         Ok(Arc::new(plugin))
     }
 
-    fn plugin_type() -> &'static str {
-        "forward"
-    }
-
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         // Check if we already have a response
         if ctx.has_response() {

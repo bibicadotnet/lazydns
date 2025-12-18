@@ -107,14 +107,6 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
         )))
     }
 
-    /// Plugin type name used for registration and configuration.
-    fn plugin_type() -> &'static str
-    where
-        Self: Sized,
-    {
-        "" // Default empty type name; implementations should override
-    }
-
     /// Optional aliases for plugin type names.
     fn aliases() -> Vec<&'static str>
     where

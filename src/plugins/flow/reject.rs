@@ -64,10 +64,6 @@ impl Plugin for RejectPlugin {
 
         Ok(Arc::new(RejectPlugin::new(rcode)))
     }
-
-    fn plugin_type() -> &'static str {
-        "reject"
-    }
 }
 
 #[cfg(test)]

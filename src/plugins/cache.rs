@@ -498,10 +498,6 @@ impl Plugin for CachePlugin {
 
         Ok(Arc::new(cache))
     }
-
-    fn plugin_type() -> &'static str {
-        "cache"
-    }
 }
 
 /// Post-cache plugin to store responses after other plugins have processed them

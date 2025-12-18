@@ -33,10 +33,6 @@ impl Plugin for AcceptPlugin {
     {
         Ok(Arc::new(AcceptPlugin::new()))
     }
-
-    fn plugin_type() -> &'static str {
-        "accept"
-    }
 }
 
 #[cfg(test)]

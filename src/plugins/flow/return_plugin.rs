@@ -29,10 +29,6 @@ impl Plugin for ReturnPlugin {
     fn create(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         Ok(Arc::new(ReturnPlugin::new()))
     }
-
-    fn plugin_type() -> &'static str {
-        "return"
-    }
 }
 
 #[cfg(test)]

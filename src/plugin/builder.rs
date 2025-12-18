@@ -157,7 +157,33 @@ macro_rules! register_plugin_builder {
                 }
 
                 fn plugin_type(&self) -> &'static str {
-                    <$plugin_type as $crate::plugin::Plugin>::plugin_type()
+                    // Derive a canonical name from the Rust type name, e.g. "ForwardPlugin" -> "forward".
+                    // Compute once and return a &'static str.
+                    $crate::paste::paste! {
+                        static [<$plugin_type:snake:upper _DERIVED>]: once_cell::sync::Lazy<&'static str> =
+                            once_cell::sync::Lazy::new(|| {
+                                let t = std::any::type_name::<$plugin_type>();
+                                let last = t.rsplit("::").next().unwrap_or(t);
+                                let base = last.strip_suffix("Plugin").unwrap_or(last);
+                                // PascalCase/CamelCase -> snake_case
+                                let mut s = String::new();
+                                for (i, ch) in base.chars().enumerate() {
+                                    if ch.is_uppercase() {
+                                        if i != 0 {
+                                            s.push('_');
+                                        }
+                                        for lc in ch.to_lowercase() {
+                                            s.push(lc);
+                                        }
+                                    } else {
+                                        s.push(ch);
+                                    }
+                                }
+                                Box::leak(s.into_boxed_str())
+                            });
+
+                        [<$plugin_type:snake:upper _DERIVED>].clone()
+                    }
                 }
 
                 fn aliases(&self) -> Vec<&'static str> {
@@ -908,6 +934,17 @@ mod tests {
 
         let plugin = builder.build(&config).unwrap();
         assert_eq!(plugin.name(), "udp_server");
+    }
+
+    #[test]
+    fn test_derived_plugin_type_names() {
+        // Ensure the macro-based derivation registers canonical names derived from type names
+        crate::plugins::initialize_all_builders();
+        let types = get_all_plugin_types();
+        assert!(types.contains(&"drop_resp".to_string()));
+        assert!(types.contains(&"forward".to_string()));
+        assert!(get_builder("drop_resp").is_some());
+        assert!(get_builder("forward").is_some());
     }
 
     #[test]
