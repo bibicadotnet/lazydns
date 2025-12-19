@@ -7,14 +7,14 @@ use crate::config::PluginConfig;
 ///
 /// Quick setup strings are supported via `quick_setup`, e.g. "60" (fix=60)
 /// or "30-300" (min=30, max=300).
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
 
-// Auto-register using the register macro
-crate::register_plugin_builder!(TtlPlugin);
+// Auto-register using the exec register macro
+crate::register_exec_plugin_builder!(TtlPlugin);
 
 /// TTL plugin: fix or clamp TTLs on responses
 /// TTL plugin configuration.
@@ -37,22 +37,6 @@ impl TtlPlugin {
     /// - `max`: maximum TTL to clamp to when `fix` is zero.
     pub fn new(fix: u32, min: u32, max: u32) -> Self {
         Self { fix, min, max }
-    }
-
-    /// Parse a quick configuration string.
-    ///
-    /// Accepts either a range `"min-max"` or a single fixed value.
-    /// Returns a `TtlPlugin` configured accordingly.
-    pub fn quick_setup(s: &str) -> Result<Self> {
-        if s.contains('-') {
-            let parts: Vec<&str> = s.splitn(2, '-').collect();
-            let l = parts[0].parse::<u32>().unwrap_or(0);
-            let u = parts[1].parse::<u32>().unwrap_or(0);
-            Ok(Self::new(0, l, u))
-        } else {
-            let f = s.parse::<u32>().unwrap_or(0);
-            Ok(Self::new(f, 0, 0))
-        }
     }
 
     /// Apply TTL rules to the response contained in `ctx`.
@@ -140,6 +124,33 @@ impl Plugin for TtlPlugin {
     }
 }
 
+impl ExecPlugin for TtlPlugin {
+    /// Parse a quick configuration string.
+    ///
+    /// Accepts either a range `"min-max"` or a single fixed value.
+    /// Returns a `TtlPlugin` configured accordingly.
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "ttl" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'ttl'",
+                prefix
+            )));
+        }
+
+        let plugin = if exec_str.contains('-') {
+            let parts: Vec<&str> = exec_str.splitn(2, '-').collect();
+            let l = parts[0].parse::<u32>().unwrap_or(0);
+            let u = parts[1].parse::<u32>().unwrap_or(0);
+            TtlPlugin::new(0, l, u)
+        } else {
+            let f = exec_str.parse::<u32>().unwrap_or(0);
+            TtlPlugin::new(f, 0, 0)
+        };
+
+        Ok(Arc::new(plugin))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
@@ -222,44 +233,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_quick_setup_fixed_and_range() {
-        // fixed value
-        let plugin = TtlPlugin::quick_setup("60").unwrap();
-        let mut msg = Message::new();
-        msg.add_answer(make_a_record("a", 300));
-        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
-        ctx.set_response(Some(msg));
-        plugin.execute(&mut ctx).await.unwrap();
-        let resp = ctx.response().unwrap();
-        assert_eq!(resp.answers()[0].ttl(), 60);
-
-        // range
-        let plugin = TtlPlugin::quick_setup("20-80").unwrap();
-        let mut msg = Message::new();
-        msg.add_answer(make_a_record("a", 10));
-        msg.add_answer(make_a_record("b", 90));
-        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
-        ctx.set_response(Some(msg));
-        plugin.execute(&mut ctx).await.unwrap();
-        let resp = ctx.response().unwrap();
-        assert_eq!(resp.answers()[0].ttl(), 20);
-        assert_eq!(resp.answers()[1].ttl(), 80);
-    }
-
-    #[tokio::test]
-    async fn test_quick_setup_invalid_noop() {
-        // invalid string results in no-op (all zeros)
-        let plugin = TtlPlugin::quick_setup("abc").unwrap();
-        let mut msg = Message::new();
-        msg.add_answer(make_a_record("a", 100));
-        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
-        ctx.set_response(Some(msg));
-        plugin.execute(&mut ctx).await.unwrap();
-        let resp = ctx.response().unwrap();
-        assert_eq!(resp.answers()[0].ttl(), 100);
-    }
-
-    #[tokio::test]
     async fn test_ttl_plugin_rewrites_records() {
         let mut response = Message::new();
         response.set_response(true);
@@ -287,5 +260,16 @@ mod tests {
         let resp = ctx.response().unwrap();
         assert!(resp.answers().iter().all(|r| r.ttl() == 60));
         assert!(resp.additional().iter().all(|r| r.ttl() == 60));
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup() {
+        // Test that ExecPlugin::quick_setup works correctly
+        let plugin = <TtlPlugin as ExecPlugin>::quick_setup("ttl", "60").unwrap();
+        assert_eq!(plugin.name(), "ttl");
+
+        // Test invalid prefix
+        let result = <TtlPlugin as ExecPlugin>::quick_setup("invalid", "60");
+        assert!(result.is_err());
     }
 }

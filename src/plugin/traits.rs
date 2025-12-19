@@ -129,6 +129,25 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
     }
 }
 
+/// Trait for executable plugins that support quick setup from strings
+///
+/// Exec plugins are a special category of plugins that can be quickly
+/// instantiated from simple string configurations, typically used in
+/// exec-style configurations similar to mosdns.
+pub trait ExecPlugin: Plugin {
+    /// Quick setup from prefix and exec string
+    ///
+    /// # Arguments
+    /// * `prefix` - The plugin type prefix (e.g., "ttl")
+    /// * `exec_str` - The execution configuration string (e.g., "60" or "30-300")
+    ///
+    /// # Returns
+    /// A configured plugin instance, or an error if setup fails.
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>>
+    where
+        Self: Sized;
+}
+
 /// Shutdown trait for plugins that need cleanup
 ///
 /// Plugins that require graceful shutdown (e.g., closing connections,

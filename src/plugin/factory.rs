@@ -48,8 +48,21 @@ pub trait PluginFactory: Send + Sync {
     fn aliases(&self) -> Vec<&'static str>;
 }
 
+/// Exec plugin factory trait for exec plugins
+///
+/// Similar to PluginFactory but specifically for exec plugins that implement ExecPlugin.
+pub trait ExecPluginFactory: Send + Sync {
+    fn create_exec(&self, prefix: &str, exec_str: &str) -> crate::Result<Arc<dyn Plugin>>;
+    fn plugin_type(&self) -> &'static str;
+    fn aliases(&self) -> Vec<&'static str>;
+}
+
 /// Global plugin factory registry
 static PLUGIN_FACTORIES: Lazy<RwLock<HashMap<String, Arc<dyn PluginFactory>>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+/// Global exec plugin factory registry
+static EXEC_PLUGIN_FACTORIES: Lazy<RwLock<HashMap<String, Arc<dyn ExecPluginFactory>>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
 /// Register a plugin factory (internal use)
@@ -79,9 +92,48 @@ pub fn register_plugin_factory(factory: Arc<dyn PluginFactory>) {
     }
 }
 
+/// Register an exec plugin factory (internal use)
+pub fn register_exec_plugin_factory(factory: Arc<dyn ExecPluginFactory>) {
+    let mut factories = EXEC_PLUGIN_FACTORIES
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let plugin_type = factory.plugin_type();
+    // Check for duplicates
+    if factories.contains_key(plugin_type) {
+        panic!(
+            "Duplicate exec plugin factory registration: {}",
+            plugin_type
+        );
+    }
+
+    // Register primary name
+    factories.insert(plugin_type.to_string(), Arc::clone(&factory));
+
+    // Register aliases
+    for alias in factory.aliases() {
+        if factories.contains_key(alias) {
+            panic!(
+                "Duplicate exec plugin factory alias: {} (for {})",
+                alias, plugin_type
+            );
+        }
+        factories.insert(alias.to_string(), Arc::clone(&factory));
+    }
+}
+
 /// Get a plugin factory by type name
 pub fn get_plugin_factory(plugin_type: &str) -> Option<Arc<dyn PluginFactory>> {
     let factories = PLUGIN_FACTORIES
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    factories.get(plugin_type).cloned()
+}
+
+/// Get an exec plugin factory by type name
+pub fn get_exec_plugin_factory(plugin_type: &str) -> Option<Arc<dyn ExecPluginFactory>> {
+    let factories = EXEC_PLUGIN_FACTORIES
         .read()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
@@ -105,10 +157,33 @@ pub fn get_all_plugin_types() -> Vec<String> {
     types
 }
 
+/// Get all registered exec plugin types
+pub fn get_all_exec_plugin_types() -> Vec<String> {
+    let factories = EXEC_PLUGIN_FACTORIES
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let mut types: Vec<String> = factories
+        .values()
+        .map(|f| f.plugin_type().to_string())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    types.sort();
+    types
+}
+
 /// Initialize the plugin factory system
 pub fn initialize_plugin_factories() {
     // Force lazy initialization
     Lazy::force(&PLUGIN_FACTORIES);
+}
+
+/// Initialize the exec plugin factory system
+pub fn initialize_exec_plugin_factories() {
+    // Force lazy initialization
+    Lazy::force(&EXEC_PLUGIN_FACTORIES);
 }
 
 /// Macro to register a plugin factory
@@ -218,6 +293,100 @@ macro_rules! register_plugin_builder {
     };
 }
 
+/// Macro to register an exec plugin factory
+///
+/// This macro automatically creates a factory wrapper for types that
+/// implement `ExecPlugin` and registers it in the exec plugin registry.
+///
+/// # Example
+///
+/// ```ignore
+/// use lazydns::register_exec_plugin_builder;
+/// use lazydns::plugin::{Plugin, ExecPlugin};
+/// use std::sync::Arc;
+///
+/// #[derive(Debug)]
+/// struct MyExecPlugin;
+///
+/// impl Plugin for MyExecPlugin {
+///     async fn execute(&self, _ctx: &mut lazydns::plugin::Context) -> crate::Result<()> {
+///         Ok(())
+///     }
+///
+///     fn name(&self) -> &str {
+///         "my_exec_plugin"
+///     }
+/// }
+///
+/// impl ExecPlugin for MyExecPlugin {
+///     fn quick_setup(prefix: &str, exec_str: &str) -> crate::Result<Arc<dyn Plugin>> {
+///         // Implementation
+///         Ok(Arc::new(Self))
+///     }
+/// }
+///
+/// register_exec_plugin_builder!(MyExecPlugin);
+/// ```
+#[macro_export]
+macro_rules! register_exec_plugin_builder {
+    ($plugin_type:ty) => {
+        $crate::paste::paste! {
+            // Create an auto-generated exec factory wrapper
+            #[derive(Default)]
+            struct [<$plugin_type ExecFactoryWrapper>];
+
+            impl $crate::plugin::factory::ExecPluginFactory for [<$plugin_type ExecFactoryWrapper>] {
+                fn create_exec(&self, prefix: &str, exec_str: &str)
+                    -> $crate::Result<std::sync::Arc<dyn $crate::plugin::Plugin>>
+                {
+                    <$plugin_type as $crate::plugin::ExecPlugin>::quick_setup(prefix, exec_str)
+                }
+
+                fn plugin_type(&self) -> &'static str {
+                    // Use the same name derivation as regular plugins
+                    $crate::paste::paste! {
+                        static [<$plugin_type:snake:upper _DERIVED>]: once_cell::sync::Lazy<&'static str> =
+                            once_cell::sync::Lazy::new(|| {
+                                let t = std::any::type_name::<$plugin_type>();
+                                let last = t.rsplit("::").next().unwrap_or(t);
+                                let base = last.strip_suffix("Plugin").unwrap_or(last);
+                                // PascalCase/CamelCase -> snake_case
+                                let mut s = String::new();
+                                for (i, ch) in base.chars().enumerate() {
+                                    if ch.is_uppercase() {
+                                        if i != 0 {
+                                            s.push('_');
+                                        }
+                                        for lc in ch.to_lowercase() {
+                                            s.push(lc);
+                                        }
+                                    } else {
+                                        s.push(ch);
+                                    }
+                                }
+                                Box::leak(s.into_boxed_str())
+                            });
+
+                        [<$plugin_type:snake:upper _DERIVED>].clone()
+                    }
+                }
+
+                fn aliases(&self) -> Vec<&'static str> {
+                    Vec::new()
+                }
+            }
+
+            // Auto-register using lazy static
+            pub static [<$plugin_type:snake:upper _EXEC_FACTORY>]: once_cell::sync::Lazy<()> =
+                once_cell::sync::Lazy::new(|| {
+                    $crate::plugin::factory::register_exec_plugin_factory(
+                        std::sync::Arc::new([<$plugin_type ExecFactoryWrapper>]::default())
+                    );
+                });
+        }
+    };
+}
+
 /// Initialize all plugin factories
 ///
 /// This function ensures that all plugin factory registrations are triggered.
@@ -231,12 +400,12 @@ macro_rules! register_plugin_builder {
 /// # Example
 ///
 /// ```rust
-/// use lazydns::plugin::factory::initialize_all_factories;
+/// use lazydns::plugin::factory::initialize_all_plugin_factories;
 ///
 /// // Initialize plugin factories before loading config
-/// initialize_all_factories();
+/// initialize_all_plugin_factories();
 /// ```
-pub fn initialize_all_factories() {
+pub fn initialize_all_plugin_factories() {
     use once_cell::sync::OnceCell;
 
     static INIT: OnceCell<()> = OnceCell::new();
@@ -254,7 +423,6 @@ pub fn initialize_all_factories() {
         Lazy::force(&crate::plugins::dataset::ip_set::IP_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::hosts::HOSTS_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::ros_addrlist::ROS_ADDRLIST_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::executable::ttl::TTL_PLUGIN_FACTORY);
 
         // Exec/Flow plugins
         // TODO: try other ways?
@@ -278,6 +446,29 @@ pub fn initialize_all_factories() {
         let count = get_all_plugin_types().len();
         if count > 0 {
             tracing::info!("Initialized {} plugin factories", count);
+        }
+    });
+}
+
+/// Initialize all exec plugin factories
+///
+/// Similar to initialize_all_plugin_factories but for exec plugins.
+pub fn initialize_all_exec_plugin_factories() {
+    use once_cell::sync::OnceCell;
+
+    static EXEC_INIT: OnceCell<()> = OnceCell::new();
+
+    EXEC_INIT.get_or_init(|| {
+        // Force initialization of exec plugin factories
+        // TTL is registered via macro, so it should be initialized when accessed
+        Lazy::force(&crate::plugins::executable::ttl::TTL_PLUGIN_EXEC_FACTORY);
+
+        // Initialize the exec factory system
+        initialize_exec_plugin_factories();
+
+        let count = get_all_exec_plugin_types().len();
+        if count > 0 {
+            tracing::info!("Initialized {} exec plugin factories", count);
         }
     });
 }

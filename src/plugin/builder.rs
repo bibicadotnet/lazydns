@@ -41,8 +41,11 @@ impl PluginBuilder {
         // Normalize plugin type for more forgiving parsing (trim and lowercase)
         let plugin_type = config.plugin_type.trim().to_lowercase();
 
+        // Initialize plugin builder system
         // Ensure plugin builders from plugin modules are initialized (register themselves)
-        crate::plugin::factory::initialize_all_factories();
+        info!("Initializing plugin builder system...");
+        crate::plugin::factory::initialize_all_plugin_factories();
+        crate::plugin::factory::initialize_all_exec_plugin_factories();
 
         // Try to get builder from registry first
         if let Some(builder) = crate::plugin::factory::get_plugin_factory(&plugin_type) {
@@ -301,7 +304,20 @@ fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<V
 fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<dyn Plugin>> {
     match exec_value {
         Value::String(exec_str) => {
-            // Handle different exec formats
+            // First try to parse as exec plugin: prefix [exec_str]
+            let (prefix, exec_args) = if let Some(space_pos) = exec_str.find(' ') {
+                let (p, rest) = exec_str.split_at(space_pos);
+                (p.trim(), rest.trim())
+            } else {
+                (exec_str.as_str(), "")
+            };
+
+            // Try exec plugin registry first
+            if let Some(factory) = crate::plugin::factory::get_exec_plugin_factory(prefix) {
+                return factory.create_exec(prefix, exec_args);
+            }
+
+            // Handle different exec formats (legacy hardcoded)
             if let Some(plugin_name) = exec_str.strip_prefix('$') {
                 // Plugin reference: $plugin_name
                 if let Some(plugin) = builder.get_plugin(plugin_name) {
@@ -324,17 +340,6 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
                     3
                 };
                 Ok(Arc::new(crate::plugins::RejectPlugin::new(rcode)))
-            } else if let Some(ttl_part) = exec_str.strip_prefix("ttl ") {
-                // ttl 300-3600 format - take the first number
-                if let Some(first_num) = ttl_part.split('-').next() {
-                    if let Ok(ttl) = first_num.parse::<u32>() {
-                        Ok(Arc::new(crate::plugins::TtlPlugin::new(ttl, 0, 0)))
-                    } else {
-                        Err(Error::Config(format!("Invalid TTL value: {}", ttl_part)))
-                    }
-                } else {
-                    Err(Error::Config(format!("Invalid TTL format: {}", exec_str)))
-                }
             } else if exec_str.starts_with("black_hole") {
                 Ok(Arc::new(
                     crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
@@ -677,7 +682,7 @@ mod tests {
     #[test]
     fn test_derived_plugin_type_names() {
         // Ensure the macro-based derivation registers canonical names derived from type names
-        crate::plugin::factory::initialize_all_factories();
+        crate::plugin::factory::initialize_all_plugin_factories();
         let types = crate::plugin::factory::get_all_plugin_types();
         assert!(types.contains(&"drop_resp".to_string()));
         assert!(types.contains(&"forward".to_string()));
