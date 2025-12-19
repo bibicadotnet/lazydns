@@ -434,23 +434,21 @@ impl ServerLauncher {
         plugin_config: &PluginConfig,
     ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let args = plugin_config.effective_args();
-        let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:443") else {
-            return;
-        };
+        let addr = self.parse_listen_addr(&args, "0.0.0.0:443")?;
 
         let cert_path = args.get("cert_file").and_then(|v| v.as_str());
         let key_path = args.get("key_file").and_then(|v| v.as_str());
 
         let (Some(cert_path), Some(key_path)) = (cert_path, key_path) else {
             warn!("doh_server plugin configured without cert_file/key_file");
-            return;
+            return None;
         };
 
         let tls = match TlsConfig::from_files(cert_path, key_path) {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to load TLS config for DoH: {}", e);
-                return;
+                return None;
             }
         };
 
@@ -535,23 +533,21 @@ impl ServerLauncher {
         plugin_config: &PluginConfig,
     ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let args = plugin_config.effective_args();
-        let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:853") else {
-            return;
-        };
+        let addr = self.parse_listen_addr(&args, "0.0.0.0:853")?;
 
         let cert_path = args.get("cert_file").and_then(|v| v.as_str());
         let key_path = args.get("key_file").and_then(|v| v.as_str());
 
         let (Some(cert_path), Some(key_path)) = (cert_path, key_path) else {
             warn!("dot_server plugin configured without cert_file/key_file");
-            return;
+            return None;
         };
 
         let tls = match TlsConfig::from_files(cert_path, key_path) {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to load TLS config for DoT: {}", e);
-                return;
+                return None;
             }
         };
 
@@ -635,16 +631,14 @@ impl ServerLauncher {
         plugin_config: &PluginConfig,
     ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let args = plugin_config.effective_args();
-        let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:784") else {
-            return;
-        };
+        let addr = self.parse_listen_addr(&args, "0.0.0.0:784")?;
 
         let cert_path = args.get("cert_file").and_then(|v| v.as_str());
         let key_path = args.get("key_file").and_then(|v| v.as_str());
 
         let (Some(cert_path), Some(key_path)) = (cert_path, key_path) else {
             warn!("doq_server plugin configured without cert_file/key_file");
-            return;
+            return None;
         };
 
         let entry = self.get_entry(&args);
