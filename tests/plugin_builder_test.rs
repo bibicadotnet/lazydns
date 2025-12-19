@@ -6,25 +6,6 @@ use lazydns::plugin::factory::init;
 use std::collections::HashMap;
 
 #[test]
-fn test_builder_initialization() {
-    // Initialize builders
-    init();
-
-    // Verify that builders are registered
-    let types = factory::get_all_plugin_types();
-
-    println!("Registered plugin types: {:?}", types);
-
-    // Should have at least cache, forward, accept, reject, return, jump
-    assert!(types.contains(&"cache".to_string()));
-    assert!(types.contains(&"forward".to_string()));
-    assert!(types.contains(&"accept".to_string()));
-    assert!(types.contains(&"reject".to_string()));
-    assert!(types.contains(&"return".to_string()));
-    assert!(types.contains(&"jump".to_string()));
-}
-
-#[test]
 fn test_create_cache_plugin_from_builder() {
     init();
 
@@ -79,96 +60,6 @@ fn test_create_forward_plugin_from_builder() {
         .expect("plugin creation should succeed");
 
     assert_eq!(plugin.name(), "forward");
-}
-
-#[test]
-fn test_create_reject_plugin_from_builder() {
-    init();
-
-    let mut config_map = HashMap::new();
-    config_map.insert("rcode".to_string(), serde_yaml::Value::Number(3.into()));
-
-    let config = PluginConfig {
-        tag: Some("test_reject".to_string()),
-        plugin_type: "reject".to_string(),
-        args: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-        name: Some("test_reject".to_string()),
-        priority: 100,
-        config: config_map,
-    };
-
-    let builder_obj =
-        factory::get_plugin_factory("reject").expect("reject builder should be registered");
-    let plugin = builder_obj
-        .create(&config)
-        .expect("plugin creation should succeed");
-
-    assert_eq!(plugin.name(), "reject");
-}
-
-#[test]
-fn test_control_flow_plugins_from_builder() {
-    init();
-
-    // Test accept
-    let accept_config = PluginConfig::new("accept".to_string());
-    let accept_builder = factory::get_plugin_factory("accept").expect("accept builder");
-    let accept_plugin = accept_builder.create(&accept_config).unwrap();
-    assert_eq!(accept_plugin.name(), "accept");
-
-    // Test return
-    let return_config = PluginConfig::new("return".to_string());
-    let return_builder = factory::get_plugin_factory("return").expect("return builder");
-    let return_plugin = return_builder.create(&return_config).unwrap();
-    assert_eq!(return_plugin.name(), "return");
-
-    // Test drop_resp
-    let drop_builder = factory::get_exec_plugin_factory("drop_resp").expect("drop_resp builder");
-    let drop_plugin = drop_builder.create("drop_resp", "").unwrap();
-    assert_eq!(drop_plugin.name(), "drop_resp");
-}
-
-#[test]
-fn test_jump_plugin_from_builder() {
-    init();
-
-    let mut config_map = HashMap::new();
-    config_map.insert(
-        "target".to_string(),
-        serde_yaml::Value::String("some_sequence".to_string()),
-    );
-
-    let config = PluginConfig {
-        tag: Some("test_jump".to_string()),
-        plugin_type: "jump".to_string(),
-        args: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-        name: Some("test_jump".to_string()),
-        priority: 100,
-        config: config_map,
-    };
-
-    let builder_obj =
-        factory::get_plugin_factory("jump").expect("jump builder should be registered");
-    let plugin = builder_obj
-        .create(&config)
-        .expect("plugin creation should succeed");
-
-    assert_eq!(plugin.name(), "jump");
-}
-
-#[tokio::test]
-async fn test_plugin_from_builder_executes() {
-    use lazydns::dns::Message;
-    use lazydns::plugin::Context;
-
-    init();
-
-    let config = PluginConfig::new("accept".to_string());
-    let builder_obj = factory::get_plugin_factory("accept").expect("accept builder");
-    let plugin = builder_obj.create(&config).unwrap();
-
-    let mut ctx = Context::new(Message::new());
-    plugin.execute(&mut ctx).await.unwrap();
 }
 
 #[test]

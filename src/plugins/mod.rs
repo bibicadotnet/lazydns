@@ -30,6 +30,7 @@
 //! ```
 
 pub mod acl;
+pub mod cache;
 pub mod dataset;
 pub mod domain_matcher;
 pub mod executable;
@@ -46,6 +47,7 @@ pub mod server;
 
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
+pub use cache::CachePlugin;
 pub use dataset::{DomainSetPlugin, IpSetPlugin};
 pub use domain_matcher::DomainMatcherPlugin;
 pub use flow::{
@@ -68,10 +70,10 @@ pub use matcher::{
 
 // Re-export executable plugins
 pub use executable::{
-    ArbitraryPlugin, BlackholePlugin, CachePlugin, DebugPrintPlugin, DropRespPlugin,
-    DualSelectorPlugin, Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin,
-    HostsPlugin, IpPreference, NftSetPlugin, QuerySummaryPlugin, RateLimitPlugin, RedirectPlugin,
-    ReverseLookupPlugin, RosAddrlistPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
+    ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin,
+    Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, HostsPlugin, IpPreference,
+    NftSetPlugin, QuerySummaryPlugin, RateLimitPlugin, RedirectPlugin, ReverseLookupPlugin,
+    RosAddrlistPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 // Re-export server plugins

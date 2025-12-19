@@ -779,7 +779,7 @@ mod tests {
             derive::<crate::plugins::flow::reject::RejectPlugin>(),
             derive::<crate::plugins::flow::prefer_ipv4::PreferIpv4Plugin>(),
             derive::<crate::plugins::flow::prefer_ipv6::PreferIpv6Plugin>(),
-            derive::<crate::plugins::executable::CachePlugin>(),
+            derive::<crate::plugins::CachePlugin>(),
             derive::<crate::plugins::dataset::DomainSetPlugin>(),
             derive::<crate::plugins::geoip::GeoIpPlugin>(),
             derive::<crate::plugins::geosite::GeoSitePlugin>(),

@@ -4,7 +4,6 @@
 
 pub mod arbitrary;
 pub mod black_hole;
-pub mod cache;
 pub mod collector;
 pub mod debug_print;
 pub mod drop_resp;
@@ -25,7 +24,6 @@ pub mod ttl;
 
 pub use arbitrary::ArbitraryPlugin;
 pub use black_hole::BlackholePlugin;
-pub use cache::CachePlugin;
 pub use collector::MetricsCollectorPlugin;
 pub use debug_print::DebugPrintPlugin;
 pub use drop_resp::DropRespPlugin;

@@ -3,7 +3,7 @@
 //! Provides HTTP endpoints for managing the DNS server at runtime.
 
 use crate::config::Config;
-use crate::plugins::executable::CachePlugin;
+use crate::plugins::CachePlugin;
 use axum::{
     extract::State,
     http::StatusCode,
