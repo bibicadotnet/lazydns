@@ -418,16 +418,16 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::executable::cache::CACHE_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::forward::FORWARD_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::ratelimit::RATE_LIMIT_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::executable::drop_resp::DROP_RESP_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::domain_set::DOMAIN_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::ip_set::IP_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::hosts::HOSTS_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::ros_addrlist::ROS_ADDRLIST_PLUGIN_FACTORY);
 
+        Lazy::force(&crate::plugins::executable::black_hole::BLACKHOLE_PLUGIN_FACTORY);
+
         // Exec/Flow plugins
         // TODO: try other ways?
         // SeeAlso: src/plugin/builder.rs: 494 fn parse_exec_action
-        Lazy::force(&crate::plugins::executable::black_hole::BLACKHOLE_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::matcher::has_resp::HAS_RESP_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::redirect::REDIRECT_PLUGIN_FACTORY);
@@ -462,6 +462,11 @@ pub fn initialize_all_exec_plugin_factories() {
         // Force initialization of exec plugin factories
         // TTL is registered via macro, so it should be initialized when accessed
         Lazy::force(&crate::plugins::executable::ttl::TTL_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::black_hole::BLACKHOLE_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::sleep::SLEEP_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::debug_print::DEBUG_PRINT_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::drop_resp::DROP_RESP_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_EXEC_FACTORY);
 
         // Initialize the exec factory system
         initialize_exec_plugin_factories();

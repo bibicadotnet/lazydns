@@ -2,11 +2,16 @@
 //!
 //! Prints debug information about DNS queries and responses to the log
 
-use crate::plugin::{Context, Plugin};
+use crate::config::PluginConfig;
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
+use std::sync::Arc;
 use tracing::{debug, info};
+
+// Auto-register using the exec register macro
+crate::register_exec_plugin_builder!(DebugPrintPlugin);
 
 /// Plugin that prints debug information about DNS queries and responses
 ///
@@ -131,6 +136,60 @@ impl Plugin for DebugPrintPlugin {
 
         Ok(())
     }
+
+    fn aliases() -> Vec<&'static str> {
+        vec!["debug", "print"]
+    }
+}
+
+impl ExecPlugin for DebugPrintPlugin {
+    /// Parse a quick configuration string for debug_print plugin.
+    ///
+    /// Accepts comma-separated options: "queries", "responses", and "prefix=VALUE"
+    /// Examples: "queries,responses", "queries,prefix=TEST", "responses"
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "debug_print" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'debug_print'",
+                prefix
+            )));
+        }
+
+        let mut print_queries = false;
+        let mut print_responses = false;
+        let mut prefix_str = "DNS".to_string();
+
+        for part in exec_str.split(',') {
+            let part = part.trim();
+            if part == "queries" {
+                print_queries = true;
+            } else if part == "responses" {
+                print_responses = true;
+            } else if let Some(stripped) = part.strip_prefix("prefix=") {
+                prefix_str = stripped.to_string();
+            } else if part.is_empty() {
+                // ignore empty parts
+            } else {
+                return Err(crate::Error::Config(format!(
+                    "Invalid debug_print option: '{}'",
+                    part
+                )));
+            }
+        }
+
+        // Default to both if nothing specified
+        if !print_queries && !print_responses {
+            print_queries = true;
+            print_responses = true;
+        }
+
+        let plugin = DebugPrintPlugin {
+            print_queries,
+            print_responses,
+            prefix: prefix_str,
+        };
+        Ok(Arc::new(plugin))
+    }
 }
 
 #[cfg(test)]
@@ -213,5 +272,36 @@ mod tests {
 
         assert!(plugin.execute(&mut ctx).await.is_ok());
         assert_eq!(plugin.prefix, "TEST");
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup() {
+        // Test that ExecPlugin::quick_setup works correctly
+        let plugin =
+            <DebugPrintPlugin as ExecPlugin>::quick_setup("debug_print", "queries,responses")
+                .unwrap();
+        assert_eq!(plugin.name(), "debug_print");
+
+        // Test invalid prefix
+        let result = <DebugPrintPlugin as ExecPlugin>::quick_setup("invalid", "queries");
+        assert!(result.is_err());
+
+        // Test queries only
+        let plugin =
+            <DebugPrintPlugin as ExecPlugin>::quick_setup("debug_print", "queries").unwrap();
+        if let Some(dp) = plugin.as_any().downcast_ref::<DebugPrintPlugin>() {
+            assert!(dp.print_queries);
+            assert!(!dp.print_responses);
+        }
+
+        // Test with prefix
+        let plugin =
+            <DebugPrintPlugin as ExecPlugin>::quick_setup("debug_print", "responses,prefix=TEST")
+                .unwrap();
+        if let Some(dp) = plugin.as_any().downcast_ref::<DebugPrintPlugin>() {
+            assert!(!dp.print_queries);
+            assert!(dp.print_responses);
+            assert_eq!(dp.prefix, "TEST");
+        }
     }
 }

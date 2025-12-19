@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use crate::config::PluginConfig;
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 
-// Plugin builder registration for DropRespPlugin
-crate::register_plugin_builder!(DropRespPlugin);
+// Auto-register using the exec register macro
+crate::register_exec_plugin_builder!(DropRespPlugin);
 
 /// Plugin that clears any existing response from the execution `Context`.
 ///
@@ -47,7 +46,27 @@ impl Plugin for DropRespPlugin {
         Ok(())
     }
 
-    fn init(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+    /// Initialize plugin from configuration.
+    ///
+    /// This plugin takes no configuration parameters.
+    fn init(_config: &crate::config::types::PluginConfig) -> Result<Arc<dyn Plugin>> {
+        Ok(Arc::new(DropRespPlugin::new()))
+    }
+}
+
+impl ExecPlugin for DropRespPlugin {
+    /// Parse a quick configuration string for drop_resp plugin.
+    ///
+    /// This plugin takes no parameters, so the exec_str is ignored.
+    /// Examples: "drop_resp", ""
+    fn quick_setup(prefix: &str, _exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "drop_resp" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'drop_resp'",
+                prefix
+            )));
+        }
+
         Ok(Arc::new(DropRespPlugin::new()))
     }
 }
@@ -65,5 +84,20 @@ mod tests {
         ctx.set_response(Some(Message::new()));
         plugin.execute(&mut ctx).await.unwrap();
         assert!(!ctx.has_response());
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup() {
+        // Test that ExecPlugin::quick_setup works correctly
+        let plugin = <DropRespPlugin as ExecPlugin>::quick_setup("drop_resp", "").unwrap();
+        assert_eq!(plugin.name(), "drop_resp");
+
+        // Test with some exec_str (should be ignored)
+        let plugin = <DropRespPlugin as ExecPlugin>::quick_setup("drop_resp", "ignored").unwrap();
+        assert_eq!(plugin.name(), "drop_resp");
+
+        // Test invalid prefix
+        let result = <DropRespPlugin as ExecPlugin>::quick_setup("invalid", "");
+        assert!(result.is_err());
     }
 }

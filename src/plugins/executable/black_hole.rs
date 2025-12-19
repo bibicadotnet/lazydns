@@ -1,6 +1,6 @@
 use crate::config::PluginConfig;
 use crate::dns::{Message, RData, ResourceRecord};
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 // Auto-register using the register macro
 crate::register_plugin_builder!(BlackholePlugin);
+// Auto-register using the exec register macro
+crate::register_exec_plugin_builder!(BlackholePlugin);
 
 /// Black hole plugin: returns configured A/AAAA answers for a query
 pub struct BlackholePlugin {
@@ -135,6 +137,31 @@ impl Plugin for BlackholePlugin {
     }
 }
 
+impl ExecPlugin for BlackholePlugin {
+    /// Parse a quick configuration string for blackhole plugin.
+    ///
+    /// Accepts a comma-separated list of IP addresses.
+    /// Examples: "192.0.2.1", "192.0.2.1,2001:db8::1", "0.0.0.0"
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "blackhole" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'blackhole'",
+                prefix
+            )));
+        }
+
+        // Parse comma-separated IP addresses
+        let ips: Vec<String> = exec_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let plugin = BlackholePlugin::new_from_strs(ips)?;
+        Ok(Arc::new(plugin))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +185,23 @@ mod tests {
         } else {
             panic!("expected A");
         }
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup() {
+        // Test that ExecPlugin::quick_setup works correctly
+        let plugin =
+            <BlackholePlugin as ExecPlugin>::quick_setup("blackhole", "192.0.2.1").unwrap();
+        assert_eq!(plugin.name(), "blackhole");
+
+        // Test invalid prefix
+        let result = <BlackholePlugin as ExecPlugin>::quick_setup("invalid", "192.0.2.1");
+        assert!(result.is_err());
+
+        // Test multiple IPs
+        let plugin =
+            <BlackholePlugin as ExecPlugin>::quick_setup("blackhole", "192.0.2.1,2001:db8::1")
+                .unwrap();
+        assert_eq!(plugin.name(), "blackhole");
     }
 }

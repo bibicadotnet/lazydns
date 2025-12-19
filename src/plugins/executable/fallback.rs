@@ -2,7 +2,7 @@
 //!
 //! Provides fallback mechanism for query processing
 
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
@@ -11,6 +11,8 @@ use tracing::{debug, info, warn};
 
 // Auto-register using the register macro
 crate::register_plugin_builder!(FallbackPlugin);
+// Auto-register using the exec register macro
+crate::register_exec_plugin_builder!(FallbackPlugin);
 
 /// Plugin that provides fallback to alternative plugins if primary fails
 ///
@@ -221,6 +223,37 @@ impl Plugin for FallbackPlugin {
     }
 }
 
+impl ExecPlugin for FallbackPlugin {
+    /// Parse a quick configuration string for fallback plugin.
+    ///
+    /// Accepts comma-separated list of plugin names to try in order.
+    /// Examples: "primary,secondary", "upstream1,upstream2,upstream3"
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "fallback" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'fallback'",
+                prefix
+            )));
+        }
+
+        // Parse comma-separated plugin names
+        let names: Vec<String> = exec_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if names.is_empty() {
+            return Err(crate::Error::Config(
+                "fallback plugin requires at least one plugin name".to_string(),
+            ));
+        }
+
+        let plugin = FallbackPlugin::with_names(names);
+        Ok(Arc::new(plugin))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +380,31 @@ mod tests {
         // Should NOT fallback to secondary (empty response is OK in error_only mode)
         // The response might be empty or have the empty response from primary
         // In error_only mode, we don't fallback on empty responses
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup() {
+        // Test that ExecPlugin::quick_setup works correctly
+        let plugin =
+            <FallbackPlugin as ExecPlugin>::quick_setup("fallback", "primary,secondary").unwrap();
+        assert_eq!(plugin.name(), "fallback");
+
+        // Test single plugin
+        let plugin = <FallbackPlugin as ExecPlugin>::quick_setup("fallback", "upstream").unwrap();
+        assert_eq!(plugin.name(), "fallback");
+
+        // Test invalid prefix
+        let result = <FallbackPlugin as ExecPlugin>::quick_setup("invalid", "primary");
+        assert!(result.is_err());
+
+        // Test empty exec_str
+        let result = <FallbackPlugin as ExecPlugin>::quick_setup("fallback", "");
+        assert!(result.is_err());
+
+        // Test with spaces
+        let plugin =
+            <FallbackPlugin as ExecPlugin>::quick_setup("fallback", " primary , secondary ")
+                .unwrap();
+        assert_eq!(plugin.name(), "fallback");
     }
 }

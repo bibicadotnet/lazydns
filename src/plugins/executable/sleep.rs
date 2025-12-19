@@ -2,12 +2,16 @@
 //!
 //! Adds a delay before processing continues
 
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::debug;
+
+// Auto-register using the exec register macro
+crate::register_exec_plugin_builder!(SleepPlugin);
 
 /// Plugin that adds a delay to query processing
 ///
@@ -70,6 +74,50 @@ impl Plugin for SleepPlugin {
         tokio::time::sleep(self.duration).await;
         Ok(())
     }
+
+    fn aliases() -> Vec<&'static str> {
+        vec!["delay"]
+    }
+}
+
+impl ExecPlugin for SleepPlugin {
+    /// Parse a quick configuration string for sleep plugin.
+    ///
+    /// Accepts duration strings like "100ms", "1s", "500ms"
+    /// Examples: "100ms", "1s", "500ms"
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "sleep" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'sleep'",
+                prefix
+            )));
+        }
+
+        let duration = if let Some(ms_str) = exec_str.strip_suffix("ms") {
+            if let Ok(ms) = ms_str.parse::<u64>() {
+                Duration::from_millis(ms)
+            } else {
+                return Err(crate::Error::Config(format!(
+                    "Invalid milliseconds: {}",
+                    ms_str
+                )));
+            }
+        } else if let Some(s_str) = exec_str.strip_suffix('s') {
+            if let Ok(s) = s_str.parse::<u64>() {
+                Duration::from_secs(s)
+            } else {
+                return Err(crate::Error::Config(format!("Invalid seconds: {}", s_str)));
+            }
+        } else {
+            return Err(crate::Error::Config(format!(
+                "Invalid duration format: '{}'. Use '100ms' or '1s'",
+                exec_str
+            )));
+        };
+
+        let plugin = SleepPlugin::new(duration);
+        Ok(Arc::new(plugin))
+    }
 }
 
 #[cfg(test)]
@@ -105,5 +153,32 @@ mod tests {
         let debug_str = format!("{:?}", plugin);
         assert!(debug_str.contains("SleepPlugin"));
         assert!(debug_str.contains("duration"));
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup() {
+        // Test that ExecPlugin::quick_setup works correctly
+        let plugin = <SleepPlugin as ExecPlugin>::quick_setup("sleep", "100ms").unwrap();
+        assert_eq!(plugin.name(), "sleep");
+
+        // Test invalid prefix
+        let result = <SleepPlugin as ExecPlugin>::quick_setup("invalid", "100ms");
+        assert!(result.is_err());
+
+        // Test milliseconds
+        let plugin = <SleepPlugin as ExecPlugin>::quick_setup("sleep", "200ms").unwrap();
+        if let Some(sp) = plugin.as_any().downcast_ref::<SleepPlugin>() {
+            assert_eq!(sp.duration, Duration::from_millis(200));
+        }
+
+        // Test seconds
+        let plugin = <SleepPlugin as ExecPlugin>::quick_setup("sleep", "2s").unwrap();
+        if let Some(sp) = plugin.as_any().downcast_ref::<SleepPlugin>() {
+            assert_eq!(sp.duration, Duration::from_secs(2));
+        }
+
+        // Test invalid format
+        let result = <SleepPlugin as ExecPlugin>::quick_setup("sleep", "100");
+        assert!(result.is_err());
     }
 }
