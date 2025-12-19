@@ -43,8 +43,6 @@ pub use sequence::SequenceStep;
 pub use sleep::SleepPlugin;
 pub use ttl::TtlPlugin;
 
-pub mod hosts;
-pub use hosts::HostsPlugin;
 pub mod forward;
 pub use forward::ForwardPlugin;
 

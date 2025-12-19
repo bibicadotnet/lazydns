@@ -783,7 +783,7 @@ mod tests {
             derive::<crate::plugins::dataset::DomainSetPlugin>(),
             derive::<crate::plugins::geoip::GeoIpPlugin>(),
             derive::<crate::plugins::geosite::GeoSitePlugin>(),
-            derive::<crate::plugins::executable::HostsPlugin>(),
+            derive::<crate::plugins::HostsPlugin>(),
         ];
 
         let set: std::collections::HashSet<_> = derived.iter().cloned().collect();

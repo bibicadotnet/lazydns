@@ -57,6 +57,7 @@ pub use flow::{
 pub use forward::LoadBalanceStrategy;
 pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
+pub use hosts::HostsPlugin;
 pub use ip_matcher::IpMatcherPlugin;
 pub use mark::MarkPlugin;
 
@@ -71,9 +72,9 @@ pub use matcher::{
 // Re-export executable plugins
 pub use executable::{
     ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin,
-    Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, HostsPlugin, IpPreference,
-    NftSetPlugin, QuerySummaryPlugin, RateLimitPlugin, RedirectPlugin, ReverseLookupPlugin,
-    RosAddrlistPlugin, SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
+    Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, ForwardPlugin, IpPreference, NftSetPlugin,
+    QuerySummaryPlugin, RateLimitPlugin, RedirectPlugin, ReverseLookupPlugin, RosAddrlistPlugin,
+    SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 // Re-export server plugins
