@@ -956,7 +956,7 @@ mod tests {
     #[test]
     fn test_cache_store_not_registered() {
         // Ensure CacheStorePlugin is not registered as a builder (should be internal only)
-        crate::plugin::factory::initialize_all_plugin_factories();
+        crate::plugin::factory::init();
         assert!(crate::plugin::factory::get_plugin_factory("cache_store").is_none());
     }
 

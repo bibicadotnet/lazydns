@@ -44,8 +44,7 @@ impl PluginBuilder {
         // Initialize plugin builder system
         // Ensure plugin builders from plugin modules are initialized (register themselves)
         info!("Initializing plugin builder system...");
-        crate::plugin::factory::initialize_all_plugin_factories();
-        crate::plugin::factory::initialize_all_exec_plugin_factories();
+        crate::plugin::factory::init();
 
         // Try to get builder from registry first
         if let Some(builder) = crate::plugin::factory::get_plugin_factory(&plugin_type) {
@@ -682,7 +681,7 @@ mod tests {
     #[test]
     fn test_derived_plugin_type_names() {
         // Ensure the macro-based derivation registers canonical names derived from type names
-        crate::plugin::factory::initialize_all_plugin_factories();
+        crate::plugin::factory::init();
         let types = crate::plugin::factory::get_all_plugin_types();
         assert!(types.contains(&"forward".to_string()));
         let types = crate::plugin::factory::get_all_exec_plugin_types();
