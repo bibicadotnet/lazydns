@@ -2,7 +2,6 @@
 //!
 //! Prints debug information about DNS queries and responses to the log
 
-use crate::config::PluginConfig;
 use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
 use async_trait::async_trait;

@@ -2,13 +2,13 @@
 
 use lazydns::config::types::PluginConfig;
 use lazydns::plugin::factory;
-use lazydns::plugin::factory::initialize_all_plugin_factories;
+use lazydns::plugin::factory::init;
 use std::collections::HashMap;
 
 #[test]
 fn test_builder_initialization() {
     // Initialize builders
-    initialize_all_plugin_factories();
+    init();
 
     // Verify that builders are registered
     let types = factory::get_all_plugin_types();
@@ -26,7 +26,7 @@ fn test_builder_initialization() {
 
 #[test]
 fn test_create_cache_plugin_from_builder() {
-    initialize_all_plugin_factories();
+    init();
 
     let mut config_map = HashMap::new();
     config_map.insert("size".to_string(), serde_yaml::Value::Number(2048.into()));
@@ -51,7 +51,7 @@ fn test_create_cache_plugin_from_builder() {
 
 #[test]
 fn test_create_forward_plugin_from_builder() {
-    initialize_all_plugin_factories();
+    init();
 
     let mut config_map = HashMap::new();
     let upstreams = vec![
@@ -83,7 +83,7 @@ fn test_create_forward_plugin_from_builder() {
 
 #[test]
 fn test_create_reject_plugin_from_builder() {
-    initialize_all_plugin_factories();
+    init();
 
     let mut config_map = HashMap::new();
     config_map.insert("rcode".to_string(), serde_yaml::Value::Number(3.into()));
@@ -108,7 +108,7 @@ fn test_create_reject_plugin_from_builder() {
 
 #[test]
 fn test_control_flow_plugins_from_builder() {
-    initialize_all_plugin_factories();
+    init();
 
     // Test accept
     let accept_config = PluginConfig::new("accept".to_string());
@@ -123,15 +123,14 @@ fn test_control_flow_plugins_from_builder() {
     assert_eq!(return_plugin.name(), "return");
 
     // Test drop_resp
-    let drop_config = PluginConfig::new("drop_resp".to_string());
-    let drop_builder = factory::get_plugin_factory("drop_resp").expect("drop_resp builder");
-    let drop_plugin = drop_builder.create(&drop_config).unwrap();
+    let drop_builder = factory::get_exec_plugin_factory("drop_resp").expect("drop_resp builder");
+    let drop_plugin = drop_builder.create("drop_resp", "").unwrap();
     assert_eq!(drop_plugin.name(), "drop_resp");
 }
 
 #[test]
 fn test_jump_plugin_from_builder() {
-    initialize_all_plugin_factories();
+    init();
 
     let mut config_map = HashMap::new();
     config_map.insert(
@@ -162,7 +161,7 @@ async fn test_plugin_from_builder_executes() {
     use lazydns::dns::Message;
     use lazydns::plugin::Context;
 
-    initialize_all_plugin_factories();
+    init();
 
     let config = PluginConfig::new("accept".to_string());
     let builder_obj = factory::get_plugin_factory("accept").expect("accept builder");
@@ -174,7 +173,7 @@ async fn test_plugin_from_builder_executes() {
 
 #[test]
 fn test_builder_not_found() {
-    initialize_all_plugin_factories();
+    init();
 
     let result = factory::get_plugin_factory("nonexistent_plugin");
     assert!(result.is_none());
@@ -184,7 +183,7 @@ fn test_builder_not_found() {
 fn test_builder_thread_safety() {
     use std::thread;
 
-    initialize_all_plugin_factories();
+    init();
 
     let handles: Vec<_> = (0..10)
         .map(|_| {

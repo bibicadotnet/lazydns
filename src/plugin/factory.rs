@@ -52,7 +52,7 @@ pub trait PluginFactory: Send + Sync {
 ///
 /// Similar to PluginFactory but specifically for exec plugins that implement ExecPlugin.
 pub trait ExecPluginFactory: Send + Sync {
-    fn create_exec(&self, prefix: &str, exec_str: &str) -> crate::Result<Arc<dyn Plugin>>;
+    fn create(&self, prefix: &str, exec_str: &str) -> crate::Result<Arc<dyn Plugin>>;
     fn plugin_type(&self) -> &'static str;
     fn aliases(&self) -> Vec<&'static str>;
 }
@@ -336,7 +336,7 @@ macro_rules! register_exec_plugin_builder {
             struct [<$plugin_type ExecFactoryWrapper>];
 
             impl $crate::plugin::factory::ExecPluginFactory for [<$plugin_type ExecFactoryWrapper>] {
-                fn create_exec(&self, prefix: &str, exec_str: &str)
+                fn create(&self, prefix: &str, exec_str: &str)
                     -> $crate::Result<std::sync::Arc<dyn $crate::plugin::Plugin>>
                 {
                     <$plugin_type as $crate::plugin::ExecPlugin>::quick_setup(prefix, exec_str)
@@ -385,6 +385,13 @@ macro_rules! register_exec_plugin_builder {
                 });
         }
     };
+}
+
+/// Initialize all plugin and exec plugin factories
+/// This function should be called early in program initialization.
+pub fn init() {
+    initialize_all_plugin_factories();
+    initialize_all_exec_plugin_factories();
 }
 
 /// Initialize all plugin factories

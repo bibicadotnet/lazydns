@@ -314,7 +314,7 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
 
             // Try exec plugin registry first
             if let Some(factory) = crate::plugin::factory::get_exec_plugin_factory(prefix) {
-                return factory.create_exec(prefix, exec_args);
+                return factory.create(prefix, exec_args);
             }
 
             // Handle different exec formats (legacy hardcoded)
@@ -684,9 +684,10 @@ mod tests {
         // Ensure the macro-based derivation registers canonical names derived from type names
         crate::plugin::factory::initialize_all_plugin_factories();
         let types = crate::plugin::factory::get_all_plugin_types();
-        assert!(types.contains(&"drop_resp".to_string()));
         assert!(types.contains(&"forward".to_string()));
-        assert!(crate::plugin::factory::get_plugin_factory("drop_resp").is_some());
+        let types = crate::plugin::factory::get_all_exec_plugin_types();
+        assert!(types.contains(&"drop_resp".to_string()));
+        assert!(crate::plugin::factory::get_exec_plugin_factory("drop_resp").is_some());
         assert!(crate::plugin::factory::get_plugin_factory("forward").is_some());
     }
 
