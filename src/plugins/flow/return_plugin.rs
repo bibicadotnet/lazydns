@@ -1,10 +1,8 @@
 use crate::{
-    config::PluginConfig,
     plugin::{Context, Plugin, RETURN_FLAG},
     Result,
 };
 use async_trait::async_trait;
-use std::sync::Arc;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ReturnPlugin;
@@ -24,10 +22,6 @@ impl Plugin for ReturnPlugin {
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         ctx.set_metadata(RETURN_FLAG, true);
         Ok(())
-    }
-
-    fn init(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
-        Ok(Arc::new(ReturnPlugin::new()))
     }
 }
 
@@ -72,5 +66,3 @@ mod tests {
         assert_eq!(ctx.get_metadata::<bool>(RETURN_FLAG), Some(&true));
     }
 }
-
-crate::register_plugin_builder!(ReturnPlugin);

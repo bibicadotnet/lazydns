@@ -1,13 +1,7 @@
-use crate::config::PluginConfig;
 use crate::dns::{Message, ResponseCode};
 use crate::plugin::{Context, Plugin};
 use crate::Result;
 use async_trait::async_trait;
-use serde_yaml::Value;
-use std::sync::Arc;
-
-// Plugin builder registration for RejectPlugin
-crate::register_plugin_builder!(RejectPlugin);
 
 #[derive(Debug, Clone, Copy)]
 pub struct RejectPlugin {
@@ -51,21 +45,6 @@ impl Plugin for RejectPlugin {
         ctx.set_response(Some(response));
         ctx.set_metadata(crate::plugin::RETURN_FLAG, true);
         Ok(())
-    }
-
-    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
-        let args = config.effective_args();
-
-        let rcode = match args.get("rcode") {
-            Some(Value::Number(n)) => n
-                .as_i64()
-                .ok_or_else(|| crate::Error::Config("Invalid rcode value".to_string()))?
-                as u8,
-            Some(_) => return Err(crate::Error::Config("rcode must be a number".to_string())),
-            None => 3,
-        };
-
-        Ok(Arc::new(RejectPlugin::new(rcode)))
     }
 }
 

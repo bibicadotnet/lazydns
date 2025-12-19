@@ -432,20 +432,11 @@ pub fn initialize_all_plugin_factories() {
 
         Lazy::force(&crate::plugins::executable::black_hole::BLACKHOLE_PLUGIN_FACTORY);
 
-        // Exec/Flow plugins
-        // TODO: try other ways?
-        // SeeAlso: src/plugin/builder.rs: 494 fn parse_exec_action
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::matcher::has_resp::HAS_RESP_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::redirect::REDIRECT_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::server::UDP_SERVER_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::server::TCP_SERVER_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::flow::accept::ACCEPT_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::flow::reject::REJECT_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::flow::return_plugin::RETURN_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::flow::jump::JUMP_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::flow::prefer_ipv4::PREFER_IPV4_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::flow::prefer_ipv6::PREFER_IPV6_PLUGIN_FACTORY);
 
         // Initialize the factory system
         initialize_plugin_factories();

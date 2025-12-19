@@ -1,9 +1,6 @@
-use crate::config::PluginConfig;
 use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use crate::Result;
 use async_trait::async_trait;
-use serde_yaml::Value;
-use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct JumpPlugin {
@@ -26,22 +23,6 @@ impl JumpPlugin {
 impl Plugin for JumpPlugin {
     fn name(&self) -> &str {
         "jump"
-    }
-
-    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
-        let args = config.effective_args();
-
-        let target = match args.get("target") {
-            Some(Value::String(s)) => s.clone(),
-            Some(_) => return Err(crate::Error::Config("target must be a string".to_string())),
-            None => {
-                return Err(crate::Error::Config(
-                    "target is required for jump plugin".to_string(),
-                ))
-            }
-        };
-
-        Ok(Arc::new(JumpPlugin::new(target)))
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
@@ -71,5 +52,3 @@ mod tests {
         );
     }
 }
-
-crate::register_plugin_builder!(JumpPlugin);

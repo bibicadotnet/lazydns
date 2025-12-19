@@ -1,13 +1,8 @@
 use crate::{
-    config::PluginConfig,
     plugin::{Context, Plugin, RETURN_FLAG},
     Result,
 };
 use async_trait::async_trait;
-use std::sync::Arc;
-
-// Plugin builder registration for AcceptPlugin
-crate::register_plugin_builder!(AcceptPlugin);
 
 /// Accept plugin - accepts the current response and stops execution
 #[derive(Debug, Default, Clone, Copy)]
@@ -28,10 +23,6 @@ impl Plugin for AcceptPlugin {
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         ctx.set_metadata(RETURN_FLAG, true);
         Ok(())
-    }
-
-    fn init(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
-        Ok(Arc::new(AcceptPlugin::new()))
     }
 }
 
