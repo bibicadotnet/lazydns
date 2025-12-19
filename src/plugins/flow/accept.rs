@@ -1,8 +1,12 @@
 use crate::{
-    plugin::{Context, Plugin, RETURN_FLAG},
+    plugin::{Context, ExecPlugin, Plugin, RETURN_FLAG},
     Result,
 };
 use async_trait::async_trait;
+use std::sync::Arc;
+
+// Auto-register exec factory only (no init factory implementation provided)
+crate::register_exec_plugin_builder!(AcceptPlugin);
 
 /// Accept plugin - accepts the current response and stops execution
 #[derive(Debug, Default, Clone, Copy)]
@@ -23,6 +27,19 @@ impl Plugin for AcceptPlugin {
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         ctx.set_metadata(RETURN_FLAG, true);
         Ok(())
+    }
+}
+
+impl ExecPlugin for AcceptPlugin {
+    fn quick_setup(prefix: &str, _exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "accept" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'accept'",
+                prefix
+            )));
+        }
+
+        Ok(Arc::new(AcceptPlugin::new()))
     }
 }
 
