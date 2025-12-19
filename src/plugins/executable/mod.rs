@@ -43,9 +43,6 @@ pub use sequence::SequenceStep;
 pub use sleep::SleepPlugin;
 pub use ttl::TtlPlugin;
 
-pub mod forward;
-pub use forward::ForwardPlugin;
-
 // Re-export builder initialization statics
 #[allow(unused_imports)]
-pub(crate) use forward::FORWARD_PLUGIN_FACTORY;
+pub(crate) use crate::plugins::forward::FORWARD_PLUGIN_FACTORY;

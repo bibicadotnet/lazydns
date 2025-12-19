@@ -718,10 +718,7 @@ mod tests {
             derive::<crate::plugins::executable::DropRespPlugin>(),
             "drop_resp"
         );
-        assert_eq!(
-            derive::<crate::plugins::executable::ForwardPlugin>(),
-            "forward"
-        );
+        assert_eq!(derive::<crate::plugins::ForwardPlugin>(), "forward");
         assert_eq!(derive::<crate::plugins::AcceptPlugin>(), "accept");
         assert_eq!(
             derive::<crate::plugins::flow::return_plugin::ReturnPlugin>(),
@@ -772,7 +769,7 @@ mod tests {
         // A representative set of plugin types to check for accidental collisions
         let derived = vec![
             derive::<crate::plugins::executable::DropRespPlugin>(),
-            derive::<crate::plugins::executable::ForwardPlugin>(),
+            derive::<crate::plugins::ForwardPlugin>(),
             derive::<crate::plugins::AcceptPlugin>(),
             derive::<crate::plugins::flow::return_plugin::ReturnPlugin>(),
             derive::<crate::plugins::flow::jump::JumpPlugin>(),
