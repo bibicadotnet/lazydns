@@ -276,7 +276,8 @@ impl Forward {
         debug!("Forwarding query over DoH to {}", upstream_url);
 
         let mut client_builder = HttpClient::builder();
-        if std::env::var("LAZYDNS_DOH_ACCEPT_INVALID_CERT").is_ok() {
+        // In test environments, accept invalid certificates for self-signed test servers
+        if cfg!(test) || std::env::var("LAZYDNS_DOH_ACCEPT_INVALID_CERT").is_ok() {
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
 

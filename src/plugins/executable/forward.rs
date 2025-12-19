@@ -520,8 +520,8 @@ mod tests {
     #[cfg(feature = "tls")]
     #[tokio::test]
     async fn test_upstream_health_counters_on_success_and_failure() {
-        // Ensure tests accept self-signed certs in CI environments
-        std::env::set_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT", "1");
+        // Install process-level CryptoProvider for rustls v0.23
+        let _ = rustls::crypto::ring::default_provider().install_default();
 
         // Mock server for success
         let (upstream_addr, server_task) = spawn_doh_https_server("1.2.3.4").await;
@@ -585,7 +585,6 @@ mod tests {
         assert_eq!(f2, 1);
 
         let _ = server_task.await;
-        std::env::remove_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT");
     }
 
     #[test]
