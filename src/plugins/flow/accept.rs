@@ -30,10 +30,7 @@ impl Plugin for AcceptPlugin {
         Ok(())
     }
 
-    fn init(_config: &PluginConfig) -> Result<Arc<dyn Plugin>>
-    where
-        Self: Sized,
-    {
+    fn init(_config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         Ok(Arc::new(AcceptPlugin::new()))
     }
 }
