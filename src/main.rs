@@ -119,13 +119,25 @@ async fn main() -> anyhow::Result<()> {
 
     // Launch all configured servers using ServerLauncher
     let launcher = ServerLauncher::new(Arc::clone(&registry));
-    launcher.launch_all(&config.plugins).await;
+    let startup_receivers = launcher.launch_all(&config.plugins).await;
+
+    // Wait for all servers to start listening
+    for rx in startup_receivers {
+        let _ = rx.await; // Ignore errors - servers may have exited
+    }
 
     info!("lazydns initialized successfully");
 
     // Keep the process running
     tokio::signal::ctrl_c().await?;
     info!("Shutting down...");
+
+    // Shutdown all plugins that implement the Shutdown trait
+    if let Err(e) = builder.shutdown_all().await {
+        error!("Error during plugin shutdown: {}", e);
+    }
+
+    info!("lazydns exited normally");
 
     Ok(())
 }

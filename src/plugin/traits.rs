@@ -85,6 +85,19 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
         100
     }
 
+    /// Optional shutdown method for graceful cleanup
+    ///
+    /// Plugins can override this method to perform cleanup operations
+    /// when the application is shutting down. The default implementation
+    /// does nothing.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on successful shutdown, or an error if cleanup fails.
+    async fn shutdown(&self) -> Result<()> {
+        Ok(())
+    }
+
     /// Get the plugin as Any for downcasting
     fn as_any(&self) -> &dyn Any {
         // This is a default implementation that won't work for downcasting
@@ -114,6 +127,23 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
     {
         Vec::new()
     }
+}
+
+/// Shutdown trait for plugins that need cleanup
+///
+/// Plugins that require graceful shutdown (e.g., closing connections,
+/// flushing caches, stopping background tasks) should implement this trait.
+#[async_trait]
+pub trait Shutdown: Send + Sync {
+    /// Perform graceful shutdown
+    ///
+    /// This method is called when the application is shutting down.
+    /// Plugins should clean up resources, flush data, and stop background tasks.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on successful shutdown, or an error if cleanup fails.
+    async fn shutdown(&self) -> Result<()>;
 }
 
 /// Matcher trait for plugins that can match against DNS data
