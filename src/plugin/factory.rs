@@ -465,6 +465,8 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::executable::drop_resp::DROP_RESP_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::accept::ACCEPT_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::flow::jump::JUMP_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::flow::reject::REJECT_PLUGIN_EXEC_FACTORY);
 
         // Initialize the exec factory system
         initialize_exec_plugin_factories();

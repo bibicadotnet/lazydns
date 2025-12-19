@@ -1,5 +1,9 @@
-use crate::plugin::{Context, Plugin, RETURN_FLAG};
+use crate::plugin::{Context, ExecPlugin, Plugin, RETURN_FLAG};
 use crate::Result;
+use std::sync::Arc;
+
+// Auto-register exec factory only (no init factory implementation provided)
+crate::register_exec_plugin_builder!(JumpPlugin);
 use async_trait::async_trait;
 
 #[derive(Debug, Clone)]
@@ -29,6 +33,26 @@ impl Plugin for JumpPlugin {
         ctx.set_metadata("jump_target", self.target.clone());
         ctx.set_metadata(RETURN_FLAG, true);
         Ok(())
+    }
+}
+
+impl ExecPlugin for JumpPlugin {
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "jump" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'jump'",
+                prefix
+            )));
+        }
+
+        let target = exec_str.trim();
+        if target.is_empty() {
+            return Err(crate::Error::Config(
+                "jump exec requires a target argument".to_string(),
+            ));
+        }
+
+        Ok(Arc::new(JumpPlugin::new(target)))
     }
 }
 

@@ -1,7 +1,11 @@
 use crate::dns::{Message, ResponseCode};
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
 use async_trait::async_trait;
+use std::sync::Arc;
+
+// Auto-register exec factory only (no init factory implementation provided)
+crate::register_exec_plugin_builder!(RejectPlugin);
 
 #[derive(Debug, Clone, Copy)]
 pub struct RejectPlugin {
@@ -45,6 +49,42 @@ impl Plugin for RejectPlugin {
         ctx.set_response(Some(response));
         ctx.set_metadata(crate::plugin::RETURN_FLAG, true);
         Ok(())
+    }
+}
+
+impl ExecPlugin for RejectPlugin {
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "reject" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'reject'",
+                prefix
+            )));
+        }
+
+        // allow forms like "nxdomain"/"refused"/"servfail" or numeric codes
+        let s = exec_str.trim();
+        if s.is_empty() {
+            // default to NXDOMAIN
+            return Ok(Arc::new(RejectPlugin::nxdomain()));
+        }
+
+        let lower = s.to_lowercase();
+        match lower.as_str() {
+            "nxdomain" | "nx" => Ok(Arc::new(RejectPlugin::nxdomain())),
+            "refused" | "ref" => Ok(Arc::new(RejectPlugin::refused())),
+            "servfail" | "serv" => Ok(Arc::new(RejectPlugin::servfail())),
+            _ => {
+                // Try parse numeric
+                if let Ok(num) = s.parse::<u8>() {
+                    Ok(Arc::new(RejectPlugin::new(num)))
+                } else {
+                    Err(crate::Error::Config(format!(
+                        "reject exec invalid argument: {}",
+                        exec_str
+                    )))
+                }
+            }
+        }
     }
 }
 
