@@ -13,7 +13,7 @@ use crate::Result;
 use serde_yaml::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 // ============================================================================
 // Main Plugin Builder (Configuration-based Plugin Creation)
@@ -235,7 +235,7 @@ impl PluginBuilder {
     /// error encountered during shutdown.
     pub async fn shutdown_all(&self) -> Result<()> {
         for (name, plugin) in &self.plugins {
-            debug!("Shutting down plugin: {}", name);
+            info!("Shutting down plugin: {}", name);
             if let Err(e) = plugin.shutdown().await {
                 error!("Error shutting down plugin {}: {}", name, e);
                 return Err(e);

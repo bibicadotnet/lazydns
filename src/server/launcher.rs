@@ -164,7 +164,10 @@ impl ServerLauncher {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn launch_all(&self, plugins: &[PluginConfig]) -> Vec<tokio::sync::oneshot::Receiver<()>> {
+    pub async fn launch_all(
+        &self,
+        plugins: &[PluginConfig],
+    ) -> Vec<tokio::sync::oneshot::Receiver<()>> {
         let mut receivers = Vec::new();
 
         for plugin_config in plugins {
@@ -286,11 +289,12 @@ impl ServerLauncher {
     ///       listen: "127.0.0.1:5353"
     ///       entry: "main_sequence"
     /// ```
-    async fn launch_udp_server(&self, plugin_config: &PluginConfig) -> Option<tokio::sync::oneshot::Receiver<()>> {
+    async fn launch_udp_server(
+        &self,
+        plugin_config: &PluginConfig,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let args = plugin_config.effective_args();
-        let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:53") else {
-            return None;
-        };
+        let addr = self.parse_listen_addr(&args, "0.0.0.0:53")?;
 
         let entry = self.get_entry(&args);
         let config = ServerConfig {
@@ -303,11 +307,11 @@ impl ServerLauncher {
             Ok(server) => {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 tokio::spawn(async move {
+                    // Send startup completion signal immediately
+                    let _ = tx.send(());
                     if let Err(e) = server.run().await {
                         error!("UDP server error: {}", e);
                     }
-                    // Send completion signal when server exits
-                    let _ = tx.send(());
                 });
                 Some(rx)
             }
@@ -348,11 +352,12 @@ impl ServerLauncher {
     ///       listen: "127.0.0.1:5353"
     ///       entry: "main_sequence"
     /// ```
-    async fn launch_tcp_server(&self, plugin_config: &PluginConfig) -> Option<tokio::sync::oneshot::Receiver<()>> {
+    async fn launch_tcp_server(
+        &self,
+        plugin_config: &PluginConfig,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let args = plugin_config.effective_args();
-        let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:53") else {
-            return None;
-        };
+        let addr = self.parse_listen_addr(&args, "0.0.0.0:53")?;
 
         let entry = self.get_entry(&args);
         let config = ServerConfig {
@@ -365,11 +370,11 @@ impl ServerLauncher {
             Ok(server) => {
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 tokio::spawn(async move {
+                    // Send startup completion signal immediately
+                    let _ = tx.send(());
                     if let Err(e) = server.run().await {
                         error!("TCP server error: {}", e);
                     }
-                    // Send completion signal when server exits
-                    let _ = tx.send(());
                 });
                 Some(rx)
             }
@@ -424,7 +429,10 @@ impl ServerLauncher {
     /// lazydns = { version = "*", features = ["doh"] }
     /// ```
     #[cfg(feature = "doh")]
-    async fn launch_doh_server(&self, plugin_config: &PluginConfig) -> Option<tokio::sync::oneshot::Receiver<()>> {
+    async fn launch_doh_server(
+        &self,
+        plugin_config: &PluginConfig,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let args = plugin_config.effective_args();
         let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:443") else {
             return;
@@ -452,11 +460,11 @@ impl ServerLauncher {
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
+            // Send startup completion signal immediately
+            let _ = tx.send(());
             if let Err(e) = server.run().await {
                 error!("DoH server error: {}", e);
             }
-            // Send completion signal when server exits
-            let _ = tx.send(());
         });
         Some(rx)
     }
@@ -470,7 +478,10 @@ impl ServerLauncher {
     ///
     /// * `plugin_config` - Plugin configuration (ignored in this implementation)
     #[cfg(not(feature = "doh"))]
-    async fn launch_doh_server(&self, _plugin_config: &PluginConfig) -> Option<tokio::sync::oneshot::Receiver<()>> {
+    async fn launch_doh_server(
+        &self,
+        _plugin_config: &PluginConfig,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         warn!("DoH server requested but TLS feature is not enabled");
         None
     }
@@ -519,7 +530,10 @@ impl ServerLauncher {
     /// lazydns = { version = "*", features = ["dot"] }
     /// ```
     #[cfg(feature = "dot")]
-    async fn launch_dot_server(&self, plugin_config: &PluginConfig) -> Option<tokio::sync::oneshot::Receiver<()>> {
+    async fn launch_dot_server(
+        &self,
+        plugin_config: &PluginConfig,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let args = plugin_config.effective_args();
         let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:853") else {
             return;
@@ -547,11 +561,11 @@ impl ServerLauncher {
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
+            // Send startup completion signal immediately
+            let _ = tx.send(());
             if let Err(e) = server.run().await {
                 error!("DoT server error: {}", e);
             }
-            // Send completion signal when server exits
-            let _ = tx.send(());
         });
         Some(rx)
     }
@@ -565,7 +579,10 @@ impl ServerLauncher {
     ///
     /// * `plugin_config` - Plugin configuration (ignored in this implementation)
     #[cfg(not(feature = "dot"))]
-    async fn launch_dot_server(&self, _plugin_config: &PluginConfig) -> Option<tokio::sync::oneshot::Receiver<()>> {
+    async fn launch_dot_server(
+        &self,
+        _plugin_config: &PluginConfig,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         warn!("DoT server requested but TLS feature is not enabled");
         None
     }
@@ -613,7 +630,10 @@ impl ServerLauncher {
     /// lazydns = { version = "*", features = ["doq"] }
     /// ```
     #[cfg(feature = "doq")]
-    async fn launch_doq_server(&self, plugin_config: &PluginConfig) -> Option<tokio::sync::oneshot::Receiver<()>> {
+    async fn launch_doq_server(
+        &self,
+        plugin_config: &PluginConfig,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let args = plugin_config.effective_args();
         let Some(addr) = self.parse_listen_addr(&args, "0.0.0.0:784") else {
             return;
@@ -633,11 +653,11 @@ impl ServerLauncher {
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
+            // Send startup completion signal immediately
+            let _ = tx.send(());
             if let Err(e) = server.run().await {
                 error!("DoQ server error: {}", e);
             }
-            // Send completion signal when server exits
-            let _ = tx.send(());
         });
         Some(rx)
     }
@@ -651,7 +671,10 @@ impl ServerLauncher {
     ///
     /// * `plugin_config` - Plugin configuration (ignored in this implementation)
     #[cfg(not(feature = "doq"))]
-    async fn launch_doq_server(&self, _plugin_config: &PluginConfig) -> Option<tokio::sync::oneshot::Receiver<()>> {
+    async fn launch_doq_server(
+        &self,
+        _plugin_config: &PluginConfig,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         warn!("DoQ server requested but DoQ feature is not enabled");
         None
     }
@@ -788,7 +811,8 @@ mod tests {
         // Should handle multiple plugins, launching servers for known types and skipping unknown ones
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            launcher.launch_all(&plugins).await;
+            let _receivers = launcher.launch_all(&plugins).await;
+            // Note: We don't wait for receivers in tests as servers run indefinitely
         });
     }
 
@@ -809,7 +833,8 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            launcher.launch_all(&plugins).await;
+            let _receivers = launcher.launch_all(&plugins).await;
+            // Note: We don't wait for receivers in tests as servers run indefinitely
         });
     }
 
@@ -840,7 +865,8 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            launcher.launch_all(&plugins).await;
+            let _receivers = launcher.launch_all(&plugins).await;
+            // Note: We don't wait for receivers in tests as servers run indefinitely
         });
     }
 
@@ -871,7 +897,8 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            launcher.launch_all(&plugins).await;
+            let _receivers = launcher.launch_all(&plugins).await;
+            // Note: We don't wait for receivers in tests as servers run indefinitely
         });
     }
 
@@ -902,7 +929,8 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            launcher.launch_all(&plugins).await;
+            let _receivers = launcher.launch_all(&plugins).await;
+            // Note: We don't wait for receivers in tests as servers run indefinitely
         });
     }
 
@@ -1045,7 +1073,9 @@ mod tests {
         // but we can at least verify it doesn't crash with empty input
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            launcher.launch_all(&plugins).await;
+            let _receivers = launcher.launch_all(&plugins).await;
+            // Should return empty vector for empty plugins
+            assert!(_receivers.is_empty());
         });
     }
 
@@ -1064,7 +1094,9 @@ mod tests {
         // This should not panic and should skip unknown plugin types
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            launcher.launch_all(&plugins).await;
+            let _receivers = launcher.launch_all(&plugins).await;
+            // Should return empty vector for unknown plugin types
+            assert!(_receivers.is_empty());
         });
     }
 
@@ -1087,7 +1119,9 @@ mod tests {
         // since we can't bind to privileged ports in tests
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            launcher.launch_all(&plugins).await;
+            let _receivers = launcher.launch_all(&plugins).await;
+            // Should return one receiver for the UDP server
+            assert_eq!(_receivers.len(), 1);
         });
     }
 }

@@ -5,8 +5,8 @@ async fn integration_sequence_save_hook() {
     use lazydns::config::Config;
     use lazydns::dns::types::{RecordClass, RecordType};
     use lazydns::dns::{Message, Question, RData, ResourceRecord};
-    use lazydns::plugin::PluginBuilder;
     use lazydns::plugin::Context;
+    use lazydns::plugin::PluginBuilder;
     use lazydns::plugins::executable::ReverseLookupPlugin;
     use lazydns::plugins::{ArbitraryPlugin, SequencePlugin, SequenceStep};
 
