@@ -70,7 +70,7 @@ impl IpSetPlugin {
         let files = self.files.clone();
         let networks = Arc::clone(&self.networks);
 
-        info!(
+        debug!(
             name = %name,
             auto_reload = true,
             files = ?files,

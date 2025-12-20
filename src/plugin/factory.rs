@@ -443,7 +443,7 @@ pub fn initialize_all_plugin_factories() {
 
         let count = get_all_plugin_types().len();
         if count > 0 {
-            tracing::info!("Initialized {} plugin factories", count);
+            tracing::debug!("Initialized {} plugin factories", count);
         }
     });
 }
@@ -473,7 +473,7 @@ pub fn initialize_all_exec_plugin_factories() {
 
         let count = get_all_exec_plugin_types().len();
         if count > 0 {
-            tracing::info!("Initialized {} exec plugin factories", count);
+            tracing::debug!("Initialized {} exec plugin factories", count);
         }
     });
 }

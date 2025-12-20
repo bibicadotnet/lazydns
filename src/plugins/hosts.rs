@@ -318,7 +318,7 @@ impl HostsPlugin {
         let files = self.files.clone();
         let hosts = Arc::clone(&self.hosts);
 
-        info!(auto_reload = true, files = ?files, "file auto-reload status");
+        debug!(auto_reload = true, files = ?files, "file auto-reload status");
 
         const DEBOUNCE_MS: u64 = 200;
 

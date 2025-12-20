@@ -71,14 +71,7 @@ impl DomainSetPlugin {
         let files = self.files.clone();
         let domains = Arc::clone(&self.domains);
 
-        info!(
-            name = %name,
-            auto_reload = true,
-            files = ?files,
-            "file auto-reload status"
-        );
-
-        info!(
+        debug!(
             name = %name,
             files = ?files,
             "enabling file auto-reload"
