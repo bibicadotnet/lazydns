@@ -372,7 +372,8 @@ macro_rules! register_exec_plugin_builder {
                 }
 
                 fn aliases(&self) -> Vec<&'static str> {
-                    Vec::new()
+                    // Get aliases from the Plugin trait implementation
+                    <$plugin_type as $crate::plugin::Plugin>::aliases()
                 }
             }
 
@@ -461,6 +462,7 @@ pub fn initialize_all_exec_plugin_factories() {
     EXEC_INIT.get_or_init(|| {
         // Force initialization of exec plugin factories
         Lazy::force(&crate::plugins::executable::ttl::TTL_PLUGIN_EXEC_FACTORY);
+        // Use the auto-generated factory for blackhole (now supports aliases via macro)
         Lazy::force(&crate::plugins::executable::black_hole::BLACKHOLE_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::sleep::SLEEP_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::debug_print::DEBUG_PRINT_PLUGIN_EXEC_FACTORY);

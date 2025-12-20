@@ -7,9 +7,9 @@ use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 
-// Auto-register using the register macro
+// Auto-register using the register macro for Plugin factory
 crate::register_plugin_builder!(BlackholePlugin);
-// Auto-register using the exec register macro
+// Auto-register using the exec register macro (now supports aliases)
 crate::register_exec_plugin_builder!(BlackholePlugin);
 
 /// Black hole plugin: returns configured A/AAAA answers for a query
@@ -143,22 +143,24 @@ impl ExecPlugin for BlackholePlugin {
     /// Accepts a comma-separated list of IP addresses.
     /// Examples: "192.0.2.1", "192.0.2.1,2001:db8::1", "0.0.0.0"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
-        if prefix != "blackhole" {
-            return Err(crate::Error::Config(format!(
-                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'blackhole'",
+        // Accept the main name and all aliases
+        match prefix {
+            "blackhole" | "black_hole" | "sinkhole" | "null_dns" => {
+                // Parse comma-separated IP addresses
+                let ips: Vec<String> = exec_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                let plugin = BlackholePlugin::new_from_strs(ips)?;
+                Ok(Arc::new(plugin))
+            }
+            _ => Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'blackhole', 'black_hole', 'sinkhole', or 'null_dns'",
                 prefix
-            )));
+            ))),
         }
-
-        // Parse comma-separated IP addresses
-        let ips: Vec<String> = exec_str
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        let plugin = BlackholePlugin::new_from_strs(ips)?;
-        Ok(Arc::new(plugin))
     }
 }
 
