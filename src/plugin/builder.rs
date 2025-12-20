@@ -521,9 +521,117 @@ mod tests {
     use serde_yaml::Mapping;
 
     #[test]
-    fn test_plugin_builder_creation() {
-        let builder = PluginBuilder::new();
-        assert_eq!(builder.plugins.len(), 0);
+    fn test_plugin_builder_get_plugin() {
+        let mut builder = PluginBuilder::new();
+
+        // Test getting non-existent plugin
+        assert!(builder.get_plugin("nonexistent").is_none());
+
+        // Add a plugin and test getting it
+        let plugin: Arc<dyn Plugin> = Arc::new(crate::plugins::AcceptPlugin::new());
+        builder
+            .plugins
+            .insert("test_plugin".to_string(), plugin.clone());
+
+        let retrieved = builder.get_plugin("test_plugin");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name(), "accept");
+    }
+
+    #[test]
+    fn test_plugin_builder_get_all_plugins() {
+        let mut builder = PluginBuilder::new();
+
+        // Initially empty
+        assert_eq!(builder.get_all_plugins().len(), 0);
+
+        // Add some plugins
+        let plugin1: Arc<dyn Plugin> = Arc::new(crate::plugins::AcceptPlugin::new());
+        let plugin2: Arc<dyn Plugin> =
+            Arc::new(crate::plugins::flow::return_plugin::ReturnPlugin::new());
+        builder.plugins.insert("plugin1".to_string(), plugin1);
+        builder.plugins.insert("plugin2".to_string(), plugin2);
+
+        let all_plugins = builder.get_all_plugins();
+        assert_eq!(all_plugins.len(), 2);
+
+        // Check that both plugins are present (order doesn't matter)
+        let names: std::collections::HashSet<_> = all_plugins.iter().map(|p| p.name()).collect();
+        assert!(names.contains("accept"));
+        assert!(names.contains("return"));
+    }
+
+    #[test]
+    fn test_plugin_builder_into_registry() {
+        let mut builder = PluginBuilder::new();
+
+        // Add a plugin
+        let plugin: Arc<dyn Plugin> = Arc::new(crate::plugins::AcceptPlugin::new());
+        builder
+            .plugins
+            .insert("test_plugin".to_string(), plugin.clone());
+
+        // Convert to registry
+        let registry = builder.into_registry();
+
+        // Verify the plugin is in the registry
+        let retrieved = registry.get("test_plugin");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name(), "accept");
+    }
+
+    #[test]
+    fn test_plugin_builder_get_registry() {
+        let mut builder = PluginBuilder::new();
+
+        // Add a plugin
+        let plugin: Arc<dyn Plugin> = Arc::new(crate::plugins::AcceptPlugin::new());
+        builder
+            .plugins
+            .insert("test_plugin".to_string(), plugin.clone());
+
+        // Get registry (without consuming builder)
+        let registry = builder.get_registry();
+
+        // Verify the plugin is in the registry
+        let retrieved = registry.get("test_plugin");
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name(), "accept");
+
+        // Verify original builder still has the plugin
+        assert!(builder.get_plugin("test_plugin").is_some());
+    }
+
+    #[test]
+    fn test_plugin_builder_get_server_plugin_tags() {
+        let mut builder = PluginBuilder::new();
+
+        // Initially empty
+        assert_eq!(builder.get_server_plugin_tags().len(), 0);
+
+        // Add server plugin tags
+        builder.server_plugin_tags.push("doh_server".to_string());
+        builder.server_plugin_tags.push("dot_server".to_string());
+
+        let tags = builder.get_server_plugin_tags();
+        assert_eq!(tags.len(), 2);
+        assert!(tags.contains(&"doh_server".to_string()));
+        assert!(tags.contains(&"dot_server".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_plugin_builder_shutdown_all() {
+        let mut builder = PluginBuilder::new();
+
+        // Add a plugin that implements shutdown
+        let plugin: Arc<dyn Plugin> = Arc::new(crate::plugins::AcceptPlugin::new());
+        builder
+            .plugins
+            .insert("test_plugin".to_string(), plugin.clone());
+
+        // Shutdown should succeed
+        let result = builder.shutdown_all().await;
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -627,12 +735,131 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_condition_qtype_invalid() {
+    fn test_parse_sequence_steps_simple_exec() {
         let builder = PluginBuilder::new();
 
-        assert!(parse_condition(&builder, "qtype").is_err());
-        assert!(parse_condition(&builder, "qtype abc").is_err());
-        assert!(parse_condition(&builder, "qtype 1 abc").is_err());
+        // Test simple exec step
+        let sequence = vec![Value::Mapping({
+            let mut map = serde_yaml::Mapping::new();
+            map.insert(
+                Value::String("exec".to_string()),
+                Value::String("accept".to_string()),
+            );
+            map
+        })];
+
+        let steps = parse_sequence_steps(&builder, &sequence).unwrap();
+        assert_eq!(steps.len(), 1);
+
+        match &steps[0] {
+            crate::plugins::executable::SequenceStep::Exec(plugin) => {
+                assert_eq!(plugin.name(), "accept");
+            }
+            _ => panic!("Expected Exec step"),
+        }
+    }
+
+    #[test]
+    fn test_parse_sequence_steps_conditional() {
+        let builder = PluginBuilder::new();
+
+        // Test conditional step
+        let sequence = vec![Value::Mapping({
+            let mut map = serde_yaml::Mapping::new();
+            map.insert(
+                Value::String("matches".to_string()),
+                Value::String("has_resp".to_string()),
+            );
+            map.insert(
+                Value::String("exec".to_string()),
+                Value::String("accept".to_string()),
+            );
+            map
+        })];
+
+        let steps = parse_sequence_steps(&builder, &sequence).unwrap();
+        assert_eq!(steps.len(), 1);
+
+        match &steps[0] {
+            crate::plugins::executable::SequenceStep::If {
+                condition: _,
+                action,
+                desc,
+            } => {
+                assert_eq!(action.name(), "accept");
+                assert_eq!(desc, "has_resp");
+            }
+            _ => panic!("Expected If step"),
+        }
+    }
+
+    #[test]
+    fn test_parse_sequence_steps_invalid() {
+        let builder = PluginBuilder::new();
+
+        // Test invalid sequence step (no exec or matches)
+        let sequence = vec![Value::Mapping(serde_yaml::Mapping::new())];
+
+        let result = parse_sequence_steps(&builder, &sequence);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("sequence step must have exec or matches"));
+    }
+
+    #[test]
+    fn test_parse_exec_action_plugin_reference() {
+        let mut builder = PluginBuilder::new();
+
+        // Add a plugin to reference
+        let plugin: Arc<dyn Plugin> = Arc::new(crate::plugins::AcceptPlugin::new());
+        builder
+            .plugins
+            .insert("test_plugin".to_string(), plugin.clone());
+
+        // Test plugin reference
+        let exec_value = Value::String("$test_plugin".to_string());
+        let result = parse_exec_action(&builder, &exec_value).unwrap();
+        assert_eq!(result.name(), "accept");
+    }
+
+    #[test]
+    fn test_parse_exec_action_exec_plugin() {
+        let builder = PluginBuilder::new();
+
+        // Test exec plugin (accept)
+        let exec_value = Value::String("accept".to_string());
+        let result = parse_exec_action(&builder, &exec_value).unwrap();
+        assert_eq!(result.name(), "accept");
+    }
+
+    #[test]
+    fn test_parse_exec_action_unknown() {
+        let builder = PluginBuilder::new();
+
+        // Test unknown exec action
+        let exec_value = Value::String("unknown_action".to_string());
+        let result = parse_exec_action(&builder, &exec_value);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown exec action"));
+    }
+
+    #[test]
+    fn test_parse_exec_action_invalid_value_type() {
+        let builder = PluginBuilder::new();
+
+        // Test invalid value type (should be string)
+        let exec_value = Value::Number(42.into());
+        let result = parse_exec_action(&builder, &exec_value);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("exec value must be string"));
     }
 
     #[test]
@@ -1023,5 +1250,134 @@ mod tests {
         } else {
             panic!("fallback plugin is wrong type");
         }
+    }
+
+    #[test]
+    fn test_parse_condition_has_resp() {
+        let builder = PluginBuilder::new();
+
+        let condition = parse_condition(&builder, "has_resp").unwrap();
+
+        // Test with no response
+        let ctx = Context::new(Message::new());
+        assert!(!condition(&ctx));
+
+        // Test with response
+        let mut ctx_with_resp = Context::new(Message::new());
+        ctx_with_resp.set_response(Some(Message::new()));
+        assert!(condition(&ctx_with_resp));
+    }
+
+    #[test]
+    fn test_parse_condition_resp_ip() {
+        let mut builder = PluginBuilder::new();
+
+        // Create and register an IP set plugin
+        let ip_set_plugin = Arc::new(crate::plugins::dataset::IpSetPlugin::new("test_ip_set"));
+        builder
+            .plugins
+            .insert("test_ip_set".to_string(), ip_set_plugin);
+
+        let condition = parse_condition(&builder, "resp_ip $test_ip_set").unwrap();
+
+        // Test with context that has response
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(Message::new()));
+
+        // The condition should not panic and should return false for non-matching context
+        // (since our test IP set is empty)
+        assert!(!condition(&ctx));
+    }
+
+    #[test]
+    fn test_parse_condition_negated_resp_ip() {
+        let mut builder = PluginBuilder::new();
+
+        // Create and register an IP set plugin
+        let ip_set_plugin = Arc::new(crate::plugins::dataset::IpSetPlugin::new("test_ip_set"));
+        builder
+            .plugins
+            .insert("test_ip_set".to_string(), ip_set_plugin);
+
+        let condition = parse_condition(&builder, "!resp_ip $test_ip_set").unwrap();
+
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(Message::new()));
+
+        // Should return true for non-matching (negated)
+        assert!(condition(&ctx));
+    }
+
+    #[test]
+    fn test_parse_condition_qname() {
+        let mut builder = PluginBuilder::new();
+
+        // Create and register a domain set plugin
+        let domain_set_plugin = Arc::new(crate::plugins::dataset::DomainSetPlugin::new(
+            "test_domain_set",
+        ));
+        builder
+            .plugins
+            .insert("test_domain_set".to_string(), domain_set_plugin);
+
+        let condition = parse_condition(&builder, "qname $test_domain_set").unwrap();
+
+        // Test with a query
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let ctx = Context::new(req);
+
+        // Should return false for non-matching (empty domain set)
+        assert!(!condition(&ctx));
+    }
+
+    #[test]
+    fn test_parse_condition_negated_qname() {
+        let builder = PluginBuilder::new();
+
+        let condition = parse_condition(&builder, "!qname example.com").unwrap();
+
+        // Test with matching domain (should return false due to negation)
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let ctx = Context::new(req);
+        assert!(!condition(&ctx));
+
+        // Test with non-matching domain (should return true due to negation)
+        let mut req2 = Message::new();
+        req2.add_question(Question::new(
+            "other.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let ctx2 = Context::new(req2);
+        assert!(condition(&ctx2));
+    }
+
+    #[test]
+    fn test_parse_condition_qtype_invalid() {
+        let builder = PluginBuilder::new();
+
+        assert!(parse_condition(&builder, "qtype").is_err());
+        assert!(parse_condition(&builder, "qtype abc").is_err());
+        assert!(parse_condition(&builder, "qtype 1 abc").is_err());
+    }
+
+    #[test]
+    fn test_parse_condition_unknown() {
+        let builder = PluginBuilder::new();
+
+        let result = parse_condition(&builder, "unknown_condition");
+        assert!(result.is_err());
+        // We can't easily check the error message due to trait bounds,
+        // but we can verify it's an error
     }
 }
