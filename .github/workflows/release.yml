@@ -83,7 +83,7 @@ jobs:
         with:
           version: v5.0.2
           files: |
-            target\${{ matrix.target }}\release\lazydns.exe
+            target\${{ matrix.target }}\minimal\lazydns.exe
           args: -q --best --lzma
       - name: Package release (non-Windows)
         if: matrix.os != 'windows-latest'
@@ -97,8 +97,8 @@ jobs:
           ls -lah "$DIR" || true
           # Create an unversioned archive matching installer expectations:
           # lazydns-<target>.tar.gz
-          cp config.toml LICENSE "$DIR"/
-          tar czf "$DIR/lazydns-${TARGET}.tar.gz" -C "$DIR" lazydns config.toml LICENSE
+          cp config.yaml LICENSE "$DIR"/
+          tar czf "$DIR/lazydns-${TARGET}.tar.gz" -C "$DIR" lazydns config.yaml LICENSE
 
       - name: Package release (Windows)
         if: matrix.os == 'windows-latest'
@@ -110,8 +110,11 @@ jobs:
           # Use ${} to avoid accidental variable-token parsing when followed by punctuation
           Write-Output "Files in ${DIR}`n"
           Get-ChildItem -Path $DIR | Write-Output
+          # Copy config and license files
+          Copy-Item -Path "config.yaml" -Destination "$DIR/"
+          Copy-Item -Path "LICENSE" -Destination "$DIR/"
           # Create an unversioned zip matching installer expectations: lazydns-<target>.zip
-          Compress-Archive -Path "$DIR/$EXE" -DestinationPath "$DIR/lazydns-$TARGET.zip" -Force
+          Compress-Archive -Path "$DIR/$EXE", "$DIR/config.yaml", "$DIR/LICENSE" -DestinationPath "$DIR/lazydns-$TARGET.zip" -Force
 
       - name: Upload artifact (non-Windows)
         if: matrix.os != 'windows-latest'
