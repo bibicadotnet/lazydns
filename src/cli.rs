@@ -18,11 +18,9 @@ pub struct Args {
     /// Optional working directory to `chdir` into before startup.
     pub dir: Option<String>,
 
-    /// Desired logging level (e.g. `info`, `debug`).
-    pub log_level: String,
-
-    /// Whether verbose mode is enabled (sets log level to `debug`).
-    pub verbose: bool,
+    /// Verbosity count: 0 = normal, 1 = -v (debug), 2 = -vv (trace), 3 = -vvv (trace + external)
+    /// When `verbose == 0` this means no verbose flag was provided.
+    pub verbose: u8,
 }
 
 /// Print a short help text to stdout.
@@ -35,10 +33,8 @@ pub fn print_help() {
     println!("OPTIONS:");
     println!("  -c, --config <file>       Configuration file path (default: config.yaml)");
     println!("  -d, --dir <dir>           Working directory");
-    println!(
-        "  -l, --log-level <level>   Log level (trace, debug, info, warn, error) (default: info)"
-    );
-    println!("  -v, --verbose             Enable verbose output (sets log level to debug)");
+    println!("  -v, --verbose <count>     Verbosity: -v (debug), -vv (trace), -vvv (trace + external crate logs)");
+    println!("  -V, --version             Print version and exit");
     println!("  -h, --help                Print this help message");
 }
 
@@ -60,8 +56,11 @@ pub fn parse_args_from_vec(raw_args: Vec<String>) -> Option<Args> {
         return None;
     }
 
-    let os_args: Vec<std::ffi::OsString> =
-        raw_args.into_iter().map(std::ffi::OsString::from).collect();
+    let os_args: Vec<std::ffi::OsString> = raw_args
+        .iter()
+        .cloned()
+        .map(std::ffi::OsString::from)
+        .collect();
     let mut pargs = Arguments::from_vec(os_args);
     if pargs.contains(["-h", "--help"]) {
         print_help();
@@ -78,18 +77,29 @@ pub fn parse_args_from_vec(raw_args: Vec<String>) -> Option<Args> {
         _ => None,
     };
 
-    let log_level = match pargs.opt_value_from_str(["-l", "--log-level"]) {
-        Ok(Some(s)) => s,
-        _ => "info".to_string(),
-    };
+    // Count verbose occurrences (supports -v, -vv, -vvv and --verbose repeated)
+    let mut verbose_count: u8 = 0;
+    for arg in &raw_args[1..] {
+        if arg == "-v" || arg == "--verbose" {
+            verbose_count = verbose_count.saturating_add(1);
+        } else if arg.starts_with("-v") && arg.chars().skip(1).all(|c| c == 'v') {
+            // -vv or -vvv style
+            verbose_count = verbose_count.saturating_add(arg.chars().skip(1).count() as u8);
+        }
+    }
 
-    let verbose = pargs.contains(["-v", "--verbose"]);
+    let version = pargs.contains(["-V", "--version"]);
+
+    // If version was requested, print and exit
+    if version {
+        println!("lazydns {}", env!("CARGO_PKG_VERSION"));
+        return None;
+    }
 
     Some(Args {
         config,
         dir,
-        log_level,
-        verbose,
+        verbose: verbose_count.min(3),
     })
 }
 
@@ -112,23 +122,21 @@ mod tests {
     }
 
     #[test]
-    fn parses_all_options() {
+    fn parses_verbose_variants_and_config() {
         let args = vec![
             "lazydns".to_string(),
             "-c".to_string(),
             "myconf.yaml".to_string(),
             "-d".to_string(),
             "/tmp".to_string(),
-            "-l".to_string(),
-            "debug".to_string(),
-            "-v".to_string(),
+            "-vv".to_string(),
         ];
 
         let res = parse_args_from_vec(args).expect("should parse args");
         assert_eq!(res.config, "myconf.yaml");
         assert_eq!(res.dir.as_deref(), Some("/tmp"));
-        assert_eq!(res.log_level, "debug");
-        assert!(res.verbose);
+        assert_eq!(res.verbose, 2);
+        assert!(res.verbose > 0);
     }
 
     #[test]
@@ -140,7 +148,13 @@ mod tests {
         ];
         let res = parse_args_from_vec(args).expect("should parse");
         assert_eq!(res.config, "cfg.yml");
-        assert_eq!(res.log_level, "info");
-        assert!(!res.verbose);
+        assert_eq!(res.verbose, 0);
+    }
+
+    #[test]
+    fn version_flag_prints_and_exits() {
+        let args = vec!["lazydns".to_string(), "-V".to_string()];
+        let res = parse_args_from_vec(args);
+        assert!(res.is_none());
     }
 }

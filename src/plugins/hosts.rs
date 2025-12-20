@@ -512,7 +512,7 @@ mod tests {
 
         let ips = hosts.get_ips("localhost").unwrap();
         assert_eq!(ips.len(), 2);
-        assert!(hosts.len() >= 1);
+        assert!(!hosts.is_empty());
     }
 
     #[test]
@@ -701,7 +701,7 @@ example.com www.example.com 93.184.216.34 2606:50c0:8001::154
     async fn test_hosts_plugin_skips_if_response_set() {
         let plugin = HostsPlugin::new();
         plugin.add_host("example.com".to_string(), Ipv4Addr::new(1, 2, 3, 4).into());
-        assert!(plugin.len() >= 1);
+        assert!(!plugin.is_empty());
 
         let mut request = Message::new();
         request.add_question(Question::new(

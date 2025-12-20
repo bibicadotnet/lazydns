@@ -63,7 +63,7 @@ use crate::server::{RequestHandler, ServerConfig};
 use crate::{Error, Result};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 /// UDP DNS server
 ///
@@ -325,7 +325,7 @@ impl UdpServer {
         // Parse DNS wire format
         let request = Self::parse_request(request_data)?;
 
-        debug!(
+        trace!(
             "Processing query ID {} with {} questions from {}",
             request.id(),
             request.question_count(),
@@ -338,7 +338,7 @@ impl UdpServer {
         let mut response = handler.handle(request).await?;
         response.set_id(req_id);
 
-        debug!(
+        trace!(
             "Sending response ID {} with {} answers to {}",
             response.id(),
             response.answer_count(),

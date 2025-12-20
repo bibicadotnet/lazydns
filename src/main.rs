@@ -57,16 +57,8 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("Configuration validation warning: {}", e);
     }
 
-    // Determine final logging configuration, CLI overrides config
-    let mut final_log = config.log.clone();
-    if args.verbose {
-        final_log.level = "debug".to_string();
-    } else if !args.log_level.is_empty() {
-        final_log.level = args.log_level.clone();
-    }
-
-    // Initialize logging
-    if let Err(e) = crate::logging::init_logging(&final_log) {
+    // Initialize logging: precedence handled in logging::effective_log_spec
+    if let Err(e) = crate::logging::init_logging(&config.log, Some(args.verbose)) {
         eprintln!("Failed to initialize logging: {}", e);
     }
 

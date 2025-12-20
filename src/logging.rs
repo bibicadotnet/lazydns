@@ -165,10 +165,34 @@ pub fn normalize_subsec(s: &str, digits: usize) -> String {
 /// The environment variable `RUST_LOG`, when set and non-empty, takes
 /// precedence over the configured `cfg.level`. This allows runtime
 /// overrides without changing configuration files.
-pub(crate) fn effective_log_spec(cfg: &LogConfig) -> String {
+/// Compute the effective RUST_LOG-like spec string using precedence:
+/// RUST_LOG (env) > CLI verbosity > config.level
+///
+/// Behavior:
+/// - If RUST_LOG env var is present and non-empty, return it unchanged.
+/// - If `cli_verbose` is Some(n):
+///     * 0: return `warn,lazydns=<cfg_level>` (default suppress external crates)
+///     * 1: return `warn,lazydns=debug`
+///     * 2: return `warn,lazydns=trace`
+///     * >=3: return `trace` (global trace -- include external crates)
+/// - If no CLI override, default to `warn,lazydns=<cfg_level>` so external crates are quiet.
+pub(crate) fn effective_log_spec(cfg: &LogConfig, cli_verbose: Option<u8>) -> String {
+    // RUST_LOG always wins
     match std::env::var("RUST_LOG") {
-        Ok(v) if !v.is_empty() => v,
-        _ => cfg.level.clone(),
+        Ok(v) if !v.is_empty() => return v,
+        _ => {}
+    }
+
+    if let Some(v) = cli_verbose {
+        match v {
+            0 => format!("warn,lazydns={}", cfg.level),
+            1 => "warn,lazydns=debug".to_string(),
+            2 => "warn,lazydns=trace".to_string(),
+            _ => "trace".to_string(),
+        }
+    } else {
+        // No CLI override: use config-level for lazydns but keep externals quiet
+        format!("warn,lazydns={}", cfg.level)
     }
 }
 
@@ -183,9 +207,9 @@ pub(crate) fn effective_log_spec(cfg: &LogConfig) -> String {
 ///
 /// Returns `anyhow::Result<()>` to make initialization errors easy to
 /// propagate from application startup.
-pub fn init_logging(cfg: &LogConfig) -> Result<()> {
+pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
     // Build EnvFilter from effective spec
-    let filter = EnvFilter::try_new(effective_log_spec(cfg))?;
+    let filter = EnvFilter::try_new(effective_log_spec(cfg, cli_verbose))?;
 
     let registry = tracing_subscriber::registry().with(filter);
 
@@ -309,7 +333,7 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(effective_log_spec(&cfg), "trace");
+        assert_eq!(effective_log_spec(&cfg, None), "trace");
 
         // Restore previous value
         match prev {
@@ -328,7 +352,14 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(effective_log_spec(&cfg), "warn");
+        assert_eq!(effective_log_spec(&cfg, None), "warn,lazydns=warn");
+
+        // CLI verbosity 1 -> debug for lazydns with externals suppressed
+        assert_eq!(effective_log_spec(&cfg, Some(1)), "warn,lazydns=debug");
+        // CLI verbosity 2 -> trace for lazydns
+        assert_eq!(effective_log_spec(&cfg, Some(2)), "warn,lazydns=trace");
+        // CLI verbosity >=3 -> global trace (include external crates)
+        assert_eq!(effective_log_spec(&cfg, Some(3)), "trace");
 
         // Restore previous value
         match prev {

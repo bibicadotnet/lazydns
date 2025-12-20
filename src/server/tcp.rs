@@ -36,7 +36,7 @@ use crate::{Error, Result};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 pub struct TcpServer {
     listener: TcpListener,
@@ -142,7 +142,7 @@ impl TcpServer {
         // Parse request
         let request = Self::parse_request(&buf)?;
 
-        debug!(
+        trace!(
             "Processing query ID {} with {} questions",
             request.id(),
             request.question_count()
@@ -151,7 +151,7 @@ impl TcpServer {
         // Handle the request
         let response = handler.handle(request).await?;
 
-        debug!(
+        trace!(
             "Sending response ID {} with {} answers",
             response.id(),
             response.answer_count()
