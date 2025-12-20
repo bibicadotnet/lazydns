@@ -13,8 +13,8 @@
 ## 🎯 Project Goal
 
 Implement a Rust version of mosdns with **100% feature parity or better**, featuring:
-- ✅ Full test coverage (100%)
-- ✅ Complete code documentation (100%)
+- ✅ Full test coverage
+- ✅ Complete code documentation
 - 🚀 Superior performance through Rust's zero-cost abstractions
 - 🔒 Memory safety guarantees
 
