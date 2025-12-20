@@ -152,7 +152,7 @@ impl Upstream {
 ///
 /// This struct encapsulates the upstream query forwarding logic
 /// and is used by the executable ForwardPlugin.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Forward {
     /// Upstream servers
     pub upstreams: Vec<Upstream>,
@@ -415,19 +415,28 @@ impl ForwardBuilder {
                         }
                         Value::Mapping(map) => {
                             // Support mapping form: { addr: "1.2.3.4:53", tag: "x" }
-                            let addr = map
+                            let mut addr = map
                                 .get(Value::String("addr".to_string()))
                                 .and_then(|v| v.as_str())
                                 .ok_or_else(|| {
                                     crate::Error::Config(
                                         "upstream mapping must contain addr".to_string(),
                                     )
-                                })?;
-                            let addr = if !addr.contains(':') && !addr.starts_with("http") {
-                                format!("{}:53", addr)
-                            } else {
-                                addr.to_string()
-                            };
+                                })?
+                                .to_string();
+
+                            // Preserve DoH URLs (http/https), but strip udp:// and tcp://
+                            if !(addr.starts_with("http://") || addr.starts_with("https://")) {
+                                addr = addr
+                                    .trim_start_matches("udp://")
+                                    .trim_start_matches("tcp://")
+                                    .to_string();
+
+                                if !addr.contains(':') {
+                                    addr.push_str(":53");
+                                }
+                            }
+
                             let tag = map
                                 .get(Value::String("tag".to_string()))
                                 .and_then(|v| v.as_str())
@@ -756,31 +765,21 @@ impl Plugin for ForwardPlugin {
             let mut tasks = Vec::new();
             for idx in 0..self.core.upstreams.len() {
                 let request = ctx.request().clone();
-                let upstream_addr = self.core.upstreams[idx].addr.clone();
-                let timeout_dur = self.core.timeout;
+                let core = self.core.clone();
 
                 let task = tokio::spawn(async move {
-                    let addr = SocketAddr::from_str(&upstream_addr).map_err(|e| {
-                        crate::Error::Config(format!("Invalid upstream address: {}", e))
-                    })?;
-
-                    let socket = UdpSocket::bind("0.0.0.0:0")
-                        .await
-                        .map_err(|e| crate::Error::Other(e.to_string()))?;
-
-                    let request_data = ForwardPlugin::serialize_message(&request)?;
-                    socket
-                        .send_to(&request_data, addr)
-                        .await
-                        .map_err(|e| crate::Error::Other(e.to_string()))?;
-
-                    let mut buf = vec![0u8; 512];
-                    let (len, _) = timeout(timeout_dur, socket.recv_from(&mut buf))
-                        .await
-                        .map_err(|_| crate::Error::Other("Timeout".to_string()))?
-                        .map_err(|e| crate::Error::Other(e.to_string()))?;
-
-                    ForwardPlugin::parse_message(&buf[..len])
+                    let upstream = &core.upstreams[idx];
+                    debug!("Concurrent query to: {}", upstream.addr);
+                    match core.forward_query(&request, upstream).await {
+                        Ok(resp) => {
+                            debug!("Concurrent query to {} succeeded", upstream.addr);
+                            Ok(resp)
+                        }
+                        Err(e) => {
+                            debug!("Concurrent query to {} failed: {}", upstream.addr, e);
+                            Err(e)
+                        }
+                    }
                 });
 
                 tasks.push(task);
