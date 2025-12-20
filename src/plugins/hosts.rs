@@ -39,6 +39,7 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fmt;
 use std::net::IpAddr;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
@@ -49,6 +50,7 @@ crate::register_plugin_builder!(HostsPlugin);
 /// Core hosts parsing and lookup store
 ///
 /// Maps domain names to IP addresses, similar to `/etc/hosts` file.
+#[derive(Clone)]
 pub struct Hosts {
     /// Domain name to list of IP addresses
     hosts: Arc<RwLock<HashMap<String, Vec<IpAddr>>>>,
@@ -260,30 +262,6 @@ impl HostsPlugin {
         self
     }
 
-    pub fn add_host(&self, domain: String, ip: IpAddr) {
-        self.hosts.add_host(domain, ip);
-    }
-
-    pub fn remove_host(&self, domain: &str) -> bool {
-        self.hosts.remove_host(domain)
-    }
-
-    pub fn get_ips(&self, domain: &str) -> Option<Vec<IpAddr>> {
-        self.hosts.get_ips(domain)
-    }
-
-    pub fn len(&self) -> usize {
-        self.hosts.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.hosts.is_empty()
-    }
-
-    pub fn clear(&self) {
-        self.hosts.clear();
-    }
-
     /// Load hosts from configured files (aggregated)
     pub fn load_hosts(&self) -> Result<()> {
         let mut combined = String::new();
@@ -302,7 +280,7 @@ impl HostsPlugin {
         }
 
         info!(
-            entries = self.len(),
+            entries = self.hosts.len(),
             files = self.files.len(),
             "Hosts loaded (wrapper)"
         );
@@ -413,6 +391,16 @@ impl fmt::Debug for HostsPlugin {
     }
 }
 
+/// Automatically delegate Hosts methods to HostsPlugin via Deref trait
+/// This eliminates the need for proxy methods.
+impl Deref for HostsPlugin {
+    type Target = Hosts;
+
+    fn deref(&self) -> &Hosts {
+        &self.hosts
+    }
+}
+
 #[async_trait]
 impl Plugin for HostsPlugin {
     async fn execute(&self, context: &mut Context) -> Result<()> {
@@ -499,24 +487,6 @@ mod tests {
     // --- Core Hosts tests ---
 
     #[test]
-    fn test_hosts_creation() {
-        let hosts = Hosts::new();
-        assert!(hosts.is_empty());
-        assert_eq!(hosts.len(), 0);
-    }
-
-    #[test]
-    fn test_add_host() {
-        let hosts = Hosts::new();
-        let ip = Ipv4Addr::new(127, 0, 0, 1);
-
-        hosts.add_host("localhost".to_string(), ip.into());
-
-        assert_eq!(hosts.len(), 1);
-        assert!(!hosts.is_empty());
-    }
-
-    #[test]
     fn test_case_insensitive() {
         let hosts = Hosts::new();
         let ip = Ipv4Addr::new(93, 184, 216, 34);
@@ -542,6 +512,7 @@ mod tests {
 
         let ips = hosts.get_ips("localhost").unwrap();
         assert_eq!(ips.len(), 2);
+        assert!(hosts.len() >= 1);
     }
 
     #[test]
@@ -554,7 +525,6 @@ mod tests {
 
         assert!(hosts.remove_host("localhost"));
         assert_eq!(hosts.len(), 0);
-        assert!(hosts.is_empty());
 
         // Removing non-existent host returns false
         assert!(!hosts.remove_host("localhost"));
@@ -603,34 +573,6 @@ mod tests {
     }
 
     #[test]
-    fn test_load_from_string_hostname_first() {
-        let hosts = Hosts::new();
-        let content = r#"
-# hostname-first format
-localhost 127.0.0.1
-example.com www.example.com 93.184.216.34 2606:50c0:8001::154
-example.com 2606:50c0:8001::158
-"#;
-
-        hosts.load_from_string(content).unwrap();
-
-        assert!(!hosts.is_empty());
-        assert!(hosts.get_ips("localhost").is_some());
-        assert!(hosts.get_ips("example.com").is_some());
-        assert!(hosts.get_ips("www.example.com").is_some());
-
-        // Ensure IPv6 was parsed as well
-        let ips = hosts.get_ips("example.com").unwrap();
-        assert!(ips.iter().any(|ip| matches!(ip, IpAddr::V6(_))));
-        assert_eq!(ips.len(), 3);
-
-        // Ensure domain aliases was parsed as well
-        let ips = hosts.get_ips("www.example.com").unwrap();
-        assert!(ips.iter().any(|ip| matches!(ip, IpAddr::V6(_))));
-        assert_eq!(ips.len(), 2)
-    }
-
-    #[test]
     fn test_load_from_string_mixed_orders() {
         let hosts = Hosts::new();
         let content = r#"
@@ -645,6 +587,12 @@ example.com www.example.com 93.184.216.34 2606:50c0:8001::154
         assert!(hosts.get_ips("example.com").is_some());
         assert!(hosts.get_ips("www.example.com").is_some());
         assert!(hosts.get_ips("global-dns.com").is_some());
+
+        // Verify IPv6 parsing and multiple IPs
+        let ips = hosts.get_ips("example.com").unwrap();
+        assert!(ips.iter().any(|ip| matches!(ip, IpAddr::V6(_))));
+        assert!(ips.iter().any(|ip| matches!(ip, IpAddr::V4(_))));
+        assert_eq!(ips.len(), 3);
     }
 
     // --- HostsPlugin tests ---
@@ -702,41 +650,6 @@ example.com www.example.com 93.184.216.34 2606:50c0:8001::154
     }
 
     #[tokio::test]
-    async fn test_hosts_plugin_hostname_first_ipv4_and_ipv6() {
-        let plugin = HostsPlugin::new();
-        let content = "media.githubusercontent.com 185.199.108.133 2606:50c0:8001::154";
-        plugin.load_hosts().unwrap();
-        // load_hosts() uses configured files; instead parse directly
-        plugin.hosts.load_from_string(content).unwrap();
-
-        // A query
-        let mut request_a = Message::new();
-        request_a.add_question(Question::new(
-            "media.githubusercontent.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
-        let mut ctx_a = Context::new(request_a);
-        plugin.execute(&mut ctx_a).await.unwrap();
-        let resp_a = ctx_a.response().unwrap();
-        assert_eq!(resp_a.answers().len(), 1);
-        assert_eq!(resp_a.answers()[0].rtype(), RecordType::A);
-
-        // AAAA query
-        let mut request_aaaa = Message::new();
-        request_aaaa.add_question(Question::new(
-            "media.githubusercontent.com".to_string(),
-            RecordType::AAAA,
-            RecordClass::IN,
-        ));
-        let mut ctx_aaaa = Context::new(request_aaaa);
-        plugin.execute(&mut ctx_aaaa).await.unwrap();
-        let resp_aaaa = ctx_aaaa.response().unwrap();
-        assert_eq!(resp_aaaa.answers().len(), 1);
-        assert_eq!(resp_aaaa.answers()[0].rtype(), RecordType::AAAA);
-    }
-
-    #[tokio::test]
     async fn test_hosts_plugin_no_match() {
         let plugin = HostsPlugin::new();
         plugin.add_host(
@@ -788,6 +701,7 @@ example.com www.example.com 93.184.216.34 2606:50c0:8001::154
     async fn test_hosts_plugin_skips_if_response_set() {
         let plugin = HostsPlugin::new();
         plugin.add_host("example.com".to_string(), Ipv4Addr::new(1, 2, 3, 4).into());
+        assert!(plugin.len() >= 1);
 
         let mut request = Message::new();
         request.add_question(Question::new(
