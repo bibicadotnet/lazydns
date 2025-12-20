@@ -316,7 +316,7 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
                 return factory.create(prefix, exec_args);
             }
 
-            // Handle different exec formats (legacy hardcoded)
+            // Handle different exec formats
             if let Some(plugin_name) = exec_str.strip_prefix('$') {
                 // Plugin reference: $plugin_name
                 if let Some(plugin) = builder.get_plugin(plugin_name) {
@@ -327,31 +327,34 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
                         plugin_name
                     )))
                 }
-            } else if exec_str == "accept" {
-                Ok(Arc::new(crate::plugins::AcceptPlugin::new()))
-            } else if exec_str == "drop_resp" {
-                Ok(Arc::new(crate::plugins::DropRespPlugin::new()))
-            } else if exec_str.starts_with("reject") {
-                // reject [rcode] - default to 3 (NXDOMAIN)
-                let rcode = if let Some(rest) = exec_str.strip_prefix("reject") {
-                    rest.trim().parse::<u8>().unwrap_or(3)
-                } else {
-                    3
-                };
-                Ok(Arc::new(crate::plugins::RejectPlugin::new(rcode)))
-            } else if exec_str.starts_with("black_hole") {
-                Ok(Arc::new(
-                    crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
-                ))
-            } else if let Some(target) = exec_str.strip_prefix("jump ") {
-                // jump target_name
-                let target = target.trim();
-                Ok(Arc::new(crate::plugins::JumpPlugin::new(target)))
-            } else if exec_str == "prefer_ipv4" {
-                Ok(Arc::new(crate::plugins::PreferIpv4Plugin::new()))
-            } else if exec_str == "prefer_ipv6" {
-                Ok(Arc::new(crate::plugins::PreferIpv6Plugin::new()))
-            } else {
+            }
+            // else if exec_str == "accept" {
+            //     Ok(Arc::new(crate::plugins::AcceptPlugin::new()))
+            // } else if exec_str == "drop_resp" {
+            //     Ok(Arc::new(crate::plugins::DropRespPlugin::new()))
+            // } else if exec_str.starts_with("reject") {
+            //     // reject [rcode] - default to 3 (NXDOMAIN)
+            //     let rcode = if let Some(rest) = exec_str.strip_prefix("reject") {
+            //         rest.trim().parse::<u8>().unwrap_or(3)
+            //     } else {
+            //         3
+            //     };
+            //     Ok(Arc::new(crate::plugins::RejectPlugin::new(rcode)))
+            // } else if exec_str.starts_with("black_hole") {
+            //     Ok(Arc::new(
+            //         crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
+            //     ))
+            // } else if let Some(target) = exec_str.strip_prefix("jump ") {
+            //     // jump target_name
+            //     let target = target.trim();
+            //     Ok(Arc::new(crate::plugins::JumpPlugin::new(target)))
+            // }
+            // else if exec_str == "prefer_ipv4" {
+            //     Ok(Arc::new(crate::plugins::PreferIpv4Plugin::new()))
+            // } else if exec_str == "prefer_ipv6" {
+            //     Ok(Arc::new(crate::plugins::PreferIpv6Plugin::new()))
+            // }
+            else {
                 Err(Error::Config(format!("Unknown exec action: {}", exec_str)))
             }
         }

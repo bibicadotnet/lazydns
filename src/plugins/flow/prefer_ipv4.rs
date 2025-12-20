@@ -1,6 +1,10 @@
 use crate::dns::RecordType;
-use crate::plugin::Plugin;
+use crate::plugin::{ExecPlugin, Plugin};
 use async_trait::async_trait;
+use std::sync::Arc;
+
+// Auto-register exec factory only (no init factory implementation provided)
+crate::register_exec_plugin_builder!(PreferIpv4Plugin);
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PreferIpv4Plugin;
@@ -26,6 +30,19 @@ impl Plugin for PreferIpv4Plugin {
             additional.retain(|record| !matches!(record.rtype(), RecordType::AAAA));
         }
         Ok(())
+    }
+}
+
+impl ExecPlugin for PreferIpv4Plugin {
+    fn quick_setup(prefix: &str, _exec_str: &str) -> crate::Result<Arc<dyn Plugin>> {
+        if prefix != "prefer_ipv4" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'prefer_ipv4'",
+                prefix
+            )));
+        }
+
+        Ok(Arc::new(PreferIpv4Plugin::new()))
     }
 }
 

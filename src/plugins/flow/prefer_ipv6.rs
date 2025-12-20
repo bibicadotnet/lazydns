@@ -1,6 +1,10 @@
 use crate::dns::RecordType;
-use crate::plugin::Plugin;
+use crate::plugin::{ExecPlugin, Plugin};
 use async_trait::async_trait;
+use std::sync::Arc;
+
+// Auto-register exec factory only (no init factory implementation provided)
+crate::register_exec_plugin_builder!(PreferIpv6Plugin);
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PreferIpv6Plugin;
@@ -26,6 +30,19 @@ impl Plugin for PreferIpv6Plugin {
             additional.retain(|record| !matches!(record.rtype(), RecordType::A));
         }
         Ok(())
+    }
+}
+
+impl ExecPlugin for PreferIpv6Plugin {
+    fn quick_setup(prefix: &str, _exec_str: &str) -> crate::Result<Arc<dyn Plugin>> {
+        if prefix != "prefer_ipv6" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'prefer_ipv6'",
+                prefix
+            )));
+        }
+
+        Ok(Arc::new(PreferIpv6Plugin::new()))
     }
 }
 

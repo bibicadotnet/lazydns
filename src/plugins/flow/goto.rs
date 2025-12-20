@@ -1,5 +1,9 @@
-use crate::plugin::Plugin;
+use crate::plugin::{ExecPlugin, Plugin};
 use async_trait::async_trait;
+use std::sync::Arc;
+
+// Auto-register exec factory only (no init factory implementation provided)
+crate::register_exec_plugin_builder!(GotoPlugin);
 
 #[derive(Debug, Clone)]
 pub struct GotoPlugin {
@@ -24,6 +28,25 @@ impl Plugin for GotoPlugin {
 
     fn name(&self) -> &str {
         "goto"
+    }
+}
+
+impl ExecPlugin for GotoPlugin {
+    fn quick_setup(prefix: &str, exec_str: &str) -> crate::Result<Arc<dyn Plugin>> {
+        if prefix != "goto" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'goto'",
+                prefix
+            )));
+        }
+
+        if exec_str.trim().is_empty() {
+            return Err(crate::Error::Config(
+                "goto exec action requires a label argument".to_string(),
+            ));
+        }
+
+        Ok(Arc::new(GotoPlugin::new(exec_str.trim())))
     }
 }
 

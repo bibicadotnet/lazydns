@@ -424,19 +424,21 @@ pub fn initialize_all_plugin_factories() {
         // Note: Macro generates names like CACHE_PLUGIN_FACTORY from CachePlugin
         Lazy::force(&crate::plugins::cache::CACHE_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::forward::FORWARD_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::executable::ratelimit::RATE_LIMIT_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::hosts::HOSTS_PLUGIN_FACTORY);
+
         Lazy::force(&crate::plugins::dataset::domain_set::DOMAIN_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::ip_set::IP_SET_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::hosts::HOSTS_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::executable::ratelimit::RATE_LIMIT_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::ros_addrlist::ROS_ADDRLIST_PLUGIN_FACTORY);
-
         Lazy::force(&crate::plugins::executable::black_hole::BLACKHOLE_PLUGIN_FACTORY);
-
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::matcher::has_resp::HAS_RESP_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::redirect::REDIRECT_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::matcher::has_resp::HAS_RESP_PLUGIN_FACTORY);
+
         Lazy::force(&crate::plugins::server::UDP_SERVER_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::server::TCP_SERVER_PLUGIN_FACTORY);
+
+        // TODO: DoH, Dot, DoQ and other plugins
 
         // Initialize the factory system
         initialize_plugin_factories();
@@ -464,9 +466,13 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::executable::debug_print::DEBUG_PRINT_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::drop_resp::DROP_RESP_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_EXEC_FACTORY);
+
         Lazy::force(&crate::plugins::flow::accept::ACCEPT_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::flow::goto::GOTO_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::jump::JUMP_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::reject::REJECT_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::flow::prefer_ipv4::PREFER_IPV4_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::flow::prefer_ipv6::PREFER_IPV6_PLUGIN_EXEC_FACTORY);
 
         // Initialize the exec factory system
         initialize_exec_plugin_factories();
