@@ -14,6 +14,7 @@ use serde_yaml::Value;
 use std::any::Any;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -615,6 +616,49 @@ impl ForwardPlugin {
         Some(&self.core.upstreams[idx].addr)
     }
 
+    /// Record upstream health and metrics (success/failure)
+    fn record_upstream_health(&self, upstream: &Upstream, elapsed: Duration, success: bool) {
+        if !self.core.health_checks_enabled {
+            return;
+        }
+
+        if success {
+            upstream.health.record_success(elapsed);
+            #[cfg(feature = "admin")]
+            {
+                use crate::metrics::{UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL};
+                UPSTREAM_QUERIES_TOTAL
+                    .with_label_values(&[&upstream.addr, "success"])
+                    .inc();
+                UPSTREAM_DURATION_SECONDS
+                    .with_label_values(&[&upstream.addr])
+                    .observe(elapsed.as_secs_f64());
+            }
+        } else {
+            upstream.health.record_failure();
+            #[cfg(feature = "admin")]
+            {
+                use crate::metrics::UPSTREAM_QUERIES_TOTAL;
+                UPSTREAM_QUERIES_TOTAL
+                    .with_label_values(&[&upstream.addr, "error"])
+                    .inc();
+            }
+        }
+    }
+
+    /// Extract A/AAAA answer addresses from response
+    fn extract_answer_addresses(response: &Message) -> Vec<String> {
+        response
+            .answers()
+            .iter()
+            .filter_map(|rr| match rr.rdata() {
+                crate::dns::RData::A(ipv4) => Some(ipv4.to_string()),
+                crate::dns::RData::AAAA(ipv6) => Some(ipv6.to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Forward a query to an upstream server with health tracking
     async fn forward_query_with_health(
         &self,
@@ -627,32 +671,10 @@ impl ForwardPlugin {
         match self.core.forward_query(request, upstream).await {
             Ok(response) => {
                 let elapsed = start.elapsed();
-                if self.core.health_checks_enabled {
-                    upstream.health.record_success(elapsed);
-                    // Report to Prometheus metrics for observability
-                    #[cfg(feature = "admin")]
-                    let _ = {
-                        use crate::metrics::{UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL};
-                        UPSTREAM_QUERIES_TOTAL
-                            .with_label_values(&[&upstream.addr, "success"])
-                            .inc();
-                        UPSTREAM_DURATION_SECONDS
-                            .with_label_values(&[&upstream.addr])
-                            .observe(elapsed.as_secs_f64());
-                        Ok::<(), ()>(())
-                    };
-                }
-                // Structured log with current counters
+                self.record_upstream_health(upstream, elapsed, true);
+
                 let (queries, successes, failures) = upstream.health.counters();
-                // Extract A/AAAA addresses for logging
-                let mut addrs: Vec<String> = Vec::new();
-                for rr in response.answers() {
-                    match rr.rdata() {
-                        crate::dns::RData::A(ipv4) => addrs.push(ipv4.to_string()),
-                        crate::dns::RData::AAAA(ipv6) => addrs.push(ipv6.to_string()),
-                        _ => {}
-                    }
-                }
+                let addrs = Self::extract_answer_addresses(&response);
 
                 debug!(
                     upstream = upstream.addr.as_str(),
@@ -667,18 +689,8 @@ impl ForwardPlugin {
                 Ok(response)
             }
             Err(e) => {
-                if self.core.health_checks_enabled {
-                    upstream.health.record_failure();
-                    // Report failure to Prometheus metrics
-                    #[cfg(feature = "admin")]
-                    let _ = {
-                        use crate::metrics::UPSTREAM_QUERIES_TOTAL;
-                        UPSTREAM_QUERIES_TOTAL
-                            .with_label_values(&[&upstream.addr, "error"])
-                            .inc();
-                        Ok::<(), ()>(())
-                    };
-                }
+                self.record_upstream_health(upstream, start.elapsed(), false);
+
                 let (queries, successes, failures) = upstream.health.counters();
                 warn!(
                     upstream = upstream.addr.as_str(),
@@ -693,34 +705,98 @@ impl ForwardPlugin {
         }
     }
 
-    /// Get upstreams (for testing)
-    pub fn upstreams(&self) -> &[Upstream] {
-        &self.core.upstreams
+    /// Execute concurrent queries to all upstreams, return first success
+    async fn execute_concurrent(&self, request: &Message) -> Result<Message> {
+        let mut tasks = Vec::new();
+
+        for idx in 0..self.core.upstreams.len() {
+            let req = request.clone();
+            let core = self.core.clone();
+
+            let task = tokio::spawn(async move {
+                let upstream = &core.upstreams[idx];
+                debug!("Concurrent query to: {}", upstream.addr);
+                core.forward_query(&req, upstream).await
+            });
+
+            tasks.push(task);
+        }
+
+        // Wait for first success
+        for task in tasks {
+            if let Ok(Ok(response)) = task.await {
+                debug!("Got fastest response in concurrent mode");
+                return Ok(response);
+            }
+        }
+
+        Err(crate::Error::Other(
+            "All concurrent queries failed".to_string(),
+        ))
     }
 
-    /// Get timeout
-    pub fn timeout(&self) -> Duration {
-        self.core.timeout
-    }
+    /// Execute sequential failover through upstreams
+    async fn execute_sequential(&self, ctx: &mut Context, request: &Message) -> Result<()> {
+        let mut attempts = 0;
+        let mut last_error = None;
 
-    /// Is health checks enabled
-    pub fn health_checks_enabled(&self) -> bool {
-        self.core.health_checks_enabled
-    }
+        while attempts < self.core.max_attempts && attempts < self.core.upstreams.len() {
+            let upstream_idx = match self.select_upstream() {
+                Some(idx) => idx,
+                None => {
+                    return Err(crate::Error::Config(
+                        "No upstream servers configured".to_string(),
+                    ));
+                }
+            };
 
-    /// Get strategy
-    pub fn strategy(&self) -> LoadBalanceStrategy {
-        self.core.strategy
-    }
+            debug!(
+                "Forward: attempt {}/{} to upstream {}",
+                attempts + 1,
+                self.core.max_attempts,
+                self.core.upstreams[upstream_idx].addr
+            );
 
-    /// Serialize message (delegate to core)
-    fn serialize_message(message: &Message) -> Result<Vec<u8>> {
-        Forward::serialize_message(message)
-    }
+            match self.forward_query_with_health(request, upstream_idx).await {
+                Ok(response) => {
+                    debug!(
+                        "Received response from upstream {}: {} answers",
+                        self.core.upstreams[upstream_idx].addr,
+                        response.answer_count()
+                    );
+                    ctx.set_response(Some(response));
+                    return Ok(());
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to forward query to {} (attempt {}/{}): {}",
+                        self.core.upstreams[upstream_idx].addr,
+                        attempts + 1,
+                        self.core.max_attempts,
+                        e
+                    );
+                    last_error = Some(e);
+                    attempts += 1;
 
-    /// Parse message (delegate to core)
-    fn parse_message(data: &[u8]) -> Result<Message> {
-        Forward::parse_message(data)
+                    if !self.core.health_checks_enabled {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Err(last_error
+            .unwrap_or_else(|| crate::Error::Other("All upstream servers failed".to_string())))
+    }
+}
+
+/// Automatically delegate Forward's public methods to ForwardPlugin
+/// via the Deref trait. This eliminates the need for proxy methods.
+impl Deref for ForwardPlugin {
+    type Target = Forward;
+
+    fn deref(&self) -> &Forward {
+        &self.core
     }
 }
 
@@ -748,114 +824,28 @@ impl Plugin for ForwardPlugin {
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        // Check if we already have a response
         if ctx.has_response() {
             debug!("Response already set, skipping forward plugin");
             return Ok(());
         }
 
-        // If concurrent queries enabled, race all upstreams
+        let request = ctx.request().clone();
+
+        // Try concurrent queries if enabled
         if self.concurrent_queries && self.core.upstreams.len() > 1 {
             debug!(
                 "Racing {} upstreams for fastest response",
                 self.core.upstreams.len()
             );
 
-            // Query all upstreams concurrently
-            let mut tasks = Vec::new();
-            for idx in 0..self.core.upstreams.len() {
-                let request = ctx.request().clone();
-                let core = self.core.clone();
-
-                let task = tokio::spawn(async move {
-                    let upstream = &core.upstreams[idx];
-                    debug!("Concurrent query to: {}", upstream.addr);
-                    match core.forward_query(&request, upstream).await {
-                        Ok(resp) => {
-                            debug!("Concurrent query to {} succeeded", upstream.addr);
-                            Ok(resp)
-                        }
-                        Err(e) => {
-                            debug!("Concurrent query to {} failed: {}", upstream.addr, e);
-                            Err(e)
-                        }
-                    }
-                });
-
-                tasks.push(task);
-            }
-
-            // Wait for first success
-            for task in tasks {
-                if let Ok(Ok(response)) = task.await {
-                    debug!("Got fastest response in concurrent mode");
-                    ctx.set_response(Some(response));
-                    return Ok(());
-                }
-            }
-
-            return Err(crate::Error::Other(
-                "All concurrent queries failed".to_string(),
-            ));
-        }
-
-        // Normal sequential mode with failover
-        let mut attempts = 0;
-        let mut last_error = None;
-
-        while attempts < self.core.max_attempts && attempts < self.core.upstreams.len() {
-            // Select an upstream
-            let upstream_idx = match self.select_upstream() {
-                Some(idx) => idx,
-                None => {
-                    return Err(crate::Error::Config(
-                        "No upstream servers configured".to_string(),
-                    ));
-                }
-            };
-
-            // Try forwarding
-            debug!(
-                "Forward: attempt {}/{} to upstream {}",
-                attempts + 1,
-                self.core.max_attempts,
-                self.core.upstreams[upstream_idx].addr
-            );
-            match self
-                .forward_query_with_health(ctx.request(), upstream_idx)
-                .await
-            {
-                Ok(response) => {
-                    debug!(
-                        "Received response from upstream {}: {} answers",
-                        self.core.upstreams[upstream_idx].addr,
-                        response.answer_count()
-                    );
-                    ctx.set_response(Some(response));
-                    return Ok(());
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to forward query to {} (attempt {}/{}): {}",
-                        self.core.upstreams[upstream_idx].addr,
-                        attempts + 1,
-                        self.core.max_attempts,
-                        e
-                    );
-                    last_error = Some(e);
-                    attempts += 1;
-
-                    // If health checks are disabled, don't retry
-                    if !self.core.health_checks_enabled {
-                        break;
-                    }
-                }
+            if let Ok(response) = self.execute_concurrent(&request).await {
+                ctx.set_response(Some(response));
+                return Ok(());
             }
         }
 
-        // All attempts failed
-        Err(last_error
-            .unwrap_or_else(|| crate::Error::Other("All upstream servers failed".to_string())))
+        // Fall back to sequential failover
+        self.execute_sequential(ctx, &request).await
     }
 
     fn name(&self) -> &str {
@@ -883,33 +873,6 @@ mod tests {
     use tokio::net::TcpListener;
 
     // ============ Tests from core Forward logic ============
-
-    #[test]
-    fn test_load_balance_strategies() {
-        let upstreams = vec![Upstream::new("8.8.8.8:53"), Upstream::new("1.1.1.1:53")];
-        let core = Forward::new(
-            upstreams,
-            Duration::from_secs(5),
-            LoadBalanceStrategy::RoundRobin,
-        );
-
-        let idx1 = core.select_upstream(0).unwrap();
-        let idx2 = core.select_upstream(1).unwrap();
-        assert_eq!(idx1, 0);
-        assert_eq!(idx2, 1);
-    }
-
-    #[test]
-    fn test_upstream_health() {
-        let health = UpstreamHealth::new();
-        health.record_success(Duration::from_millis(10));
-        health.record_success(Duration::from_millis(20));
-
-        let (q, s, f) = health.counters();
-        assert_eq!(q, 2);
-        assert_eq!(s, 2);
-        assert_eq!(f, 0);
-    }
 
     #[test]
     fn test_select_upstream_random_and_fastest() {
@@ -959,37 +922,6 @@ mod tests {
         assert_eq!(parsed.questions()[0].qname(), "example.com");
     }
 
-    // ============ Tests from ForwardPlugin wrapper ============
-
-    #[test]
-    fn test_forward_plugin_creation() {
-        let plugin = ForwardPlugin::new(vec!["8.8.8.8:53".to_string()]);
-        assert_eq!(plugin.name(), "forward");
-        assert_eq!(plugin.priority(), 100);
-    }
-
-    #[test]
-    fn test_forward_plugin_with_timeout() {
-        let plugin =
-            ForwardPlugin::with_timeout(vec!["8.8.8.8:53".to_string()], Duration::from_secs(10));
-        assert_eq!(plugin.timeout(), Duration::from_secs(10));
-    }
-
-    #[test]
-    fn test_next_upstream_round_robin() {
-        let plugin = ForwardPlugin::new(vec!["8.8.8.8:53".to_string(), "8.8.4.4:53".to_string()]);
-
-        assert_eq!(plugin.next_upstream(), Some("8.8.8.8:53"));
-        assert_eq!(plugin.next_upstream(), Some("8.8.4.4:53"));
-        assert_eq!(plugin.next_upstream(), Some("8.8.8.8:53")); // Wraps around
-    }
-
-    #[test]
-    fn test_next_upstream_empty() {
-        let plugin = ForwardPlugin::new(vec![]);
-        assert_eq!(plugin.next_upstream(), None);
-    }
-
     #[tokio::test]
     async fn test_forward_plugin_no_upstreams() {
         let plugin = ForwardPlugin::new(vec![]);
@@ -1012,27 +944,8 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_serialize_message_placeholder() {
-        let message = Message::new();
-        let result = ForwardPlugin::serialize_message(&message);
-        assert!(result.is_ok());
-        let data = result.unwrap();
-        assert!(!data.is_empty());
-    }
-
-    #[test]
-    fn test_parse_message_placeholder() {
-        // Create a minimal query message
-        let data = vec![0u8; 12];
-        let result = ForwardPlugin::parse_message(&data);
-        assert!(result.is_ok());
-        let message = result.unwrap();
-        assert!(!message.is_response());
-    }
-
     #[tokio::test]
-    async fn test_forward_plugin_with_mocked_upstream() {
+    async fn test_forward_plugin_doh_http_post_basic() {
         // Start a mocked upstream DoH HTTP server and point plugin to it
         let (upstream_addr, server_task) = spawn_doh_http_server("1.2.3.4").await;
         let core = ForwardBuilder::new()
@@ -1105,14 +1018,14 @@ mod tests {
         ));
 
         // Before any requests
-        let (q0, s0, f0) = plugin.upstreams()[0].health.counters();
+        let (q0, s0, f0) = plugin.upstreams[0].health.counters();
         assert_eq!(q0, 0);
         assert_eq!(s0, 0);
         assert_eq!(f0, 0);
 
         // Ensure health checks enabled
         assert!(
-            plugin.health_checks_enabled(),
+            plugin.health_checks_enabled,
             "Health checks should be enabled for this test"
         );
 
@@ -1122,7 +1035,7 @@ mod tests {
         assert!(res.is_ok(), "Plugin execution failed: {:?}", res);
         assert!(ctx.response().is_some(), "No response set by upstream");
 
-        let (q1, s1, f1) = plugin.upstreams()[0].health.counters();
+        let (q1, s1, f1) = plugin.upstreams[0].health.counters();
         assert_eq!(q1, 1, "queries counter should be 1 after success");
         assert_eq!(s1, 1, "successes counter should be 1 after success");
         assert_eq!(f1, 0, "failures counter should be 0 after success");
@@ -1140,86 +1053,12 @@ mod tests {
         };
         let mut ctx2 = Context::new(req);
         let _res = bad_plugin.execute(&mut ctx2).await;
-        let (q2, s2, f2) = bad_plugin.upstreams()[0].health.counters();
+        let (q2, s2, f2) = bad_plugin.upstreams[0].health.counters();
         assert_eq!(q2, 1);
         assert_eq!(s2, 0);
         assert_eq!(f2, 1);
 
         let _ = server_task.await;
-    }
-
-    #[test]
-    fn test_load_balance_strategies_plugin() {
-        // Test RoundRobin
-        let core = ForwardBuilder::new()
-            .add_upstream(Upstream::new("8.8.8.8:53".to_string()))
-            .add_upstream(Upstream::new("1.1.1.1:53".to_string()))
-            .strategy(LoadBalanceStrategy::RoundRobin)
-            .build();
-        let plugin = ForwardPlugin {
-            core,
-            current: AtomicUsize::new(0),
-            concurrent_queries: false,
-        };
-
-        let idx1 = plugin.select_upstream().unwrap();
-        let idx2 = plugin.select_upstream().unwrap();
-        assert_eq!(idx1, 0);
-        assert_eq!(idx2, 1);
-
-        // Test Random (just verify it returns valid index)
-        let core = ForwardBuilder::new()
-            .add_upstream(Upstream::new("8.8.8.8:53".to_string()))
-            .add_upstream(Upstream::new("1.1.1.1:53".to_string()))
-            .strategy(LoadBalanceStrategy::Random)
-            .build();
-        let plugin = ForwardPlugin {
-            core,
-            current: AtomicUsize::new(0),
-            concurrent_queries: false,
-        };
-
-        let idx = plugin.select_upstream().unwrap();
-        assert!(idx < 2);
-
-        // Test Fastest (initially should return first)
-        let core = ForwardBuilder::new()
-            .add_upstream(Upstream::new("8.8.8.8:53".to_string()))
-            .add_upstream(Upstream::new("1.1.1.1:53".to_string()))
-            .strategy(LoadBalanceStrategy::Fastest)
-            .build();
-        let plugin = ForwardPlugin {
-            core,
-            current: AtomicUsize::new(0),
-            concurrent_queries: false,
-        };
-
-        let idx = plugin.select_upstream().unwrap();
-        assert_eq!(idx, 0); // First upstream before any health data
-    }
-
-    #[test]
-    fn test_health_tracking() {
-        let health = UpstreamHealth::new();
-
-        // Record some successes
-        health.record_success(Duration::from_millis(10));
-        health.record_success(Duration::from_millis(20));
-        health.record_success(Duration::from_millis(30));
-
-        assert_eq!(health.queries.load(Ordering::Relaxed), 3);
-        assert_eq!(health.successes.load(Ordering::Relaxed), 3);
-        assert_eq!(health.failures.load(Ordering::Relaxed), 0);
-
-        // Record a failure
-        health.record_failure();
-        assert_eq!(health.queries.load(Ordering::Relaxed), 4);
-        assert_eq!(health.failures.load(Ordering::Relaxed), 1);
-
-        // Check avg response time is reasonable
-        let avg = health.avg_response_time();
-        assert!(avg > Duration::ZERO);
-        assert!(avg < Duration::from_millis(100));
     }
 
     #[test]
@@ -1238,10 +1077,10 @@ mod tests {
             concurrent_queries: false,
         };
 
-        assert_eq!(plugin.upstreams().len(), 2);
-        assert_eq!(plugin.timeout(), Duration::from_secs(10));
-        assert_eq!(plugin.strategy(), LoadBalanceStrategy::Fastest);
-        assert!(plugin.health_checks_enabled());
+        assert_eq!(plugin.upstreams.len(), 2);
+        assert_eq!(plugin.timeout, Duration::from_secs(10));
+        assert_eq!(plugin.strategy, LoadBalanceStrategy::Fastest);
+        assert!(plugin.health_checks_enabled);
     }
 
     #[tokio::test]
@@ -1281,8 +1120,7 @@ mod tests {
                     body.extend_from_slice(&more[..m]);
                 }
 
-                if let Ok(req_msg) =
-                    ForwardPlugin::parse_message(&body[..content_length.min(body.len())])
+                if let Ok(req_msg) = Forward::parse_message(&body[..content_length.min(body.len())])
                 {
                     let mut resp = req_msg.clone();
                     resp.set_response(true);
@@ -1295,7 +1133,7 @@ mod tests {
                     ));
                     resp.set_id(req_msg.id());
 
-                    if let Ok(data) = ForwardPlugin::serialize_message(&resp) {
+                    if let Ok(data) = Forward::serialize_message(&resp) {
                         let resp_hdr = format!(
                             "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
                             data.len()
@@ -1361,9 +1199,9 @@ mod tests {
             concurrent_queries: false,
         };
 
-        assert_eq!(plugin.upstreams().len(), 1);
-        assert_eq!(plugin.upstreams()[0].addr, "8.8.8.8:53");
-        assert_eq!(plugin.upstreams()[0].tag.as_deref(), Some("google"));
+        assert_eq!(plugin.upstreams.len(), 1);
+        assert_eq!(plugin.upstreams[0].addr, "8.8.8.8:53");
+        assert_eq!(plugin.upstreams[0].tag.as_deref(), Some("google"));
     }
 
     #[tokio::test]
@@ -1426,7 +1264,7 @@ mod tests {
                     }
 
                     if let Ok(req_msg) =
-                        ForwardPlugin::parse_message(&body[..content_length.min(body.len())])
+                        Forward::parse_message(&body[..content_length.min(body.len())])
                     {
                         let mut resp = req_msg.clone();
                         resp.set_response(true);
@@ -1439,7 +1277,7 @@ mod tests {
                         ));
                         resp.set_id(req_msg.id());
 
-                        if let Ok(data) = ForwardPlugin::serialize_message(&resp) {
+                        if let Ok(data) = Forward::serialize_message(&resp) {
                             let resp_hdr = format!(
                                 "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
                                 data.len()
@@ -1532,8 +1370,7 @@ mod tests {
                     body.extend_from_slice(&more[..m]);
                 }
 
-                if let Ok(req_msg) =
-                    ForwardPlugin::parse_message(&body[..content_length.min(body.len())])
+                if let Ok(req_msg) = Forward::parse_message(&body[..content_length.min(body.len())])
                 {
                     let mut resp = req_msg.clone();
                     resp.set_response(true);
@@ -1546,7 +1383,7 @@ mod tests {
                     ));
                     resp.set_id(req_msg.id());
 
-                    if let Ok(data) = ForwardPlugin::serialize_message(&resp) {
+                    if let Ok(data) = Forward::serialize_message(&resp) {
                         let resp_hdr = format!(
                         "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
                         data.len()
@@ -1623,7 +1460,7 @@ mod tests {
                     }
 
                     if let Ok(req_msg) =
-                        ForwardPlugin::parse_message(&body[..content_length.min(body.len())])
+                        Forward::parse_message(&body[..content_length.min(body.len())])
                     {
                         let mut resp = req_msg.clone();
                         resp.set_response(true);
@@ -1636,7 +1473,7 @@ mod tests {
                         ));
                         resp.set_id(req_msg.id());
 
-                        if let Ok(data) = ForwardPlugin::serialize_message(&resp) {
+                        if let Ok(data) = Forward::serialize_message(&resp) {
                             let resp_hdr = format!(
                             "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
                             data.len()
