@@ -51,8 +51,8 @@ pub use cache::CachePlugin;
 pub use dataset::{DomainSetPlugin, IpSetPlugin};
 pub use domain_matcher::DomainMatcherPlugin;
 pub use flow::{
-    AcceptPlugin, GotoPlugin, IfPlugin, JumpPlugin, ParallelPlugin, PreferIpv4Plugin,
-    PreferIpv6Plugin, RejectPlugin, ReturnPlugin,
+    AcceptPlugin, GotoPlugin, JumpPlugin, PreferIpv4Plugin, PreferIpv6Plugin, RejectPlugin,
+    ReturnPlugin,
 };
 pub use forward::{ForwardPlugin, LoadBalanceStrategy};
 pub use geoip::GeoIpPlugin;
