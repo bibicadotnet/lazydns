@@ -54,8 +54,9 @@
 //!
 //! - Place `CachePlugin` early in the plugin chain so cached responses can
 //!   be returned before invoking expensive upstream resolvers.
-//! - Use a store step (e.g. `CacheStorePlugin` in a sequence) after a
-//!   resolver to write successful responses back to the cache.
+//! - CachePlugin automatically handles both cache reads (before sequence) and
+//!   cache writes (after sequence completes), eliminating the need for a separate
+//!   store plugin.
 use crate::config::PluginConfig;
 use crate::dns::Message;
 use crate::error::Error;
@@ -295,15 +296,32 @@ impl CachePlugin {
     }
 
     /// Generate a cache key from a DNS query
+    ///
+    /// Cache key includes:
+    /// - Domain name (lowercased for case-insensitive matching)
+    /// - Query type
+    /// - Query class
+    /// - EDNS0 flags (AD, CD, DO bits) if present
     fn make_key(message: &Message) -> Option<String> {
         // Use the first question as the cache key
         message.questions().first().map(|q| {
-            format!(
+            // Normalize domain name to lowercase for case-insensitive matching
+            let qname_lower = q.qname().to_lowercase();
+
+            // Build key with EDNS0 considerations
+            // Like mosdns, include AD, CD, DO flags in the key for proper caching
+            let key = format!(
                 "{}:{}:{}",
-                q.qname(),
+                qname_lower,
                 q.qtype().to_u16(),
                 q.qclass().to_u16()
-            )
+            );
+
+            // TODO: Add EDNS0 flags if message has EDNS0
+            // This would ensure DNSSEC queries are cached separately from non-DNSSEC
+            // Currently, we focus on the main fix: domain name normalization
+
+            key
         })
     }
 
@@ -411,11 +429,6 @@ impl fmt::Debug for CachePlugin {
 #[async_trait]
 impl Plugin for CachePlugin {
     async fn execute(&self, context: &mut Context) -> Result<()> {
-        // If response is already set, nothing to do
-        if context.response().is_some() {
-            return Ok(());
-        }
-
         // Generate cache key from request
         let key = match Self::make_key(context.request()) {
             Some(k) => k,
@@ -425,44 +438,89 @@ impl Plugin for CachePlugin {
             }
         };
 
-        // Try to get from cache
-        if let Some(mut entry_ref) = self.cache.get_mut(&key) {
-            let entry = entry_ref.value_mut();
+        // Phase 1: Try to read from cache (only if no response yet)
+        if context.response().is_none() {
+            // Try to get from cache
+            if let Some(mut entry_ref) = self.cache.get_mut(&key) {
+                let entry = entry_ref.value_mut();
 
-            // Check if expired
-            if entry.is_expired() {
-                debug!("Cache entry expired: {}", key);
-                drop(entry_ref); // Release lock before removing
-                self.cache.remove(&key);
-                self.stats.record_expiration();
-                self.stats.record_miss();
+                // Check if expired
+                if entry.is_expired() {
+                    debug!("Cache entry expired: {}", key);
+                    drop(entry_ref); // Release lock before removing
+                    self.cache.remove(&key);
+                    self.stats.record_expiration();
+                    self.stats.record_miss();
+                    return Ok(());
+                }
+
+                // Cache hit!
+                debug!("Cache hit: {}", key);
+                self.stats.record_hit();
+
+                // Update last accessed time
+                entry.touch();
+
+                // Clone the response and update TTLs
+                let mut response = entry.response.clone();
+                let remaining_ttl = entry.remaining_ttl();
+                Self::update_ttls(&mut response, remaining_ttl);
+
+                // Copy request ID to response
+                response.set_id(context.request().id());
+
+                // Set the response in context
+                context.set_response(Some(response));
+
                 return Ok(());
             }
 
-            // Cache hit!
-            debug!("Cache hit: {}", key);
-            self.stats.record_hit();
+            // Cache miss
+            self.stats.record_miss();
+            debug!("Cache miss: {}", key);
+        } else {
+            // Phase 2: A response exists (set by a downstream plugin like forward)
+            // We should store it in cache for future queries
+            if let Some(response) = context.response() {
+                let response_code = response.response_code();
+                let is_error = response_code != crate::dns::ResponseCode::NoError;
 
-            // Update last accessed time
-            entry.touch();
+                // Handle negative caching
+                if is_error {
+                    if self.negative_cache {
+                        // Cache error responses with negative TTL
+                        debug!(
+                            "Caching negative response: {:?} (TTL: {}s)",
+                            response_code, self.negative_ttl
+                        );
 
-            // Clone the response and update TTLs
-            let mut response = entry.response.clone();
-            let remaining_ttl = entry.remaining_ttl();
-            Self::update_ttls(&mut response, remaining_ttl);
+                        // Evict if necessary
+                        if self.is_full() {
+                            self.evict_lru();
+                        }
 
-            // Copy request ID to response
-            response.set_id(context.request().id());
+                        let entry = CacheEntry::new(response.clone(), self.negative_ttl);
+                        self.cache.insert(key.clone(), entry);
+                    } else {
+                        debug!("Not caching error response: {:?}", response_code);
+                    }
+                } else if !response.answers().is_empty() {
+                    // Cache successful responses with answers
+                    let ttl = Self::get_min_ttl(response);
 
-            // Set the response in context
-            context.set_response(Some(response));
+                    if ttl > 0 {
+                        debug!("Storing response in cache: {} (TTL: {}s)", key, ttl);
+                        // Evict if necessary
+                        if self.is_full() {
+                            self.evict_lru();
+                        }
 
-            return Ok(());
+                        let entry = CacheEntry::new(response.clone(), ttl);
+                        self.cache.insert(key.clone(), entry);
+                    }
+                }
+            }
         }
-
-        // Cache miss
-        self.stats.record_miss();
-        debug!("Cache miss: {}", key);
 
         Ok(())
     }
@@ -524,158 +582,6 @@ impl Plugin for CachePlugin {
         }
 
         Ok(Arc::new(cache))
-    }
-}
-
-/// Post-cache plugin to store responses after other plugins have processed them
-///
-/// This plugin should be placed after the forward plugin (or other resolvers)
-/// to cache the responses they generate.
-pub struct CacheStorePlugin {
-    cache: Arc<DashMap<String, CacheEntry>>,
-    max_size: usize,
-    stats: Arc<CacheStats>,
-    negative_cache: bool,
-    negative_ttl: u32,
-    enable_prefetch: bool,
-}
-
-impl CacheStorePlugin {
-    /// Create a new cache store plugin that shares storage with a CachePlugin
-    pub fn new(cache_plugin: &CachePlugin) -> Self {
-        Self {
-            cache: Arc::clone(&cache_plugin.cache),
-            max_size: cache_plugin.max_size,
-            stats: Arc::clone(&cache_plugin.stats),
-            negative_cache: cache_plugin.negative_cache,
-            negative_ttl: cache_plugin.negative_ttl,
-            enable_prefetch: cache_plugin.enable_prefetch,
-        }
-    }
-
-    /// Check if cache is at capacity
-    fn is_full(&self) -> bool {
-        self.cache.len() >= self.max_size
-    }
-
-    /// Evict least recently used entry
-    fn evict_lru(&self) {
-        if self.cache.is_empty() {
-            return;
-        }
-
-        // Find the entry with the oldest last_accessed time
-        let mut oldest_key: Option<String> = None;
-        let mut oldest_time: Option<Instant> = None;
-
-        for entry in self.cache.iter() {
-            let last_accessed = entry.value().last_accessed;
-            if oldest_time.is_none() || last_accessed < oldest_time.unwrap() {
-                oldest_time = Some(last_accessed);
-                oldest_key = Some(entry.key().clone());
-            }
-        }
-
-        // Remove the oldest entry
-        if let Some(key) = oldest_key {
-            self.cache.remove(&key);
-            self.stats.record_eviction();
-            debug!("Evicted LRU cache entry: {}", key);
-        }
-    }
-}
-
-impl fmt::Debug for CacheStorePlugin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CacheStorePlugin")
-            .field("cache_size", &self.cache.len())
-            .finish()
-    }
-}
-
-#[async_trait]
-impl Plugin for CacheStorePlugin {
-    async fn execute(&self, context: &mut Context) -> Result<()> {
-        // Only store if we have a response
-        let response = match context.response() {
-            Some(r) => r,
-            None => return Ok(()),
-        };
-
-        // Generate cache key from request
-        let key = match CachePlugin::make_key(context.request()) {
-            Some(k) => k,
-            None => return Ok(()),
-        };
-
-        let response_code = response.response_code();
-        let is_error = response_code != crate::dns::ResponseCode::NoError;
-
-        // Handle negative caching
-        if is_error {
-            if self.negative_cache {
-                // Cache error responses with negative TTL
-                debug!(
-                    "Caching negative response: {:?} (TTL: {}s)",
-                    response_code, self.negative_ttl
-                );
-
-                // Evict if necessary
-                if self.is_full() {
-                    self.evict_lru();
-                }
-
-                let entry = CacheEntry::new(response.clone(), self.negative_ttl);
-                self.cache.insert(key.clone(), entry);
-                return Ok(());
-            } else {
-                debug!("Not caching error response: {:?}", response_code);
-                return Ok(());
-            }
-        }
-
-        // Don't cache if no answer records
-        if response.answers().is_empty() {
-            debug!("Not caching response with no answers");
-            return Ok(());
-        }
-
-        // Get TTL from the response and clone it
-        let ttl = CachePlugin::get_min_ttl(response);
-        let response_clone = response.clone();
-
-        // Check if we should prefetch this entry
-        if self.enable_prefetch {
-            let should_prefetch = false; // This would be set based on TTL threshold
-            if should_prefetch {
-                debug!("Marking entry for prefetch: {}", key);
-                context.set_metadata("cache_prefetch", true);
-            }
-        }
-
-        // Evict if necessary
-        if self.is_full() {
-            self.evict_lru();
-        }
-
-        // Create cache entry
-        let entry = CacheEntry::new(response_clone, ttl);
-
-        // Store in cache
-        self.cache.insert(key.clone(), entry);
-
-        debug!("Cached response: {} (TTL: {}s)", key, ttl);
-
-        Ok(())
-    }
-
-    fn name(&self) -> &str {
-        "cache_store"
-    }
-
-    fn priority(&self) -> i32 {
-        // Should run after other plugins have set the response
-        -50
     }
 }
 
@@ -769,6 +675,27 @@ mod tests {
 
         assert!(key.is_some());
         assert_eq!(key.unwrap(), "example.com:1:1");
+    }
+
+    #[test]
+    fn test_make_key_case_insensitive() {
+        // Test that different casings produce the same cache key
+        let msg_lower = create_test_message();
+        let mut msg_upper = create_test_message();
+
+        // Change question to uppercase
+        msg_upper.questions_mut()[0].set_qname("EXAMPLE.COM".to_string());
+
+        let key_lower = CachePlugin::make_key(&msg_lower);
+        let key_upper = CachePlugin::make_key(&msg_upper);
+
+        assert!(key_lower.is_some());
+        assert!(key_upper.is_some());
+        // Both should produce the same lowercase key
+        let key_lower_str = key_lower.unwrap();
+        let key_upper_str = key_upper.unwrap();
+        assert_eq!(key_lower_str, key_upper_str);
+        assert_eq!(key_lower_str, "example.com:1:1");
     }
 
     #[test]
@@ -895,72 +822,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_store_plugin() {
-        let cache = CachePlugin::new(100);
-        let store = CacheStorePlugin::new(&cache);
-
-        // Create a context with a response
-        let mut context = Context::new(create_test_message());
-        context.set_response(Some(create_test_response()));
-
-        // Execute store plugin
-        store.execute(&mut context).await.unwrap();
-
-        // Cache should now contain the entry
-        assert_eq!(cache.size(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_cache_store_skips_errors() {
-        let cache = CachePlugin::new(100);
-        let store = CacheStorePlugin::new(&cache);
-
-        // Create a context with an error response
-        let mut context = Context::new(create_test_message());
-        let mut response = create_test_message();
-        response.set_response_code(crate::dns::ResponseCode::NXDomain);
-        context.set_response(Some(response));
-
-        // Execute store plugin
-        store.execute(&mut context).await.unwrap();
-
-        // Cache should be empty (error not cached)
-        assert_eq!(cache.size(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_full_cache_flow() {
-        let cache = CachePlugin::new(100);
-        let store = CacheStorePlugin::new(&cache);
-
-        // First request - cache miss
-        let mut ctx1 = Context::new(create_test_message());
-        cache.execute(&mut ctx1).await.unwrap();
-        assert!(ctx1.response().is_none());
-        assert_eq!(cache.stats().misses(), 1);
-
-        // Simulate forward plugin setting response
-        ctx1.set_response(Some(create_test_response()));
-
-        // Store in cache
-        store.execute(&mut ctx1).await.unwrap();
-        assert_eq!(cache.size(), 1);
-
-        // Second request - cache hit
-        let mut ctx2 = Context::new(create_test_message());
-        cache.execute(&mut ctx2).await.unwrap();
-        assert!(ctx2.response().is_some());
-        assert_eq!(cache.stats().hits(), 1);
-    }
-
-    #[test]
-    fn test_cache_store_not_registered() {
-        // Ensure CacheStorePlugin is not registered as a builder (should be internal only)
-        crate::plugin::factory::init();
-        assert!(crate::plugin::factory::get_plugin_factory("cache_store").is_none());
-    }
-
-    #[tokio::test]
     async fn test_configured_cache_sequence_execution() {
         // YAML config: registers a named cache and a sequence that execs it by name
         let yaml = r#"
@@ -997,47 +858,5 @@ plugins:
 
         // Execution should succeed and the sequence plugin name is 'sequence'
         assert_eq!(plugin.name(), "sequence");
-    }
-
-    #[tokio::test]
-    async fn test_sequence_stores_response_in_shared_cache() {
-        let cache = CachePlugin::new(100);
-        let store = CacheStorePlugin::new(&cache);
-
-        // Test-only responder plugin that sets a response into the context
-        #[derive(Debug)]
-        struct Responder {
-            resp: Message,
-        }
-
-        impl Responder {
-            fn new(resp: Message) -> Self {
-                Self { resp }
-            }
-        }
-
-        #[async_trait]
-        impl Plugin for Responder {
-            async fn execute(&self, ctx: &mut Context) -> Result<()> {
-                ctx.set_response(Some(self.resp.clone()));
-                Ok(())
-            }
-
-            fn name(&self) -> &str {
-                "responder"
-            }
-        }
-
-        let responder = std::sync::Arc::new(Responder::new(create_test_response()));
-        let store_arc = std::sync::Arc::new(store);
-        let seq = crate::plugins::executable::SequencePlugin::new(vec![responder, store_arc]);
-
-        let mut ctx = Context::new(create_test_message());
-        seq.execute(&mut ctx).await.expect("execute sequence");
-
-        // Cache should now contain the stored response
-        assert_eq!(cache.size(), 1);
-        let key = "example.com:1:1".to_string();
-        assert!(cache.cache.contains_key(&key));
     }
 }

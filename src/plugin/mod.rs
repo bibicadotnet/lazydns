@@ -101,8 +101,25 @@ impl RequestHandler for PluginHandler {
             }
         }
 
-        // After executing sequence and jump targets, allow reverse-lookup
-        // plugins to observe the populated response and save IP->name mappings.
+        // After executing sequence and jump targets, perform post-processing hooks:
+
+        // 1. Store responses in cache if cache plugin is registered
+        if ctx.has_response() {
+            for name in self.registry.plugin_names() {
+                if let Some(p) = self.registry.get(&name) {
+                    if p.name() == "cache" {
+                        // Call execute again on cache plugin to trigger write phase
+                        // (CachePlugin checks if response exists and stores it)
+                        if let Err(e) = p.execute(&mut ctx).await {
+                            warn!("Error during cache store post-processing: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Allow reverse-lookup plugins to observe the populated response
+        // and save IP->name mappings.
         if ctx.has_response() {
             if let Some(resp) = ctx.response() {
                 for name in self.registry.plugin_names() {
