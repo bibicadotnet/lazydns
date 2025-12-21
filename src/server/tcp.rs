@@ -142,7 +142,8 @@ impl TcpServer {
         // Parse request
         let request = Self::parse_request(&buf)?;
 
-        trace!(
+        debug!(
+            question = ?request.questions(),
             "Processing query ID {} with {} questions",
             request.id(),
             request.question_count()

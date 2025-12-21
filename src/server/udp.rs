@@ -325,7 +325,8 @@ impl UdpServer {
         // Parse DNS wire format
         let request = Self::parse_request(request_data)?;
 
-        trace!(
+        debug!(
+            question = ?request.questions(),
             "Processing query ID {} with {} questions from {}",
             request.id(),
             request.question_count(),

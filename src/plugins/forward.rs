@@ -715,7 +715,7 @@ impl ForwardPlugin {
 
             let task = tokio::spawn(async move {
                 let upstream = &core.upstreams[idx];
-                debug!("Concurrent query to: {}", upstream.addr);
+                trace!("Concurrent query to: {}", upstream.addr);
                 core.forward_query(&req, upstream).await
             });
 
@@ -725,7 +725,7 @@ impl ForwardPlugin {
         // Wait for first success
         for task in tasks {
             if let Ok(Ok(response)) = task.await {
-                trace!("Got fastest response in concurrent mode");
+                trace!(answers = ?response.answers(), "Got fastest response in concurrent mode");
                 return Ok(response);
             }
         }
