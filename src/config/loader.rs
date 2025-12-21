@@ -479,7 +479,7 @@ plugins:
             .find(|p| p.plugin_type == "cache")
             .unwrap();
         if let serde_yaml::Value::Mapping(args) = &cache_plugin.args {
-            let size_value = args.get(&serde_yaml::Value::String("size".to_string()));
+            let size_value = args.get(serde_yaml::Value::String("size".to_string()));
             assert!(size_value.is_some());
             // The value should be 2048 (from env override)
             if let Some(serde_yaml::Value::Number(n)) = size_value {
@@ -516,7 +516,7 @@ plugins:
             .find(|p| p.plugin_type == "add-gfwlist")
             .unwrap();
         if let serde_yaml::Value::Mapping(args) = &plugin.args {
-            let server_value = args.get(&serde_yaml::Value::String("server".to_string()));
+            let server_value = args.get(serde_yaml::Value::String("server".to_string()));
             if let Some(serde_yaml::Value::String(s)) = server_value {
                 assert_eq!(
                     s, "http://10.100.100.1",
