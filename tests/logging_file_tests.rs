@@ -1,3 +1,5 @@
+#![cfg(feature = "log-file")]
+
 use lazydns::config::LogConfig;
 use std::io::Read;
 use std::time::Duration;

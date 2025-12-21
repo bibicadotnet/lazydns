@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.1.28"
+version = "0.1.29"
 edition = "2021"
 authors = ["lazydns contributors"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
@@ -35,8 +35,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
     "env-filter",
     "json",
     "ansi",
-] }
-tracing-appender = "0.2"
+], optional = true }
+tracing-appender = { version = "0.2", optional = true }
 time = { version = "0.3", default-features = false, features = [
     "formatting",
     "parsing",
@@ -101,7 +101,17 @@ tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = []
+default = ["log-console"]
+log-console = [
+    "tracing-subscriber/env-filter",
+    "tracing-subscriber/json",
+    "tracing-subscriber/ansi",
+]
+log-file = [
+    "tracing-appender",
+    "tracing-subscriber/env-filter",
+    "tracing-subscriber/json",
+]
 tls = ["dep:rustls"]
 dot = ["tls", "rustls-pemfile", "tokio-rustls"]
 # Enable TLS-backed (DoH using axum-server + rustls) server implementation

@@ -7,7 +7,6 @@
 
 use crate::config::LogConfig;
 use anyhow::Result;
-use once_cell::sync::OnceCell;
 use std::fmt;
 use time::{
     format_description::parse as parse_format, format_description::well_known::Rfc3339,
@@ -19,11 +18,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 /// process. The worker guard is stored in a `OnceCell` so it can be initialized
 /// once during `init_logging` and retained to prevent log loss on shutdown.
 #[cfg(feature = "log-file")]
-static FILE_GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
-
-#[cfg(not(feature = "log-file"))]
-// Placeholder to keep API consistent when the `log-file` feature is not enabled.
-static FILE_GUARD: OnceCell<()> = OnceCell::new();
+static FILE_GUARD: once_cell::sync::OnceCell<tracing_appender::non_blocking::WorkerGuard> =
+    once_cell::sync::OnceCell::new();
 
 /// Formatter used to render timestamps according to the configured
 /// `time_format` value in `LogConfig`.
