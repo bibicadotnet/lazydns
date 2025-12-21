@@ -1,0 +1,242 @@
+# Downloader Plugin + Cron Scheduling
+#
+# This configuration demonstrates a lightweight, plugin-based approach
+# for automatically downloading and updating DNS rule files.
+#
+# Architecture:
+#   1. CronPlugin triggers on schedule (daily at 02:05 UTC)
+#   2. CronPlugin invokes the Downloader plugin
+#   3. Downloader downloads files and updates them atomically
+#   4. DomainSet/IPSet/Hosts automatically detect changes and reload
+#
+# Advantages:
+#   - No HTTP server or Admin API overhead
+#   - Pure async Rust operations
+#   - Atomic file operations (temp → rename)
+#   - Automatic reload via file watching
+#   - Simple and straightforward configuration
+
+# ============================================================================
+# PLUGINS CONFIGURATION
+# ============================================================================
+
+plugins:
+  # ========================================================================
+  # Data Providers - Load DNS rule files
+  # ========================================================================
+
+  # Load domain blocklists
+  - tag: domain_reject_list
+    type: domain_set
+    args:
+      files:
+        - "reject-list.txt"
+      auto_reload: true # Automatically reload when file changes
+
+  - tag: domain_gfw_list
+    type: domain_set
+    args:
+      files:
+        - "gfw.txt"
+      auto_reload: true
+
+  - tag: domain_direct_list
+    type: domain_set
+    args:
+      files:
+        - "direct-list.txt"
+      auto_reload: true
+
+  # Load IP blocklists
+  - tag: ip_reject_list
+    type: ip_set
+    args:
+      files:
+        - "reject-ip-list.txt"
+      auto_reload: true
+
+  - tag: ip_proxy_list
+    type: ip_set
+    args:
+      files:
+        - "proxy-ip-list.txt"
+      auto_reload: true
+
+  # Load hosts file
+  - tag: hosts_file
+    type: hosts
+    args:
+      files:
+        - "hosts.txt"
+      auto_reload: true
+
+  # ========================================================================
+  # File Downloader Plugin - Downloads and updates rule files
+  # ========================================================================
+
+  - tag: file_downloader
+    type: downloader
+    args:
+      # List of files to download: {url, path}
+      files:
+        # Domain blocklists
+        - url: "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt"
+          path: "gfw.txt"
+
+        - url: "https://raw.githubusercontent.com/notracking/hosts-blocklists/master/domains.txt"
+          path: "reject-list.txt"
+
+        - url: "https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/accelerated-domains.china.conf"
+          path: "direct-list.txt"
+
+        # IP blocklists (requires specialized processing)
+        - url: "https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt"
+          path: "reject-ip-list.txt"
+
+        - url: "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt"
+          path: "proxy-ip-list.txt"
+
+        # Hosts file (GitHub hosts project)
+        - url: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+          path: "hosts.txt"
+
+      # Download timeout in seconds (per file)
+      timeout_secs: 30
+
+      # Download strategy:
+      #   true  = download all files concurrently (faster but more resource-intensive)
+      #   false = download files sequentially (slower but uses less bandwidth)
+      concurrent: false
+
+  # ========================================================================
+  # Cron Scheduler - Triggers downloader on schedule
+  # ========================================================================
+
+  - tag: auto_update_scheduler
+    type: cron
+    args:
+      # Cron expression: second minute hour day month day-of-week
+      #   "0 5 2 * * *" = every day at 02:05:00 UTC
+      #   "0 0 */6 * * *" = every 6 hours
+      #   "0 0 0 1 * *" = first day of every month at 00:00 UTC
+      cron: "0 5 2 * * *"
+
+      # Action to execute when cron triggers
+      action: invoke_plugin
+
+      # Target plugin to invoke
+      args:
+        plugin: "file_downloader"
+
+  # ========================================================================
+  # Matchers - Check if domain/IP is in blocklists
+  # ========================================================================
+
+  - tag: is_reject_domain
+    type: has_domain_set
+    args:
+      domain_set: ["domain_reject_list"]
+
+  - tag: is_gfw_domain
+    type: has_domain_set
+    args:
+      domain_set: ["domain_gfw_list"]
+
+  - tag: is_direct_domain
+    type: has_domain_set
+    args:
+      domain_set: ["domain_direct_list"]
+
+  - tag: is_reject_ip
+    type: has_ip_set
+    args:
+      ip_set: ["ip_reject_list"]
+
+  - tag: is_proxy_ip
+    type: has_ip_set
+    args:
+      ip_set: ["ip_proxy_list"]
+
+  # ========================================================================
+  # Upstream Servers
+  # ========================================================================
+
+  - tag: upstream_direct
+    type: forward
+    args:
+      upstreams:
+        - addr: "119.29.29.29" # Tencent Public DNS
+        - addr: "180.76.76.76" # Baidu Public DNS
+
+  - tag: upstream_proxy
+    type: forward
+    args:
+      upstreams:
+        - addr: "8.8.8.8" # Google Public DNS
+        - addr: "1.1.1.1" # Cloudflare DNS
+
+  - tag: upstream_reject
+    type: black_hole
+
+  # ========================================================================
+  # Server Plugins - Listen for DNS queries
+  # ========================================================================
+
+  - tag: dns_server_udp
+    type: udp_server
+    args:
+      listen: ":53"
+      exec:
+        - rule: is_reject_domain | is_reject_ip
+          exec: upstream_reject
+
+        - rule: is_direct_domain
+          exec: upstream_direct
+
+        - rule: is_gfw_domain
+          exec: upstream_proxy
+
+        - exec: upstream_direct # Default upstream for non-matched queries
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+log:
+  level: info
+  format: json
+  output:
+    file: "logs/lazydns.log"
+    max_size: 100 # MB
+    max_backups: 7
+    max_age: 30 # days
+
+# ============================================================================
+# FILE UPDATER SCHEDULE DETAILS
+# ============================================================================
+#
+# The scheduler will trigger at:
+#   - Time: 02:05 UTC every day
+#   - Action: Download all files in the files list
+#   - Download Mode: Sequential (one at a time) to avoid bandwidth spikes
+#   - Timeout: 30 seconds per file
+#   - Retry: Built-in retry on network errors
+#
+# After files are downloaded:
+#   1. Files are written to temporary locations
+#   2. Atomically renamed to final paths (no partial files)
+#   3. File watches detect the change automatically
+#   4. DomainSet/IPSet/Hosts reload the new content
+#   5. DNS queries immediately use updated rules
+#
+# Performance Notes:
+#   - With 6 files and sequential mode: ~6-12 seconds typical (varies by file size)
+#   - Concurrent mode: ~2-3 seconds but higher bandwidth usage
+#   - File reloads happen in background, no DNS query interruption
+#   - Failed downloads logged but don't prevent DNS operation
+#
+# For production deployments:
+#   - Monitor logs for download failures: grep "download failed" logs/lazydns.log
+#   - Verify file sizes after update: ls -la *.txt
+#   - Consider downloading during off-peak hours (e.g., 03:05 UTC instead of 02:05)
+#   - Set timeout_secs based on file sizes and network speed
