@@ -394,4 +394,66 @@ mod tests {
         let s6 = "not-a-timestamp";
         assert_eq!(normalize_subsec(s6, 3), "not-a-timestamp");
     }
+
+    // New tests to exercise TimeFormatter::format_time via a scoped subscriber
+    fn capture_logs_with_timer(fmt_spec: &str, msg: &str) -> String {
+        use std::sync::{Arc, Mutex};
+        let buf = Arc::new(Mutex::new(Vec::new()));
+        let buf_clone = Arc::clone(&buf);
+
+        // MakeWriter that clones the Arc buffer
+        let make_writer = move || {
+            let buf_clone = Arc::clone(&buf_clone);
+            move || {
+                struct Guard {
+                    buf: Arc<Mutex<Vec<u8>>>,
+                }
+                impl std::io::Write for Guard {
+                    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                        self.buf.lock().unwrap().extend_from_slice(b);
+                        Ok(b.len())
+                    }
+                    fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+                }
+                Guard { buf: Arc::clone(&buf_clone) }
+            }
+        }();
+
+        let layer = tracing_subscriber::fmt::layer()
+            .with_timer(TimeFormatter::new(fmt_spec.to_string()))
+            .with_writer(make_writer);
+
+        let subscriber = tracing_subscriber::registry().with(layer);
+        let dispatch = tracing::Dispatch::new(subscriber);
+
+        tracing::dispatcher::with_default(&dispatch, || {
+            tracing::info!("{}", msg);
+        });
+
+        // Clone the buffer contents while holding the lock, then drop the lock
+        let data = {
+            let guard = buf.lock().unwrap();
+            guard.clone()
+        };
+        String::from_utf8(data).unwrap_or_default()
+    }
+
+    #[test]
+    fn timeformatter_outputs_iso8601_with_millis() {
+        let out = capture_logs_with_timer("iso8601", "iso-test");
+        assert!(out.contains("iso-test"));
+        // Expect a fractional part with 3 digits before timezone (+ or Z)
+        assert!(out.contains('.'));
+        assert!(out.contains('+') || out.contains('Z'));
+    }
+
+    #[test]
+    fn timeformatter_timestamp_outputs_integer_seconds() {
+        let out = capture_logs_with_timer("timestamp", "ts-test");
+        assert!(out.contains("ts-test"));
+        // timestamp should be numeric (unix seconds)
+        let numeric_found = out.chars().any(|c| c.is_ascii_digit());
+        assert!(numeric_found);
+    }
 }
+

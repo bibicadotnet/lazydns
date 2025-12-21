@@ -141,7 +141,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_spawn_file_watcher_detects_change() {
         let tmp = NamedTempFile::new().unwrap();
         let path = tmp.path().to_path_buf();
@@ -167,7 +166,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_spawn_file_watcher_debounce() {
         let tmp = NamedTempFile::new().unwrap();
         let path = tmp.path().to_path_buf();
