@@ -4,13 +4,13 @@ use crate::plugin::Context;
 use crate::plugin::factory as plugin_factory;
 use crate::plugin::traits::Plugin;
 use async_trait::async_trait;
-use chrono::{Local, Utc};
-use cron::Schedule;
+use cronexpr::{Crontab, FallbackTimezoneOption, ParseOptions, parse_crontab_with};
 use reqwest::Client;
 use serde_yaml::Value;
 use std::any::Any;
 use std::fmt::Debug;
-use std::str::FromStr;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -61,8 +61,8 @@ struct JobHandle {
 #[derive(Debug)]
 enum ScheduleDef {
     Interval(u64),
-    /// Second field: if true, use machine local timezone; otherwise use UTC
-    Cron(Box<Schedule>, bool),
+    /// Stored crontab expression parser (cronexpr::Crontab). Timezone fallback is system local via ParseOptions.
+    Cron(Box<Crontab>),
 }
 
 #[derive(Debug)]
@@ -102,31 +102,40 @@ impl CronPlugin {
                 // determine next delay
                 let delay = match &sched {
                     ScheduleDef::Interval(s) => Duration::from_secs(*s),
-                    ScheduleDef::Cron(schedule, use_local) => {
-                        // compute next occurrence in local timezone (or UTC)
-                        // normalize to UTC so both branches have the same DateTime type
-                        let next = if *use_local {
-                            schedule
-                                .upcoming(Local)
-                                .next()
-                                .map(|dt| dt.with_timezone(&Utc))
-                        } else {
-                            schedule.upcoming(Utc).next()
-                        };
-                        match next {
-                            Some(dt) => {
-                                // normalize both times to UTC for duration calculation
-                                let dt_utc = dt.with_timezone(&Utc);
-                                let now = Utc::now();
-                                let dur = dt_utc.signed_duration_since(now);
-                                if dur.num_milliseconds() <= 0 {
-                                    Duration::from_millis(10)
-                                } else {
-                                    Duration::from_millis(dur.num_milliseconds() as u64)
+                    ScheduleDef::Cron(ct) => {
+                        // compute next occurrence using cronexpr
+                        // use system local time as the reference point
+                        // build RFC3339 start time using `time` crate (local if available, otherwise UTC)
+                        let rfc3339 = OffsetDateTime::now_local()
+                            .unwrap_or_else(|_| OffsetDateTime::now_utc())
+                            .format(&Rfc3339)
+                            .unwrap_or_else(|_| {
+                                OffsetDateTime::now_utc().format(&Rfc3339).unwrap()
+                            });
+                        match ct.find_next(rfc3339.as_str()) {
+                            Ok(mt) => {
+                                // mt to string may include zone suffix like "[Asia/Shanghai]"; strip it
+                                let s = mt.to_string();
+                                let s_trim = s.split('[').next().unwrap_or(&s);
+                                match OffsetDateTime::parse(s_trim, &Rfc3339) {
+                                    Ok(dt) => {
+                                        let now = OffsetDateTime::now_utc();
+                                        let dur = dt - now;
+                                        let ms = dur.whole_milliseconds();
+                                        if ms <= 0 {
+                                            Duration::from_millis(10)
+                                        } else {
+                                            Duration::from_millis(ms as u64)
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!(job=%name, error=%e, "cron: failed to parse next timestamp, stopping job");
+                                        break;
+                                    }
                                 }
                             }
-                            None => {
-                                warn!(job=%name, "cron: no upcoming schedule items, stopping job");
+                            Err(e) => {
+                                warn!(job=%name, error=%e, "cron: no upcoming schedule items, stopping job");
                                 break;
                             }
                         }
@@ -264,8 +273,11 @@ impl Plugin for CronPlugin {
                         if tz_present {
                             warn!(job=%name, "timezone in config ignored; using machine local timezone instead");
                         }
-                        match Schedule::from_str(expr) {
-                            Ok(s) => ScheduleDef::Cron(Box::new(s), tz_present),
+                        // Parse using cronexpr, fallback to system timezone when expression lacks timezone
+                        let mut opts = ParseOptions::default();
+                        opts.fallback_timezone_option = FallbackTimezoneOption::System;
+                        match parse_crontab_with(expr, opts) {
+                            Ok(ct) => ScheduleDef::Cron(Box::new(ct)),
                             Err(e) => {
                                 warn!(job=%name, error=%e, "invalid cron expression, skipping");
                                 continue;

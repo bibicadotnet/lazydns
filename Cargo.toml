@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
@@ -37,13 +37,10 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
 ], optional = true }
 tracing-appender = { version = "0.2", optional = true }
 # time crate is used for constructing UTC fallback for OffsetTime
-time = { version = "0.3", default-features = false, features = [
-    "local-offset",
-], optional = true }
+time = { version = "0.3", default-features = false, optional = true }
 
-# # cron expression parsing for cron plugin
-cron = "0.10"
-chrono = "0.4"
+# cron expression parsing for cron plugin
+cronexpr = { version = "1.4", optional = true }
 
 # Async utilities
 async-trait = "0.1"
@@ -103,7 +100,8 @@ tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = ["log"]
+default = ["log", "cron"]
+cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
 log = [
     "tracing-subscriber/env-filter",
     "tracing-subscriber/json",
