@@ -1,5 +1,8 @@
 # Target directory
+# Ignore build artifacts by default, but allow prebuilt artifacts under target/bin/
 target/
+!target/bin/
+!target/bin/**
 
 # Git
 .git/
@@ -10,7 +13,8 @@ target/
 docs/
 
 # Examples and tests
-examples/
+!examples/
+!examples/**
 tests/
 benches/
 
