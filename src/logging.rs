@@ -293,8 +293,9 @@ mod tests {
         // This test compiles and runs with default features (which do not include
         // `log-file`). When `cfg.file` is set but the feature is disabled, we
         // should not attempt to open files and initialization should succeed.
+        let tmp_path = std::env::temp_dir().join("should_not_be_opened.log");
         let cfg = LogConfig {
-            file: Some("/tmp/should_not_be_opened.log".to_string()),
+            file: Some(tmp_path.to_string_lossy().to_string()),
             ..Default::default()
         };
 
