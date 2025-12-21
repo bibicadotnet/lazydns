@@ -69,8 +69,16 @@ pub(crate) fn effective_log_spec(cfg: &LogConfig, cli_verbose: Option<u8>) -> St
 /// propagate from application startup.
 #[cfg(feature = "tracing-subscriber")]
 pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
-    // Build EnvFilter from effective spec
-    let filter = EnvFilter::try_new(effective_log_spec(cfg, cli_verbose))?;
+    // Build EnvFilter from effective spec. If parsing fails (e.g., invalid RUST_LOG),
+    // fall back to a conservative filter based on the configured level and log a warning.
+    let spec = effective_log_spec(cfg, cli_verbose);
+    let filter = match EnvFilter::try_new(spec.clone()) {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::warn!(error = %e, spec = %spec, "invalid log spec; falling back to config level");
+            EnvFilter::new(format!("warn,lazydns={}", cfg.level))
+        }
+    };
 
     let registry = tracing_subscriber::registry().with(filter);
 
