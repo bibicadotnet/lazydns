@@ -17,9 +17,33 @@ use lazydns::logging;
 use lazydns::plugin::PluginBuilder;
 use lazydns::server::ServerLauncher;
 use std::sync::Arc;
+#[cfg(unix)]
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::time::{timeout, Duration};
 use tracing::{debug, error, info};
 
 // Command-line arguments are parsed in `src/cli.rs` using `pico-args`.
+
+async fn wait_for_shutdown_signal() -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        let mut sigterm = signal(SignalKind::terminate())?;
+        let mut sighup = signal(SignalKind::hangup())?;
+
+        tokio::select! {
+            res = tokio::signal::ctrl_c() => { res?; },
+            _ = sigterm.recv() => {},
+            _ = sighup.recv() => {},
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c().await?;
+    }
+
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -116,13 +140,15 @@ async fn main() -> anyhow::Result<()> {
 
     info!("lazydns initialized successfully");
 
-    // Keep the process running
-    tokio::signal::ctrl_c().await?;
-    info!("Shutting down...");
+    // Wait for shutdown signal (Ctrl-C, SIGTERM, SIGHUP)
+    wait_for_shutdown_signal().await?;
+    info!("Shutdown signal received, beginning graceful shutdown...");
 
-    // Shutdown all plugins that implement the Shutdown trait
-    if let Err(e) = builder.shutdown_all().await {
-        error!("Error during plugin shutdown: {}", e);
+    // Shutdown all plugins that implement the Shutdown trait, with timeout
+    match timeout(Duration::from_secs(30), builder.shutdown_all()).await {
+        Ok(Ok(())) => info!("Shutdown finished successfully"),
+        Ok(Err(e)) => error!("Error during plugin shutdown: {}", e),
+        Err(_) => error!("Shutdown timed out after 30s"),
     }
 
     info!("lazydns exited normally");

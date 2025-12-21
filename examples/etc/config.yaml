@@ -1,18 +1,24 @@
 log:
-  level: trace            # trace | debug | info |warn | error
-  format: text            # text|json
-  time_format: local      # local | iso8601 | timestamp | custom:<fmt> | custom_local:<fmt>
-  # file: test.log          # optional
-  # rotate: daily           # daily | hourly | never (by default)
-  # rotate_dir: /var/log/lazydns  # optional; overrides parent dir of `file`
+  # * trace | debug | info |warn | error
+  level: debug
+  # * text|json
+  format: text
+  # * local | iso8601 | timestamp | custom:<fmt> | custom_local:<fmt>
+  time_format: local
+  # * optional
+  # file: test.log
+  # * daily | hourly | never (by default)
+  # rotate: daily
+  # * optional; overrides parent dir of `file`
+  # rotate_dir: /var/log/lazydns
 
 plugins:
   # 缓存
   - tag: cache
     type: cache
     args:
-      size: 10240
-      lazy_cache_ttl: 86400
+      size: 1024
+      negative_cache: true
 
   # 重定向域名
   - tag: redirect
@@ -65,7 +71,7 @@ plugins:
         - direct-list.txt
         - apple-cn.txt
         - my-domain-list.txt
-  
+
   # 定义gfw域名列表
   - tag: gfw-domain-list
     type: domain_set
@@ -94,7 +100,7 @@ plugins:
       passwd: "Mosisgood"
       mask4: 24
       mask6: 32
-      
+
   # fallback的primary服务器, 返回国内ip则accept, 返回非国内ip则drop
   - tag: local_sequence
     type: sequence
@@ -110,8 +116,8 @@ plugins:
     args:
       - exec: $forward_remote
       # - matches: "!resp_ip $local_ip"
-        # exec: ipset gfwlist,inet,32
-        # exec: ros_addrlist_gfwlist
+      # exec: ipset gfwlist,inet,32
+      # exec: ros_addrlist_gfwlist
       - exec: accept
 
   # fallback sequence
@@ -132,7 +138,6 @@ plugins:
         exec: $add_gfwlist
       - exec: accept
 
-
   # 主运行序列
   - tag: main_sequence
     type: sequence
@@ -151,7 +156,7 @@ plugins:
 
       - exec: prefer_ipv4
 
-      # - exec: $redirect
+      - exec: $redirect
 
       # 动态域名跳过缓存
       - matches: "!qname 00006801.com"
@@ -173,7 +178,6 @@ plugins:
 
       # 其他未知域名
       - exec: $fallback
-
 
   # 启动监听服务
   - tag: udp_server

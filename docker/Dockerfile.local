@@ -1,0 +1,25 @@
+FROM alpine:3.23
+LABEL maintainer="lazywalker <lazywalkerz@gmail.com>"
+
+ARG TARGETPLATFORM
+
+RUN apk update
+RUN apk --no-cache add curl tzdata
+
+ADD examples/etc /app
+ADD docker/entrypoint.sh /app/entrypoint.sh
+ADD target/bin/$TARGETPLATFORM/lazydns /app/lazydns
+RUN chmod +x /app/update
+
+RUN rm /app/README.md /app/config-simple.yaml /app/*.log
+RUN sed -i 's/5354/53/g' /app/config.yaml
+RUN sed -i 's/format: text/format: json/g' /app/config.yaml
+
+ENV TZ=Asia/Shanghai \
+    CRON="0 2 * * *"
+
+WORKDIR /app
+EXPOSE 53/tcp 53/udp
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["/app/lazydns", "start", "-d", "/app"]
