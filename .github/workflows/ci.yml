@@ -3,33 +3,33 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [ master ]
+    branches: [master]
     paths:
-      - '**/*.rs'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'build.rs'
-      - '**/src/**'
-      - 'tests/**'
-      - 'benches/**'
-      - 'examples/**'
-      - 'rust-toolchain'
-      - 'rust-toolchain.toml'
-      - '.cargo/**'
+      - "**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "**/src/**"
+      - "tests/**"
+      - "benches/**"
+      - "examples/**"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
   pull_request:
-    branches: [ master ]
+    branches: [master]
     paths:
-      - '**/*.rs'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'build.rs'
-      - '**/src/**'
-      - 'tests/**'
-      - 'benches/**'
-      - 'examples/**'
-      - 'rust-toolchain'
-      - 'rust-toolchain.toml'
-      - '.cargo/**'
+      - "**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "**/src/**"
+      - "tests/**"
+      - "benches/**"
+      - "examples/**"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
 
 env:
   CARGO_TERM_COLOR: always
@@ -51,52 +51,61 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ipset nftables iproute2 iptables pkg-config libpcap-dev libnftnl11 libnftables1
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
           components: rustfmt, clippy
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Check formatting
         run: cargo fmt -- --check
-      
-      - name: Run clippy
+
+      - name: Run clippy (all-features)
         run: cargo clippy --all-targets --all-features -- -D warnings
-      
-      - name: Build
+
+      - name: Build (all-features)
         run: cargo build --verbose --all-features
-      
-      - name: Run tests
+
+      - name: Run tests (all-features)
         run: cargo test --verbose --all-features
+
+      - name: Run clippy (no-default-features)
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
+
+      - name: Build (no-default-features)
+        run: cargo build --verbose --no-default-features
+
+      - name: Run tests (no-default-features)
+        run: cargo test --verbose --no-default-features
 
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Install cargo-llvm-cov
         run: |
           rustup component add llvm-tools-preview
@@ -106,7 +115,7 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ipset nftables iproute2 iptables pkg-config libpcap-dev libnftnl11 libnftables1
-      
+
       - name: Generate coverage report (llvm-cov)
         run: |
           # Generate coverage report in Codecov JSON format
@@ -116,7 +125,7 @@ jobs:
           # cargo-llvm-cov uses LLVM's native coverage instrumentation which accurately
           # tracks coverage across subprocesses, unlike tarpaulin
           cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
-      
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -130,10 +139,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Check documentation
         run: cargo doc --no-deps --all-features
         env:
