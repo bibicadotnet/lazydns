@@ -422,6 +422,20 @@ mod tests {
         assert_eq!(normalize_subsec(s6, 3), "not-a-timestamp");
     }
 
+    #[test]
+    fn init_logging_ignores_file_when_feature_disabled() {
+        // This test compiles and runs with default features (which do not include
+        // `log-file`). When `cfg.file` is set but the feature is disabled, we
+        // should not attempt to open files and initialization should succeed.
+        let cfg = LogConfig {
+            file: Some("/tmp/should_not_be_opened.log".to_string()),
+            ..Default::default()
+        };
+
+        // If the feature is disabled this should return Ok without touching the filesystem.
+        assert!(init_logging(&cfg, None).is_ok());
+    }
+
     // New tests to exercise TimeFormatter::format_time via a scoped subscriber
     fn capture_logs_with_timer(fmt_spec: &str, msg: &str) -> String {
         use std::sync::{Arc, Mutex};
