@@ -1,8 +1,9 @@
 use notify::{Event, EventKind, RecursiveMode, Watcher};
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, error, info, warn};
 
 /// Spawn a generic file watcher task.
@@ -15,7 +16,7 @@ pub fn spawn_file_watcher<F>(
     name: impl Into<String>,
     files: Vec<PathBuf>,
     debounce_ms: u64,
-    mut on_reload: F,
+    on_reload: F,
 ) where
     F: FnMut(&PathBuf, &Vec<PathBuf>) + Send + 'static,
 {
@@ -50,8 +51,12 @@ pub fn spawn_file_watcher<F>(
         let canonical_files: Vec<PathBuf> =
             files.iter().filter_map(|p| p.canonicalize().ok()).collect();
 
-        // Debounce state
-        let mut last_reload: HashMap<PathBuf, Instant> = HashMap::new();
+        // Debounce scheduling: we keep a pending set to ensure only one callback
+        // is fired per path within the debounce window. This avoids races with
+        // delayed filesystem events on CI by scheduling the callback after the
+        // debounce interval instead of calling it immediately.
+        let pending: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
+        let on_reload_mutex: Arc<Mutex<F>> = Arc::new(Mutex::new(on_reload));
 
         // Watch provided files
         for file_path in &files {
@@ -76,37 +81,56 @@ pub fn spawn_file_watcher<F>(
                         .and_then(|n| n.to_str())
                         .unwrap_or("unknown");
 
-                    // Debounce rapid reloads per-file
-                    let now = Instant::now();
                     if let Some(cp) = canonical_path.as_ref() {
-                        if let Some(prev) = last_reload.get(cp)
-                            && now.duration_since(*prev) < Duration::from_millis(debounce_ms)
-                        {
-                            debug!(name = %name, file = file_name, "skipping reload due to debounce");
+                        // If there's already a pending debounce for this file, skip
+                        // scheduling another one.
+                        let cp_clone = cp.clone();
+                        let mut guard = pending.lock().await;
+                        if guard.contains(&cp_clone) {
+                            debug!(name = %name, file = file_name, "skipping reload due to debounce (pending)");
                             continue;
                         }
-                        last_reload.insert(cp.clone(), now);
-                    }
 
-                    // Handle file removal/rename: attempt to re-watch
-                    if matches!(event.kind, EventKind::Remove(_)) {
-                        info!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
-                        tokio::time::sleep(Duration::from_millis(50)).await;
-                        if path.exists() {
-                            if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
-                                warn!(name = %name, file = file_name, error = %e, "failed to re-watch file");
-                            } else {
-                                info!(name = %name, file = file_name, "successfully re-added file to watch list");
+                        // Insert into pending set and schedule a debounced callback
+                        guard.insert(cp_clone.clone());
+                        drop(guard);
+
+                        // Handle file removal/rename immediately (attempt to re-watch)
+                        if matches!(event.kind, EventKind::Remove(_)) {
+                            info!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                            if path.exists() {
+                                if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
+                                    warn!(name = %name, file = file_name, error = %e, "failed to re-watch file");
+                                } else {
+                                    info!(name = %name, file = file_name, "successfully re-added file to watch list");
+                                }
                             }
                         }
+
+                        // Clone for the spawned task
+                        let pending_clone = Arc::clone(&pending);
+                        let on_reload_clone = Arc::clone(&on_reload_mutex);
+                        let files_clone = files.clone();
+                        let path_clone = path.clone();
+
+                        tokio::spawn(async move {
+                            tokio::time::sleep(Duration::from_millis(debounce_ms)).await;
+
+                            // Invoke the callback under mutex
+                            let mut f = on_reload_clone.lock().await;
+                            (f)(&path_clone, &files_clone);
+
+                            // Remove pending marker
+                            let mut guard = pending_clone.lock().await;
+                            guard.remove(&cp_clone);
+                        });
+
+                        info!(name = %name, file = file_name, "scheduled reload: invoking callback (debounced)");
+
+                        // Only reload once per event batch
+                        break;
                     }
-
-                    // Notify caller to perform reload
-                    info!(name = %name, file = file_name, "scheduled reload: invoking callback");
-                    (on_reload)(path, &files);
-
-                    // Only reload once per event batch
-                    break;
                 }
             }
         }
@@ -118,8 +142,10 @@ pub fn spawn_file_watcher<F>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Instant;
     use tempfile::NamedTempFile;
     use tokio::sync::Notify;
     use tokio::time::{Duration, timeout};
