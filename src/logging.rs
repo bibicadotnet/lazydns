@@ -18,7 +18,12 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 /// Guard to hold the background log file worker alive for the lifetime of the
 /// process. The worker guard is stored in a `OnceCell` so it can be initialized
 /// once during `init_logging` and retained to prevent log loss on shutdown.
+#[cfg(feature = "log-file")]
 static FILE_GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
+
+#[cfg(not(feature = "log-file"))]
+// Placeholder to keep API consistent when the `log-file` feature is not enabled.
+static FILE_GUARD: OnceCell<()> = OnceCell::new();
 
 /// Formatter used to render timestamps according to the configured
 /// `time_format` value in `LogConfig`.
@@ -224,41 +229,52 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
         }
 
         if let Some(path) = &cfg.file {
-            match cfg.rotate.as_str() {
-                "daily" | "hourly" => {
-                    let rotation_dir = cfg
-                        .rotate_dir
-                        .as_deref()
-                        .or_else(|| std::path::Path::new(path).parent().and_then(|p| p.to_str()))
-                        .unwrap_or(".");
+            #[cfg(feature = "log-file")]
+            {
+                match cfg.rotate.as_str() {
+                    "daily" | "hourly" => {
+                        let rotation_dir = cfg
+                            .rotate_dir
+                            .as_deref()
+                            .or_else(|| {
+                                std::path::Path::new(path).parent().and_then(|p| p.to_str())
+                            })
+                            .unwrap_or(".");
 
-                    let file_name = std::path::Path::new(path)
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("log");
+                        let file_name = std::path::Path::new(path)
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("log");
 
-                    let rolling = if cfg.rotate == "daily" {
-                        tracing_appender::rolling::daily(rotation_dir, file_name)
-                    } else {
-                        tracing_appender::rolling::hourly(rotation_dir, file_name)
-                    };
+                        let rolling = if cfg.rotate == "daily" {
+                            tracing_appender::rolling::daily(rotation_dir, file_name)
+                        } else {
+                            tracing_appender::rolling::hourly(rotation_dir, file_name)
+                        };
 
-                    let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
+                        let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
 
-                    let _ = FILE_GUARD.set(guard);
-                    let _ = registry.with(layer.with_writer(non_blocking)).try_init();
+                        let _ = FILE_GUARD.set(guard);
+                        let _ = registry.with(layer.with_writer(non_blocking)).try_init();
+                    }
+                    _ => {
+                        let file = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(path)?;
+
+                        let (non_blocking, guard) = tracing_appender::non_blocking(file);
+                        let _ = FILE_GUARD.set(guard);
+
+                        let _ = registry.with(layer.with_writer(non_blocking)).try_init();
+                    }
                 }
-                _ => {
-                    let file = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(path)?;
+            }
 
-                    let (non_blocking, guard) = tracing_appender::non_blocking(file);
-                    let _ = FILE_GUARD.set(guard);
-
-                    let _ = registry.with(layer.with_writer(non_blocking)).try_init();
-                }
+            #[cfg(not(feature = "log-file"))]
+            {
+                tracing::warn!(file = %path, "'log-file' feature not enabled; ignoring file logging configuration");
+                let _ = registry.with(layer).try_init();
             }
         } else {
             let _ = registry.with(layer).try_init();
@@ -273,41 +289,52 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
         }
 
         if let Some(path) = &cfg.file {
-            match cfg.rotate.as_str() {
-                "daily" | "hourly" => {
-                    let rotation_dir = cfg
-                        .rotate_dir
-                        .as_deref()
-                        .or_else(|| std::path::Path::new(path).parent().and_then(|p| p.to_str()))
-                        .unwrap_or(".");
+            #[cfg(feature = "log-file")]
+            {
+                match cfg.rotate.as_str() {
+                    "daily" | "hourly" => {
+                        let rotation_dir = cfg
+                            .rotate_dir
+                            .as_deref()
+                            .or_else(|| {
+                                std::path::Path::new(path).parent().and_then(|p| p.to_str())
+                            })
+                            .unwrap_or(".");
 
-                    let file_name = std::path::Path::new(path)
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("log");
+                        let file_name = std::path::Path::new(path)
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("log");
 
-                    let rolling = if cfg.rotate == "daily" {
-                        tracing_appender::rolling::daily(rotation_dir, file_name)
-                    } else {
-                        tracing_appender::rolling::hourly(rotation_dir, file_name)
-                    };
+                        let rolling = if cfg.rotate == "daily" {
+                            tracing_appender::rolling::daily(rotation_dir, file_name)
+                        } else {
+                            tracing_appender::rolling::hourly(rotation_dir, file_name)
+                        };
 
-                    let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
+                        let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
 
-                    let _ = FILE_GUARD.set(guard);
-                    let _ = registry.with(layer.with_writer(non_blocking)).try_init();
+                        let _ = FILE_GUARD.set(guard);
+                        let _ = registry.with(layer.with_writer(non_blocking)).try_init();
+                    }
+                    _ => {
+                        let file = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(path)?;
+
+                        let (non_blocking, guard) = tracing_appender::non_blocking(file);
+                        let _ = FILE_GUARD.set(guard);
+
+                        let _ = registry.with(layer.with_writer(non_blocking)).try_init();
+                    }
                 }
-                _ => {
-                    let file = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(path)?;
+            }
 
-                    let (non_blocking, guard) = tracing_appender::non_blocking(file);
-                    let _ = FILE_GUARD.set(guard);
-
-                    let _ = registry.with(layer.with_writer(non_blocking)).try_init();
-                }
+            #[cfg(not(feature = "log-file"))]
+            {
+                tracing::warn!(file = %path, "'log-file' feature not enabled; ignoring file logging configuration");
+                let _ = registry.with(layer).try_init();
             }
         } else {
             let _ = registry.with(layer).try_init();
