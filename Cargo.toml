@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.1.30"
+version = "0.2.1"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
@@ -15,6 +15,7 @@ tokio = { version = "1.35", default-features = false, features = [
     "rt",
     "signal",
     "macros",
+    "process",
 ] }
 
 # DNS protocol
@@ -39,6 +40,11 @@ tracing-appender = { version = "0.2", optional = true }
 time = { version = "0.3", default-features = false, features = [
     "local-offset",
 ], optional = true }
+
+# # cron expression parsing for cron plugin
+cron = "0.10"
+chrono-tz = "0.6"
+chrono = "0.4"
 
 # Async utilities
 async-trait = "0.1"

@@ -31,6 +31,7 @@
 
 pub mod acl;
 pub mod cache;
+pub mod cron;
 pub mod dataset;
 pub mod domain_matcher;
 pub mod executable;
@@ -78,6 +79,7 @@ pub use executable::{
 };
 
 // Re-export server plugins
+pub use cron::CronPlugin;
 pub use server::{TcpServerPlugin, UdpServerPlugin};
 
 // Re-add tests module at file end to satisfy lints

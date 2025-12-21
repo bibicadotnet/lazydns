@@ -439,6 +439,8 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::server::UDP_SERVER_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::server::TCP_SERVER_PLUGIN_FACTORY);
 
+        Lazy::force(&crate::plugins::cron::CRON_PLUGIN_FACTORY);
+
         // TODO: DoH, Dot, DoQ and other plugins
 
         // Initialize the factory system
