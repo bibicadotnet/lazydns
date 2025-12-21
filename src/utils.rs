@@ -156,11 +156,23 @@ mod tests {
             n.notify_one();
         });
 
-        // Trigger a change by writing (some platforms emit Create/Modify for write)
-        std::fs::write(&path, b"hello\n").unwrap();
+        // Trigger a change by writing and syncing to ensure the event is emitted reliably
+        {
+            use std::fs::OpenOptions;
+            use std::io::Write;
 
-        // Wait for callback (timeout to avoid flakiness)
-        let res = timeout(Duration::from_secs(4), notify.notified()).await;
+            let mut f = OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .create(true)
+                .open(&path)
+                .unwrap();
+            f.write_all(b"hello\n").unwrap();
+            f.sync_all().unwrap();
+        }
+
+        // Wait for callback (increase timeout to accommodate slower CI / coverage runners)
+        let res = timeout(Duration::from_secs(10), notify.notified()).await;
         assert!(res.is_ok(), "timeout waiting for file watcher callback");
         assert!(counter.load(Ordering::SeqCst) >= 1);
     }
