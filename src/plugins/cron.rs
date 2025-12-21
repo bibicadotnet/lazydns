@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use cronexpr::{Crontab, FallbackTimezoneOption, ParseOptions, parse_crontab_with};
 use reqwest::Client;
 use serde_yaml::Value;
-use std::any::Any;
 use std::fmt::Debug;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
@@ -223,14 +222,13 @@ impl Default for CronPlugin {
 
 #[async_trait]
 impl Plugin for CronPlugin {
-    async fn execute(&self, _ctx: &mut Context) -> Result<()> {
-        Ok(())
-    }
     fn name(&self) -> &str {
         "cron"
     }
-    fn as_any(&self) -> &dyn Any {
-        self
+
+    /// Cron plugin does not execute per DNS request
+    fn should_execute(&self, _ctx: &Context) -> bool {
+        false
     }
 
     async fn shutdown(&self) -> Result<()> {
