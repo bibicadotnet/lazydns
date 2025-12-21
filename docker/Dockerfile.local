@@ -13,7 +13,6 @@ RUN chmod +x /app/update
 
 RUN rm /app/README.md /app/config-simple.yaml /app/*.log
 RUN sed -i 's/5354/53/g' /app/config.yaml
-RUN sed -i 's/format: text/format: json/g' /app/config.yaml
 
 ENV TZ=Asia/Shanghai \
     CRON="0 2 * * *"
