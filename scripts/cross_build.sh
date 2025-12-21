@@ -140,5 +140,6 @@ fi
 mkdir -p "target/bin/$PLATFORM"
 cp "$SRC" "target/bin/$PLATFORM/lazydns${EXE_SUFFIX}"
 chmod +x "target/bin/$PLATFORM/lazydns${EXE_SUFFIX}" 2>/dev/null || true
+upx -q --best --lzma "target/bin/$PLATFORM/lazydns${EXE_SUFFIX}"
 
 echo "Wrote target/bin/$PLATFORM/lazydns${EXE_SUFFIX}"

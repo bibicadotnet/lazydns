@@ -156,6 +156,9 @@ mod tests {
             n.notify_one();
         });
 
+        // Give watcher a short moment to start watching; avoids races on CI
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
         // Trigger a change by writing and syncing to ensure the event is emitted reliably
         {
             use std::fs::OpenOptions;
@@ -172,7 +175,7 @@ mod tests {
         }
 
         // Wait for callback (increase timeout to accommodate slower CI / coverage runners)
-        let res = timeout(Duration::from_secs(10), notify.notified()).await;
+        let res = timeout(Duration::from_secs(15), notify.notified()).await;
         assert!(res.is_ok(), "timeout waiting for file watcher callback");
         assert!(counter.load(Ordering::SeqCst) >= 1);
     }
@@ -198,6 +201,9 @@ mod tests {
                 n.notify_one();
             },
         );
+
+        // Give watcher a short moment to start watching
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Trigger two quick successive changes by writing (replace content)
         std::fs::write(&path, b"one\n").unwrap();
