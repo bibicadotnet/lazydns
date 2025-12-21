@@ -2,10 +2,10 @@
 //!
 //! Plugins that start DNS servers (UDP, TCP) and handle incoming queries.
 
+use crate::Result;
 use crate::dns::Message;
 use crate::plugin::{Context, Plugin, Registry};
 use crate::server::{RequestHandler, ServerConfig, TcpServer, UdpServer};
-use crate::Result;
 use async_trait::async_trait;
 use std::net::SocketAddr;
 use std::sync::Arc;

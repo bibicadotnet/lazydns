@@ -29,11 +29,11 @@
 //! # }
 //! ```
 
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::{Message, Question, RData, RecordType, ResourceRecord};
 use crate::error::Error;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -324,10 +324,10 @@ impl HostsPlugin {
                     }
                 }
 
-                if !combined.is_empty() {
-                    if let Err(e) = hosts.load_from_string(&combined) {
-                        warn!(error = %e, "Failed to parse hosts file during auto-reload");
-                    }
+                if !combined.is_empty()
+                    && let Err(e) = hosts.load_from_string(&combined)
+                {
+                    warn!(error = %e, "Failed to parse hosts file during auto-reload");
                 }
 
                 let duration = start.elapsed();

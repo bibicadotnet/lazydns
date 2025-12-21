@@ -1,6 +1,6 @@
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use ipnet::IpNet;
 use parking_lot::RwLock;
@@ -306,10 +306,9 @@ impl crate::plugin::traits::Matcher for IpSetPlugin {
             for record in response.answers() {
                 if let Some(ip) =
                     crate::plugins::ip_matcher::IpMatcherPlugin::extract_ip(record.rdata())
+                    && self.matches(&ip)
                 {
-                    if self.matches(&ip) {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }

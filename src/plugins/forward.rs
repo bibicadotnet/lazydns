@@ -4,10 +4,10 @@
 //! within the plugin chain. It supports multiple upstreams with various load
 //! balancing strategies, health checks, failover, and concurrent queries.
 
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::Message;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use reqwest::Client as HttpClient;
 use serde_yaml::Value;
@@ -16,10 +16,10 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tokio::net::UdpSocket;
-use tokio::time::{timeout, Duration, Instant};
+use tokio::time::{Duration, Instant, timeout};
 use tracing::{debug, error, trace, warn};
 
 /// Load balancing strategy for upstream selection
@@ -451,7 +451,7 @@ impl ForwardBuilder {
                         _ => {
                             return Err(crate::Error::Config(
                                 "upstreams must be array of strings or mappings".to_string(),
-                            ))
+                            ));
                         }
                     }
                 }
@@ -459,7 +459,7 @@ impl ForwardBuilder {
             _ => {
                 return Err(crate::Error::Config(
                     "upstreams must be an array".to_string(),
-                ))
+                ));
             }
         }
 
@@ -979,11 +979,11 @@ mod tests {
         // Verify the A record we injected
         let mut found = false;
         for rr in resp.answers() {
-            if rr.rtype() == RecordType::A {
-                if let RData::A(ip) = rr.rdata() {
-                    assert_eq!(ip.to_string(), "1.2.3.4");
-                    found = true;
-                }
+            if rr.rtype() == RecordType::A
+                && let RData::A(ip) = rr.rdata()
+            {
+                assert_eq!(ip.to_string(), "1.2.3.4");
+                found = true;
             }
         }
         assert!(found, "A record from mocked upstream not found");
@@ -1104,10 +1104,10 @@ mod tests {
 
                 let mut content_length = 0usize;
                 for line in headers.lines() {
-                    if line.to_lowercase().starts_with("content-length:") {
-                        if let Some(v) = line.split(':').nth(1) {
-                            content_length = v.trim().parse().unwrap_or(0);
-                        }
+                    if line.to_lowercase().starts_with("content-length:")
+                        && let Some(v) = line.split(':').nth(1)
+                    {
+                        content_length = v.trim().parse().unwrap_or(0);
                     }
                 }
 
@@ -1173,11 +1173,11 @@ mod tests {
 
         let mut found = false;
         for rr in resp.answers() {
-            if rr.rtype() == RecordType::A {
-                if let RData::A(ip) = rr.rdata() {
-                    assert_eq!(ip.to_string(), "9.9.9.9");
-                    found = true;
-                }
+            if rr.rtype() == RecordType::A
+                && let RData::A(ip) = rr.rdata()
+            {
+                assert_eq!(ip.to_string(), "9.9.9.9");
+                found = true;
             }
         }
         assert!(found, "A record from DoH upstream not found");
@@ -1208,8 +1208,8 @@ mod tests {
     #[cfg(any(feature = "doh", feature = "dot"))]
     async fn test_forward_plugin_doh_https_post_with_self_signed_cert() {
         use rcgen::generate_simple_self_signed;
-        use rustls::pki_types::{CertificateDer, PrivateKeyDer};
         use rustls::ServerConfig;
+        use rustls::pki_types::{CertificateDer, PrivateKeyDer};
         use std::sync::Arc;
         use tokio_rustls::TlsAcceptor;
 
@@ -1232,65 +1232,66 @@ mod tests {
         let local_addr = listener.local_addr().unwrap();
 
         let server_task = tokio::spawn(async move {
-            if let Ok((socket, _)) = listener.accept().await {
-                if let Ok(mut tls_stream) = acceptor.accept(socket).await {
-                    let mut buf = vec![0u8; 8192];
-                    let n = tls_stream.read(&mut buf).await.unwrap_or(0);
-                    let req = String::from_utf8_lossy(&buf[..n]);
+            if let Ok((socket, _)) = listener.accept().await
+                && let Ok(mut tls_stream) = acceptor.accept(socket).await
+            {
+                let mut buf = vec![0u8; 8192];
+                let n = tls_stream.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
 
-                    let parts: Vec<&str> = req.split("\r\n\r\n").collect();
-                    if parts.len() < 2 {
-                        return;
-                    }
-                    let headers = parts[0];
-                    let mut body = parts[1].as_bytes().to_vec();
+                let parts: Vec<&str> = req.split("\r\n\r\n").collect();
+                if parts.len() < 2 {
+                    return;
+                }
+                let headers = parts[0];
+                let mut body = parts[1].as_bytes().to_vec();
 
-                    let mut content_length = 0usize;
-                    for line in headers.lines() {
-                        if line.to_lowercase().starts_with("content-length:") {
-                            if let Some(v) = line.split(':').nth(1) {
-                                content_length = v.trim().parse().unwrap_or(0);
-                            }
-                        }
-                    }
-
-                    while body.len() < content_length {
-                        let mut more = vec![0u8; 1024];
-                        let m = tls_stream.read(&mut more).await.unwrap_or(0);
-                        if m == 0 {
-                            break;
-                        }
-                        body.extend_from_slice(&more[..m]);
-                    }
-
-                    if let Ok(req_msg) =
-                        Forward::parse_message(&body[..content_length.min(body.len())])
+                let mut content_length = 0usize;
+                for line in headers.lines() {
+                    if line.to_lowercase().starts_with("content-length:")
+                        && let Some(v) = line.split(':').nth(1)
                     {
-                        let mut resp = req_msg.clone();
-                        resp.set_response(true);
-                        resp.add_answer(ResourceRecord::new(
-                            req_msg.questions()[0].qname().to_string(),
-                            RecordType::A,
-                            RecordClass::IN,
-                            60,
-                            RData::A("4.4.4.4".parse().unwrap()),
-                        ));
-                        resp.set_id(req_msg.id());
+                        content_length = v.trim().parse().unwrap_or(0);
+                    }
+                }
 
-                        if let Ok(data) = Forward::serialize_message(&resp) {
-                            let resp_hdr = format!(
-                                "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
-                                data.len()
-                            );
-                            let _ = tls_stream.write_all(resp_hdr.as_bytes()).await;
-                            let _ = tls_stream.write_all(&data).await;
-                        }
+                while body.len() < content_length {
+                    let mut more = vec![0u8; 1024];
+                    let m = tls_stream.read(&mut more).await.unwrap_or(0);
+                    if m == 0 {
+                        break;
+                    }
+                    body.extend_from_slice(&more[..m]);
+                }
+
+                if let Ok(req_msg) = Forward::parse_message(&body[..content_length.min(body.len())])
+                {
+                    let mut resp = req_msg.clone();
+                    resp.set_response(true);
+                    resp.add_answer(ResourceRecord::new(
+                        req_msg.questions()[0].qname().to_string(),
+                        RecordType::A,
+                        RecordClass::IN,
+                        60,
+                        RData::A("4.4.4.4".parse().unwrap()),
+                    ));
+                    resp.set_id(req_msg.id());
+
+                    if let Ok(data) = Forward::serialize_message(&resp) {
+                        let resp_hdr = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
+                            data.len()
+                        );
+                        let _ = tls_stream.write_all(resp_hdr.as_bytes()).await;
+                        let _ = tls_stream.write_all(&data).await;
                     }
                 }
             }
         });
 
-        std::env::set_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT", "1");
+        unsafe {
+            std::env::set_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT", "1");
+        }
 
         let url = format!("https://localhost:{}/dns-query", local_addr.port());
         let core = ForwardBuilder::new()
@@ -1320,17 +1321,19 @@ mod tests {
 
         let mut found = false;
         for rr in resp.answers() {
-            if rr.rtype() == RecordType::A {
-                if let RData::A(ip) = rr.rdata() {
-                    assert_eq!(ip.to_string(), "4.4.4.4");
-                    found = true;
-                }
+            if rr.rtype() == RecordType::A
+                && let RData::A(ip) = rr.rdata()
+            {
+                assert_eq!(ip.to_string(), "4.4.4.4");
+                found = true;
             }
         }
         assert!(found, "A record from DoH HTTPS upstream not found");
 
         let _ = server_task.await;
-        std::env::remove_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT");
+        unsafe {
+            std::env::remove_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT");
+        }
     }
 
     /// Spawn a minimal HTTP DoH server that responds with a single A record.
@@ -1354,10 +1357,10 @@ mod tests {
 
                 let mut content_length = 0usize;
                 for line in headers.lines() {
-                    if line.to_lowercase().starts_with("content-length:") {
-                        if let Some(v) = line.split(':').nth(1) {
-                            content_length = v.trim().parse().unwrap_or(0);
-                        }
+                    if line.to_lowercase().starts_with("content-length:")
+                        && let Some(v) = line.split(':').nth(1)
+                    {
+                        content_length = v.trim().parse().unwrap_or(0);
                     }
                 }
 
@@ -1385,9 +1388,9 @@ mod tests {
 
                     if let Ok(data) = Forward::serialize_message(&resp) {
                         let resp_hdr = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
-                        data.len()
-                    );
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
+                            data.len()
+                        );
                         let _ = socket.write_all(resp_hdr.as_bytes()).await;
                         let _ = socket.write_all(&data).await;
                     }
@@ -1403,12 +1406,14 @@ mod tests {
     /// Spawn a minimal HTTPS DoH server using a self-signed certificate.
     async fn spawn_doh_https_server(response_ip: &str) -> (String, tokio::task::JoinHandle<()>) {
         use rcgen::generate_simple_self_signed;
-        use rustls::pki_types::{CertificateDer, PrivateKeyDer};
         use rustls::ServerConfig;
+        use rustls::pki_types::{CertificateDer, PrivateKeyDer};
         use std::sync::Arc;
         use tokio_rustls::TlsAcceptor;
 
-        std::env::set_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT", "1");
+        unsafe {
+            std::env::set_var("LAZYDNS_DOH_ACCEPT_INVALID_CERT", "1");
+        }
 
         let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
         let cert_der = cert.serialize_der().unwrap();
@@ -1428,59 +1433,58 @@ mod tests {
         let ip = response_ip.to_string();
 
         let handle = tokio::spawn(async move {
-            if let Ok((socket, _)) = listener.accept().await {
-                if let Ok(mut tls_stream) = acceptor.accept(socket).await {
-                    let mut buf = vec![0u8; 8192];
-                    let n = tls_stream.read(&mut buf).await.unwrap_or(0);
-                    let req = String::from_utf8_lossy(&buf[..n]);
+            if let Ok((socket, _)) = listener.accept().await
+                && let Ok(mut tls_stream) = acceptor.accept(socket).await
+            {
+                let mut buf = vec![0u8; 8192];
+                let n = tls_stream.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
 
-                    let parts: Vec<&str> = req.split("\r\n\r\n").collect();
-                    if parts.len() < 2 {
-                        return;
-                    }
-                    let headers = parts[0];
-                    let mut body = parts[1].as_bytes().to_vec();
+                let parts: Vec<&str> = req.split("\r\n\r\n").collect();
+                if parts.len() < 2 {
+                    return;
+                }
+                let headers = parts[0];
+                let mut body = parts[1].as_bytes().to_vec();
 
-                    let mut content_length = 0usize;
-                    for line in headers.lines() {
-                        if line.to_lowercase().starts_with("content-length:") {
-                            if let Some(v) = line.split(':').nth(1) {
-                                content_length = v.trim().parse().unwrap_or(0);
-                            }
-                        }
-                    }
-
-                    while body.len() < content_length {
-                        let mut more = vec![0u8; 1024];
-                        let m = tls_stream.read(&mut more).await.unwrap_or(0);
-                        if m == 0 {
-                            break;
-                        }
-                        body.extend_from_slice(&more[..m]);
-                    }
-
-                    if let Ok(req_msg) =
-                        Forward::parse_message(&body[..content_length.min(body.len())])
+                let mut content_length = 0usize;
+                for line in headers.lines() {
+                    if line.to_lowercase().starts_with("content-length:")
+                        && let Some(v) = line.split(':').nth(1)
                     {
-                        let mut resp = req_msg.clone();
-                        resp.set_response(true);
-                        resp.add_answer(ResourceRecord::new(
-                            req_msg.questions()[0].qname().to_string(),
-                            RecordType::A,
-                            RecordClass::IN,
-                            60,
-                            RData::A(ip.parse().unwrap()),
-                        ));
-                        resp.set_id(req_msg.id());
+                        content_length = v.trim().parse().unwrap_or(0);
+                    }
+                }
 
-                        if let Ok(data) = Forward::serialize_message(&resp) {
-                            let resp_hdr = format!(
+                while body.len() < content_length {
+                    let mut more = vec![0u8; 1024];
+                    let m = tls_stream.read(&mut more).await.unwrap_or(0);
+                    if m == 0 {
+                        break;
+                    }
+                    body.extend_from_slice(&more[..m]);
+                }
+
+                if let Ok(req_msg) = Forward::parse_message(&body[..content_length.min(body.len())])
+                {
+                    let mut resp = req_msg.clone();
+                    resp.set_response(true);
+                    resp.add_answer(ResourceRecord::new(
+                        req_msg.questions()[0].qname().to_string(),
+                        RecordType::A,
+                        RecordClass::IN,
+                        60,
+                        RData::A(ip.parse().unwrap()),
+                    ));
+                    resp.set_id(req_msg.id());
+
+                    if let Ok(data) = Forward::serialize_message(&resp) {
+                        let resp_hdr = format!(
                             "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: {}\r\n\r\n",
                             data.len()
                         );
-                            let _ = tls_stream.write_all(resp_hdr.as_bytes()).await;
-                            let _ = tls_stream.write_all(&data).await;
-                        }
+                        let _ = tls_stream.write_all(resp_hdr.as_bytes()).await;
+                        let _ = tls_stream.write_all(&data).await;
                     }
                 }
             }

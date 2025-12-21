@@ -14,9 +14,9 @@
 //!
 //! Note: this file contains only the executable wrapper; logic is small
 //! and intended to be fast and dependency-free.
+use crate::Result;
 use crate::dns::RData;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
@@ -92,7 +92,7 @@ impl IpSetPlugin {
                     return Err(crate::Error::Other(format!(
                         "invalid set family, {}",
                         other
-                    )))
+                    )));
                 }
             }
         }

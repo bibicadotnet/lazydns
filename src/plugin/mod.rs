@@ -57,9 +57,9 @@ pub use factory::{
 pub use registry::Registry;
 pub use traits::{ExecPlugin, Plugin};
 
+use crate::Result;
 use crate::dns::Message;
 use crate::server::RequestHandler;
-use crate::Result;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
@@ -106,13 +106,13 @@ impl RequestHandler for PluginHandler {
         // 1. Store responses in cache if cache plugin is registered
         if ctx.has_response() {
             for name in self.registry.plugin_names() {
-                if let Some(p) = self.registry.get(&name) {
-                    if p.name() == "cache" {
-                        // Call execute again on cache plugin to trigger write phase
-                        // (CachePlugin checks if response exists and stores it)
-                        if let Err(e) = p.execute(&mut ctx).await {
-                            warn!("Error during cache store post-processing: {}", e);
-                        }
+                if let Some(p) = self.registry.get(&name)
+                    && p.name() == "cache"
+                {
+                    // Call execute again on cache plugin to trigger write phase
+                    // (CachePlugin checks if response exists and stores it)
+                    if let Err(e) = p.execute(&mut ctx).await {
+                        warn!("Error during cache store post-processing: {}", e);
                     }
                 }
             }
@@ -120,20 +120,18 @@ impl RequestHandler for PluginHandler {
 
         // 2. Allow reverse-lookup plugins to observe the populated response
         // and save IP->name mappings.
-        if ctx.has_response() {
-            if let Some(resp) = ctx.response() {
-                for name in self.registry.plugin_names() {
-                    if let Some(p) = self.registry.get(&name) {
-                        if p.name() == "reverse_lookup" {
-                            if let Some(rl) = p
-                                .as_ref()
-                                .as_any()
-                                .downcast_ref::<crate::plugins::executable::ReverseLookupPlugin>(
-                            ) {
-                                rl.save_ips_after(ctx.request(), resp);
-                            }
-                        }
-                    }
+        if ctx.has_response()
+            && let Some(resp) = ctx.response()
+        {
+            for name in self.registry.plugin_names() {
+                if let Some(p) = self.registry.get(&name)
+                    && p.name() == "reverse_lookup"
+                    && let Some(rl) =
+                        p.as_ref()
+                            .as_any()
+                            .downcast_ref::<crate::plugins::executable::ReverseLookupPlugin>()
+                {
+                    rl.save_ips_after(ctx.request(), resp);
                 }
             }
         }

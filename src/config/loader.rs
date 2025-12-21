@@ -371,22 +371,28 @@ plugins:
     #[test]
     fn test_substitute_env_vars() {
         // Set a test environment variable
-        env::set_var("TEST_VAR", "test_value");
-        env::set_var("DNS_PORT", "5353");
+        unsafe {
+            env::set_var("TEST_VAR", "test_value");
+            env::set_var("DNS_PORT", "5353");
+        }
 
         let content = "server: ${TEST_VAR}\nport: ${DNS_PORT}";
         let result = substitute_env_vars(content).unwrap();
 
         assert_eq!(result, "server: test_value\nport: 5353");
 
-        env::remove_var("TEST_VAR");
-        env::remove_var("DNS_PORT");
+        unsafe {
+            env::remove_var("TEST_VAR");
+            env::remove_var("DNS_PORT");
+        }
     }
 
     #[test]
     fn test_substitute_env_vars_with_default() {
         // Don't set the variable
-        env::remove_var("MISSING_VAR");
+        unsafe {
+            env::remove_var("MISSING_VAR");
+        }
 
         let content = "value: ${MISSING_VAR:-default_value}";
         let result = substitute_env_vars(content).unwrap();
@@ -396,16 +402,20 @@ plugins:
 
     #[test]
     fn test_substitute_env_vars_missing_no_default() {
-        env::remove_var("MISSING_VAR");
+        unsafe {
+            env::remove_var("MISSING_VAR");
+        }
 
         let content = "value: ${MISSING_VAR}";
         let result = substitute_env_vars(content);
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("MISSING_VAR not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("MISSING_VAR not found")
+        );
     }
 
     // NOTE: These env override tests must run single-threaded due to environment variable interference
@@ -415,7 +425,9 @@ plugins:
     #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
     fn test_apply_env_overrides_top_level_log_level() {
         // Use a unique name to avoid test conflicts
-        env::set_var("LOG_LEVEL", "debug");
+        unsafe {
+            env::set_var("LOG_LEVEL", "debug");
+        }
 
         let yaml = r#"
 log:
@@ -429,13 +441,17 @@ plugins: []
             "LOG_LEVEL should override config"
         );
 
-        env::remove_var("LOG_LEVEL");
+        unsafe {
+            env::remove_var("LOG_LEVEL");
+        }
     }
 
     #[test]
     #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
     fn test_apply_env_overrides_top_level_log_format() {
-        env::set_var("LOG_FORMAT", "json");
+        unsafe {
+            env::set_var("LOG_FORMAT", "json");
+        }
 
         let yaml = r#"
 log:
@@ -449,13 +465,17 @@ plugins: []
             "LOG_FORMAT should override config"
         );
 
-        env::remove_var("LOG_FORMAT");
+        unsafe {
+            env::remove_var("LOG_FORMAT");
+        }
     }
 
     #[test]
     #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
     fn test_apply_env_overrides_plugin_args() {
-        env::set_var("PLUGINS_CACHE_ARGS_SIZE", "2048");
+        unsafe {
+            env::set_var("PLUGINS_CACHE_ARGS_SIZE", "2048");
+        }
 
         let yaml = r#"
 log:
@@ -487,13 +507,17 @@ plugins:
             }
         }
 
-        env::remove_var("PLUGINS_CACHE_ARGS_SIZE");
+        unsafe {
+            env::remove_var("PLUGINS_CACHE_ARGS_SIZE");
+        }
     }
 
     #[test]
     #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
     fn test_apply_env_overrides_plugin_args_string_value() {
-        env::set_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER", "http://10.100.100.1");
+        unsafe {
+            env::set_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER", "http://10.100.100.1");
+        }
 
         let yaml = r#"
 log:
@@ -521,7 +545,9 @@ plugins:
             }
         }
 
-        env::remove_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER");
+        unsafe {
+            env::remove_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER");
+        }
     }
 
     #[test]
@@ -574,11 +600,13 @@ plugins:
     // Cleanup test that runs last and clears all env overrides
     #[test]
     fn test_zzz_cleanup_env_overrides() {
-        env::remove_var("LOG_LEVEL");
-        env::remove_var("LOG_FORMAT");
-        env::remove_var("LOG_FILE");
-        env::remove_var("LOG_ROTATE");
-        env::remove_var("PLUGINS_CACHE_ARGS_SIZE");
-        env::remove_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER");
+        unsafe {
+            env::remove_var("LOG_LEVEL");
+            env::remove_var("LOG_FORMAT");
+            env::remove_var("LOG_FILE");
+            env::remove_var("LOG_ROTATE");
+            env::remove_var("PLUGINS_CACHE_ARGS_SIZE");
+            env::remove_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER");
+        }
     }
 }

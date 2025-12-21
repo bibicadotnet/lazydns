@@ -2,8 +2,8 @@
 //!
 //! Defines the interface for handling DNS requests
 
-use crate::dns::Message;
 use crate::Result;
+use crate::dns::Message;
 use async_trait::async_trait;
 
 /// DNS request handler trait

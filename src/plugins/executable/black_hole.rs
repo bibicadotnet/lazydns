@@ -1,7 +1,7 @@
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::{Message, RData, ResourceRecord};
 use crate::plugin::{Context, ExecPlugin, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};

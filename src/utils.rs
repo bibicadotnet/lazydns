@@ -79,11 +79,11 @@ pub fn spawn_file_watcher<F>(
                     // Debounce rapid reloads per-file
                     let now = Instant::now();
                     if let Some(cp) = canonical_path.as_ref() {
-                        if let Some(prev) = last_reload.get(cp) {
-                            if now.duration_since(*prev) < Duration::from_millis(debounce_ms) {
-                                debug!(name = %name, file = file_name, "skipping reload due to debounce");
-                                continue;
-                            }
+                        if let Some(prev) = last_reload.get(cp)
+                            && now.duration_since(*prev) < Duration::from_millis(debounce_ms)
+                        {
+                            debug!(name = %name, file = file_name, "skipping reload due to debounce");
+                            continue;
                         }
                         last_reload.insert(cp.clone(), now);
                     }
@@ -118,11 +118,11 @@ pub fn spawn_file_watcher<F>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tempfile::NamedTempFile;
     use tokio::sync::Notify;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     // Exposed for unit testing debounce logic without relying on filesystem events
     fn should_reload(
@@ -131,10 +131,10 @@ mod tests {
         debounce_ms: u64,
     ) -> bool {
         let now = Instant::now();
-        if let Some(prev) = last_reload.get(cp) {
-            if now.duration_since(*prev) < Duration::from_millis(debounce_ms) {
-                return false;
-            }
+        if let Some(prev) = last_reload.get(cp)
+            && now.duration_since(*prev) < Duration::from_millis(debounce_ms)
+        {
+            return false;
         }
         last_reload.insert(cp.clone(), now);
         true

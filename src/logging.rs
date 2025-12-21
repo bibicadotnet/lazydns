@@ -9,7 +9,7 @@ use crate::config::LogConfig;
 use anyhow::Result;
 #[cfg(feature = "tracing-subscriber")]
 use tracing_subscriber::{
-    fmt::time::OffsetTime, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+    EnvFilter, fmt::time::OffsetTime, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
 /// Guard to hold the background log file worker alive for the lifetime of the
@@ -247,7 +247,9 @@ mod tests {
         // Preserve existing RUST_LOG and restore at the end to avoid
         // interfering with other tests running in parallel.
         let prev = std::env::var_os("RUST_LOG");
-        std::env::set_var("RUST_LOG", "trace");
+        unsafe {
+            std::env::set_var("RUST_LOG", "trace");
+        }
         let cfg = LogConfig {
             level: "info".to_string(),
             ..Default::default()
@@ -256,9 +258,11 @@ mod tests {
         assert_eq!(effective_log_spec(&cfg, None), "trace");
 
         // Restore previous value
-        match prev {
-            Some(v) => std::env::set_var("RUST_LOG", v),
-            None => std::env::remove_var("RUST_LOG"),
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("RUST_LOG", v),
+                None => std::env::remove_var("RUST_LOG"),
+            }
         }
     }
 
@@ -266,7 +270,9 @@ mod tests {
     fn cfg_level_used_when_no_rust_log() {
         // Preserve and remove RUST_LOG to ensure the default is used.
         let prev = std::env::var_os("RUST_LOG");
-        std::env::remove_var("RUST_LOG");
+        unsafe {
+            std::env::remove_var("RUST_LOG");
+        }
         let cfg = LogConfig {
             level: "warn".to_string(),
             ..Default::default()
@@ -282,9 +288,11 @@ mod tests {
         assert_eq!(effective_log_spec(&cfg, Some(3)), "trace");
 
         // Restore previous value
-        match prev {
-            Some(v) => std::env::set_var("RUST_LOG", v),
-            None => std::env::remove_var("RUST_LOG"),
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("RUST_LOG", v),
+                None => std::env::remove_var("RUST_LOG"),
+            }
         }
     }
 

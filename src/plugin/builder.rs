@@ -3,13 +3,13 @@
 //! This module provides a builder pattern for creating plugin instances from configuration.
 //! It supports both the new Plugin trait pattern and legacy hardcoded plugins.
 
+use crate::Error;
+use crate::Result;
 use crate::config::types::PluginConfig;
 use crate::plugin::traits::Matcher;
 use crate::plugin::{Context, Plugin};
 use crate::plugins::executable::SequenceStep;
 use crate::plugins::*;
-use crate::Error;
-use crate::Result;
 use serde_yaml::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -82,7 +82,9 @@ impl PluginBuilder {
                                     // We'll resolve plugin references in a second pass
                                     // For now, store the name and resolve later
                                     // This is a placeholder - actual resolution needs to be implemented
-                                    warn!("Sequence plugin with 'plugins' key not fully implemented yet");
+                                    warn!(
+                                        "Sequence plugin with 'plugins' key not fully implemented yet"
+                                    );
                                 }
                             }
                             Arc::new(SequencePlugin::new(plugins))
@@ -93,7 +95,9 @@ impl PluginBuilder {
                         }
                     } else {
                         // Other mapping formats - not implemented yet
-                        warn!("Sequence plugin mapping format not implemented yet, using empty sequence");
+                        warn!(
+                            "Sequence plugin mapping format not implemented yet, using empty sequence"
+                        );
                         Arc::new(SequencePlugin::new(Vec::new()))
                     }
                 } else if let Value::Sequence(sequence) = &config.args {
@@ -130,7 +134,7 @@ impl PluginBuilder {
                 return Err(Error::Config(format!(
                     "Unknown plugin type: {}",
                     plugin_type
-                )))
+                )));
             }
         };
 
@@ -165,26 +169,26 @@ impl PluginBuilder {
 
         // Second pass: update sequence plugins to reflect resolved plugins
         for config in configs {
-            if config.plugin_type == "sequence" {
-                if let Value::Sequence(sequence) = &config.args {
-                    // Re-parse the steps with the now-resolved plugins
-                    match parse_sequence_steps(self, sequence) {
-                        Ok(steps) => {
-                            let sequence_plugin = Arc::new(SequencePlugin::with_steps(steps));
-                            let name = config.effective_name().to_string();
-                            self.plugins.insert(name.clone(), sequence_plugin);
-                            debug!(
-                                "Updated sequence plugin '{}' with resolved references",
-                                name
-                            );
-                        }
-                        Err(e) => {
-                            warn!(
-                                "Failed to update sequence '{}': {}",
-                                config.effective_name(),
-                                e
-                            );
-                        }
+            if config.plugin_type == "sequence"
+                && let Value::Sequence(sequence) = &config.args
+            {
+                // Re-parse the steps with the now-resolved plugins
+                match parse_sequence_steps(self, sequence) {
+                    Ok(steps) => {
+                        let sequence_plugin = Arc::new(SequencePlugin::with_steps(steps));
+                        let name = config.effective_name().to_string();
+                        self.plugins.insert(name.clone(), sequence_plugin);
+                        debug!(
+                            "Updated sequence plugin '{}' with resolved references",
+                            name
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to update sequence '{}': {}",
+                            config.effective_name(),
+                            e
+                        );
                     }
                 }
             }
@@ -802,10 +806,12 @@ mod tests {
 
         let result = parse_sequence_steps(&builder, &sequence);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("sequence step must have exec or matches"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("sequence step must have exec or matches")
+        );
     }
 
     #[test]
@@ -842,10 +848,12 @@ mod tests {
         let exec_value = Value::String("unknown_action".to_string());
         let result = parse_exec_action(&builder, &exec_value);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Unknown exec action"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown exec action")
+        );
     }
 
     #[test]
@@ -856,10 +864,12 @@ mod tests {
         let exec_value = Value::Number(42.into());
         let result = parse_exec_action(&builder, &exec_value);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("exec value must be string"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("exec value must be string")
+        );
     }
 
     #[test]

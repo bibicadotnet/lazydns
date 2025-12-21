@@ -2,9 +2,9 @@
 //!
 //! Matches responses that contain CNAME records
 
+use crate::Result;
 use crate::dns::types::RecordType;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;

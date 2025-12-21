@@ -5,8 +5,8 @@
 //! `plugins::advanced` module so it can be reused by executable/plugin
 //! composition code and documented independently.
 
-use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use crate::Result;
+use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::trace;

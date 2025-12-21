@@ -2,8 +2,8 @@
 //!
 //! Matches strings using various comparison methods
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use regex::Regex;
 use std::fmt;

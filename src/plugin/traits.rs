@@ -2,9 +2,9 @@
 //!
 //! Defines the core Plugin trait that all plugins must implement.
 
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::plugin::Context;
-use crate::Result;
 use async_trait::async_trait;
 use std::any::Any;
 use std::fmt::Debug;

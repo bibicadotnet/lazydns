@@ -1,7 +1,7 @@
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::plugin::traits::Matcher;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::HashSet;

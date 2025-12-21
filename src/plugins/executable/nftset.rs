@@ -12,9 +12,9 @@
 //!
 //! Note: `SetArgs` contains optional table family and table names which
 //! are used when attempting to run `nft` with the configured parameters.
+use crate::Result;
 use crate::dns::RData;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
@@ -146,23 +146,23 @@ impl Plugin for NftSetPlugin {
             for rr in resp.answers() {
                 match rr.rdata() {
                     RData::A(ipv4) => {
-                        if let Some(sa) = &self.args.ipv4 {
-                            if let Some(set_name) = &sa.set {
-                                let mask = sa.mask.unwrap_or(24);
-                                let prefix = Self::make_v4_prefix(ipv4, mask);
-                                info!(set = %set_name, cidr = %prefix, "nftset add");
-                                added_v4.push((set_name.clone(), prefix));
-                            }
+                        if let Some(sa) = &self.args.ipv4
+                            && let Some(set_name) = &sa.set
+                        {
+                            let mask = sa.mask.unwrap_or(24);
+                            let prefix = Self::make_v4_prefix(ipv4, mask);
+                            info!(set = %set_name, cidr = %prefix, "nftset add");
+                            added_v4.push((set_name.clone(), prefix));
                         }
                     }
                     RData::AAAA(ipv6) => {
-                        if let Some(sa) = &self.args.ipv6 {
-                            if let Some(set_name) = &sa.set {
-                                let mask = sa.mask.unwrap_or(48);
-                                let prefix = Self::make_v6_prefix(ipv6, mask);
-                                info!(set = %set_name, cidr = %prefix, "nftset add");
-                                added_v6.push((set_name.clone(), prefix));
-                            }
+                        if let Some(sa) = &self.args.ipv6
+                            && let Some(set_name) = &sa.set
+                        {
+                            let mask = sa.mask.unwrap_or(48);
+                            let prefix = Self::make_v6_prefix(ipv6, mask);
+                            info!(set = %set_name, cidr = %prefix, "nftset add");
+                            added_v6.push((set_name.clone(), prefix));
                         }
                     }
                     _ => {}

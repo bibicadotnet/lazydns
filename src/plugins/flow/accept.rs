@@ -1,6 +1,6 @@
 use crate::{
-    plugin::{Context, ExecPlugin, Plugin, RETURN_FLAG},
     Result,
+    plugin::{Context, ExecPlugin, Plugin, RETURN_FLAG},
 };
 use async_trait::async_trait;
 use std::sync::Arc;

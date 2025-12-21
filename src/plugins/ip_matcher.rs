@@ -167,10 +167,10 @@ impl IpMatcherPlugin {
     fn check_response(&self, response: &Message) -> bool {
         // Check answer section for A and AAAA records
         for record in response.answers() {
-            if let Some(ip) = Self::extract_ip(record.rdata()) {
-                if self.matches(&ip) {
-                    return true;
-                }
+            if let Some(ip) = Self::extract_ip(record.rdata())
+                && self.matches(&ip)
+            {
+                return true;
             }
         }
 

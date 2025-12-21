@@ -2,8 +2,8 @@
 //!
 //! Prints debug information about DNS queries and responses to the log
 
-use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
@@ -110,26 +110,26 @@ impl Plugin for DebugPrintPlugin {
         }
 
         // Print response information
-        if self.print_responses {
-            if let Some(response) = ctx.response() {
-                info!(
-                    "{} Response: {} answers, rcode={:?}",
-                    self.prefix,
-                    response.answers().len(),
-                    response.response_code()
-                );
+        if self.print_responses
+            && let Some(response) = ctx.response()
+        {
+            info!(
+                "{} Response: {} answers, rcode={:?}",
+                self.prefix,
+                response.answers().len(),
+                response.response_code()
+            );
 
-                // Print answer details
-                for (i, answer) in response.answers().iter().enumerate() {
-                    debug!(
-                        "{} Answer[{}]: {} {:?} ttl={}",
-                        self.prefix,
-                        i,
-                        answer.name(),
-                        answer.rtype(),
-                        answer.ttl()
-                    );
-                }
+            // Print answer details
+            for (i, answer) in response.answers().iter().enumerate() {
+                debug!(
+                    "{} Answer[{}]: {} {:?} ttl={}",
+                    self.prefix,
+                    i,
+                    answer.name(),
+                    answer.rtype(),
+                    answer.ttl()
+                );
             }
         }
 

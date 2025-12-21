@@ -2,8 +2,8 @@
 //!
 //! Manages plugin registration and lookup.
 
-use crate::plugin::Plugin;
 use crate::Error;
+use crate::plugin::Plugin;
 use std::collections::HashMap;
 use std::sync::Arc;
 

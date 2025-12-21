@@ -7,13 +7,13 @@
 //! executable-style QuickSetup (registering with runtime) can be added
 //! separately where needed.
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 #[cfg(feature = "admin")]
 use prometheus::{Counter, Gauge, Histogram, HistogramOpts, Opts, Registry};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Metrics collector plugin: counts queries and accumulates latency.
 #[derive(Debug, Clone)]

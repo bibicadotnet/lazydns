@@ -2,9 +2,9 @@
 //!
 //! Matches DNS responses based on their response code (NOERROR, NXDOMAIN, etc.)
 
+use crate::Result;
 use crate::dns::types::ResponseCode;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;

@@ -2,8 +2,8 @@
 //!
 //! Manages the execution of plugins in a defined order.
 
-use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use crate::Result;
+use crate::plugin::{Context, Plugin, RETURN_FLAG};
 use std::sync::Arc;
 use tracing::{debug, warn};
 

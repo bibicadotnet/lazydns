@@ -2,9 +2,9 @@
 //!
 //! Provides IP-based access control for DNS queries.
 
+use crate::Result;
 use crate::dns::ResponseCode;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use ipnet::IpNet;
 use std::net::IpAddr;

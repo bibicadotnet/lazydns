@@ -33,7 +33,9 @@ pub fn print_help() {
     println!("OPTIONS:");
     println!("  -c, --config <file>       Configuration file path (default: config.yaml)");
     println!("  -d, --dir <dir>           Working directory");
-    println!("  -v, --verbose <count>     Verbosity: -v (debug), -vv (trace), -vvv (trace + external crate logs)");
+    println!(
+        "  -v, --verbose <count>     Verbosity: -v (debug), -vv (trace), -vvv (trace + external crate logs)"
+    );
     println!("  -V, --version             Print version and exit");
     println!("  -h, --help                Print this help message");
 }
