@@ -173,55 +173,55 @@ impl Plugin for NftSetPlugin {
             {
                 use std::process::Command;
                 for (set_name, prefix) in &added_v4 {
-                    if let Some(sa) = &self.args.ipv4 {
-                        if let (Some(table_family), Some(table)) = (&sa.table_family, &sa.table) {
-                            let status = Command::new("nft")
-                                .args([
-                                    "add",
-                                    "element",
-                                    table_family.as_str(),
-                                    table.as_str(),
-                                    set_name.as_str(),
-                                    "{",
-                                    prefix.as_str(),
-                                    "}",
-                                ])
-                                .status();
-                            match status {
-                                Ok(s) if s.success() => {}
-                                Ok(s) => {
-                                    tracing::warn!(table = %table, set = %set_name, prefix = %prefix, status = ?s, "nft command returned non-zero exit status, continuing");
-                                }
-                                Err(e) => {
-                                    tracing::warn!(table = %table, set = %set_name, prefix = %prefix, error = %e, "failed to spawn nft command, continuing");
-                                }
+                    if let Some(sa) = &self.args.ipv4
+                        && let (Some(table_family), Some(table)) = (&sa.table_family, &sa.table)
+                    {
+                        let status = Command::new("nft")
+                            .args([
+                                "add",
+                                "element",
+                                table_family.as_str(),
+                                table.as_str(),
+                                set_name.as_str(),
+                                "{",
+                                prefix.as_str(),
+                                "}",
+                            ])
+                            .status();
+                        match status {
+                            Ok(s) if s.success() => {}
+                            Ok(s) => {
+                                tracing::warn!(table = %table, set = %set_name, prefix = %prefix, status = ?s, "nft command returned non-zero exit status, continuing");
+                            }
+                            Err(e) => {
+                                tracing::warn!(table = %table, set = %set_name, prefix = %prefix, error = %e, "failed to spawn nft command, continuing");
                             }
                         }
                     }
                 }
                 for (set_name, prefix) in &added_v6 {
-                    if let Some(sa) = &self.args.ipv6 {
-                        if let (Some(table_family), Some(table)) = (&sa.table_family, &sa.table) {
-                            let status = Command::new("nft")
-                                .args([
-                                    "add",
-                                    "element",
-                                    table_family.as_str(),
-                                    table.as_str(),
-                                    set_name.as_str(),
-                                    "{",
-                                    prefix.as_str(),
-                                    "}",
-                                ])
-                                .status();
-                            match status {
-                                Ok(s) if s.success() => {}
-                                Ok(s) => {
-                                    tracing::warn!(table = %table, set = %set_name, prefix = %prefix, status = ?s, "nft command returned non-zero exit status, continuing");
-                                }
-                                Err(e) => {
-                                    tracing::warn!(table = %table, set = %set_name, prefix = %prefix, error = %e, "failed to spawn nft command, continuing");
-                                }
+                    if let Some(sa) = &self.args.ipv6
+                        && let (Some(table_family), Some(table)) = (&sa.table_family, &sa.table)
+                    {
+                        let status = Command::new("nft")
+                            .args([
+                                "add",
+                                "element",
+                                table_family.as_str(),
+                                table.as_str(),
+                                set_name.as_str(),
+                                "{",
+                                prefix.as_str(),
+                                "}",
+                            ])
+                            .status();
+                        match status {
+                            Ok(s) if s.success() => {}
+                            Ok(s) => {
+                                tracing::warn!(table = %table, set = %set_name, prefix = %prefix, status = ?s, "nft command returned non-zero exit status, continuing");
+                            }
+                            Err(e) => {
+                                tracing::warn!(table = %table, set = %set_name, prefix = %prefix, error = %e, "failed to spawn nft command, continuing");
                             }
                         }
                     }
