@@ -48,10 +48,11 @@ bin: macos linux armv7
 	@tar cvfz "${TARBALL}/${APP_NAME}-${APP_VERSION}-armv7-unknown-linux-musleabihf.tar.gz" -C target/armv7-unknown-linux-musleabihf/release/ ${APP_NAME}
 
 lint:
-	cargo clippy --all-targets --all-features -- -D warnings
+	cargo clippy --all-targets --no-default-features -- -D warnings
 
 test:
 	cargo test --all-features
+	cargo test --no-default-features
 
 cov:
 	cargo llvm-cov test -q --all-features

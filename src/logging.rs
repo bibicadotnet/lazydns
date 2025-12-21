@@ -7,11 +7,14 @@
 
 use crate::config::LogConfig;
 use anyhow::Result;
+#[cfg(all(feature = "tracing-subscriber", feature = "time"))]
 use std::fmt;
+#[cfg(feature = "time")]
 use time::{
     format_description::parse as parse_format, format_description::well_known::Rfc3339,
     OffsetDateTime,
 };
+#[cfg(feature = "tracing-subscriber")]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// Guard to hold the background log file worker alive for the lifetime of the
@@ -30,10 +33,12 @@ static FILE_GUARD: once_cell::sync::OnceCell<tracing_appender::non_blocking::Wor
 /// - `local`: local time in RFC3339
 /// - `custom:<fmt>`: custom UTC format using `time` crate's format descriptions
 /// - `custom_local:<fmt>`: custom local time format
+#[cfg(feature = "time")]
 struct TimeFormatter {
     fmt: String,
 }
 
+#[cfg(feature = "time")]
 impl TimeFormatter {
     /// Create a new `TimeFormatter` with the given format string.
     ///
@@ -48,6 +53,8 @@ impl TimeFormatter {
 ///
 /// Chooses the correct timestamp representation based on the configured
 /// format string and emits a normalized timestamp to the provided writer.
+#[cfg(feature = "tracing-subscriber")]
+#[cfg(all(feature = "tracing-subscriber", feature = "time"))]
 impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> fmt::Result {
         let now_utc = OffsetDateTime::now_utc();
@@ -125,6 +132,7 @@ impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
 /// assert_eq!(lazydns::logging::normalize_subsec("2025-12-16T22:39:35.926487+08:00", 3),
 ///            "2025-12-16T22:39:35.926+08:00");
 /// ```
+#[cfg(feature = "time")]
 pub fn normalize_subsec(s: &str, digits: usize) -> String {
     let mut s = s.to_string();
 
@@ -177,6 +185,7 @@ pub fn normalize_subsec(s: &str, digits: usize) -> String {
 ///     * 2: return `warn,lazydns=trace`
 ///     * >=3: return `trace` (global trace -- include external crates)
 /// - If no CLI override, default to `warn,lazydns=<cfg_level>` so external crates are quiet.
+#[allow(dead_code)]
 pub(crate) fn effective_log_spec(cfg: &LogConfig, cli_verbose: Option<u8>) -> String {
     // RUST_LOG always wins
     match std::env::var("RUST_LOG") {
@@ -208,6 +217,7 @@ pub(crate) fn effective_log_spec(cfg: &LogConfig, cli_verbose: Option<u8>) -> St
 ///
 /// Returns `anyhow::Result<()>` to make initialization errors easy to
 /// propagate from application startup.
+#[cfg(feature = "tracing-subscriber")]
 pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
     // Build EnvFilter from effective spec
     let filter = EnvFilter::try_new(effective_log_spec(cfg, cli_verbose))?;
@@ -215,14 +225,18 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
     let registry = tracing_subscriber::registry().with(filter);
 
     if cfg.format == "json" {
-        let mut layer = tracing_subscriber::fmt::layer()
-            .json()
-            .with_timer(TimeFormatter::new(cfg.time_format.clone()));
+        let mut layer = tracing_subscriber::fmt::layer().json();
 
         // When writing to a file, disable ANSI color codes
         if cfg.file.is_some() {
             layer = layer.with_ansi(false);
         }
+
+        #[cfg(feature = "time")]
+        let layer = layer.with_timer(TimeFormatter::new(cfg.time_format.clone()));
+
+        #[cfg(not(feature = "time"))]
+        let layer = layer;
 
         if let Some(path) = &cfg.file {
             #[cfg(feature = "log-file")]
@@ -276,13 +290,18 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
             let _ = registry.with(layer).try_init();
         }
     } else {
-        let mut layer = tracing_subscriber::fmt::layer()
-            .with_timer(TimeFormatter::new(cfg.time_format.clone()));
+        let mut layer = tracing_subscriber::fmt::layer();
 
         // When writing to a file, disable ANSI color codes
         if cfg.file.is_some() {
             layer = layer.with_ansi(false);
         }
+
+        #[cfg(feature = "time")]
+        let layer = layer.with_timer(TimeFormatter::new(cfg.time_format.clone()));
+
+        #[cfg(not(feature = "time"))]
+        let layer = layer;
 
         if let Some(path) = &cfg.file {
             #[cfg(feature = "log-file")]
@@ -340,6 +359,12 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(feature = "tracing-subscriber"))]
+pub fn init_logging(_cfg: &LogConfig, _cli_verbose: Option<u8>) -> Result<()> {
+    tracing::warn!("tracing-subscriber not enabled: logging initialization is a no-op");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,6 +417,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "time")]
     fn normalize_subsec_truncates_and_pads() {
         // Truncate to 3 digits
         let s = "2025-12-16T22:39:35.926487+08:00";
@@ -433,6 +459,7 @@ mod tests {
     }
 
     // New tests to exercise TimeFormatter::format_time via a scoped subscriber
+    #[cfg(all(feature = "tracing-subscriber", feature = "time"))]
     fn capture_logs_with_timer(fmt_spec: &str, msg: &str) -> String {
         use std::sync::{Arc, Mutex};
         let buf = Arc::new(Mutex::new(Vec::new()));
@@ -475,6 +502,7 @@ mod tests {
         String::from_utf8(data).unwrap_or_default()
     }
 
+    #[cfg(feature = "tracing-subscriber")]
     #[test]
     fn timeformatter_outputs_iso8601_with_millis() {
         let out = capture_logs_with_timer("iso8601", "iso-test");
@@ -484,6 +512,7 @@ mod tests {
         assert!(out.contains('+') || out.contains('Z'));
     }
 
+    #[cfg(feature = "tracing-subscriber")]
     #[test]
     fn timeformatter_timestamp_outputs_integer_seconds() {
         let out = capture_logs_with_timer("timestamp", "ts-test");

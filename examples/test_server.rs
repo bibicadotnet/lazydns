@@ -69,6 +69,7 @@ impl RequestHandler for SimpleHandler {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
+    #[cfg(feature = "tracing-subscriber")]
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();

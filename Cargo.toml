@@ -32,16 +32,15 @@ thiserror = "1.0"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = [
-    "env-filter",
-    "json",
-    "ansi",
+    "fmt",
+    "std",
 ], optional = true }
 tracing-appender = { version = "0.2", optional = true }
 time = { version = "0.3", default-features = false, features = [
     "formatting",
     "parsing",
     "local-offset",
-] }
+], optional = true }
 
 # Async utilities
 async-trait = "0.1"
@@ -101,17 +100,10 @@ tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = ["log-console"]
-log-console = [
-    "tracing-subscriber/env-filter",
-    "tracing-subscriber/json",
-    "tracing-subscriber/ansi",
-]
-log-file = [
-    "tracing-appender",
-    "tracing-subscriber/env-filter",
-    "tracing-subscriber/json",
-]
+default = ["log"]
+log = ["tracing-subscriber/env-filter", "tracing-subscriber/json", "time"]
+log-ansi = ["log", "tracing-subscriber/ansi"]
+log-file = ["log", "tracing-appender"]
 tls = ["dep:rustls"]
 dot = ["tls", "rustls-pemfile", "tokio-rustls"]
 # Enable TLS-backed (DoH using axum-server + rustls) server implementation
