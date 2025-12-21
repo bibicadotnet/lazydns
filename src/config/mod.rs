@@ -43,10 +43,6 @@ pub struct LogConfig {
     #[serde(default = "default_log_format")]
     pub format: String,
 
-    /// Time format for the `ts` field: iso8601 | timestamp | local | `custom:<fmt>` | `custom_local:<fmt>`
-    #[serde(default = "default_time_format")]
-    pub time_format: String,
-
     /// Log rotation policy: "never" | "daily" | "hourly"
     #[serde(default = "default_rotate")]
     pub rotate: String,
@@ -64,10 +60,6 @@ fn default_log_format() -> String {
     "text".to_string()
 }
 
-fn default_time_format() -> String {
-    "iso8601".to_string()
-}
-
 fn default_rotate() -> String {
     "never".to_string()
 }
@@ -78,7 +70,7 @@ impl Default for LogConfig {
             level: default_log_level(),
             file: None,
             format: default_log_format(),
-            time_format: default_time_format(),
+
             rotate: default_rotate(),
             rotate_dir: None,
         }

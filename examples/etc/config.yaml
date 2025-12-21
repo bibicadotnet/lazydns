@@ -1,10 +1,8 @@
 log:
   # * trace | debug | info |warn | error
   level: debug
-  # * text|json
+  # * text (by default) | json
   # format: text
-  # * local | iso8601 | timestamp | custom:<fmt> | custom_local:<fmt>
-  # time_format: local
   # * optional
   # file: test.log
   # * daily | hourly | never (by default)

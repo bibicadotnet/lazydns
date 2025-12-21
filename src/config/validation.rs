@@ -20,7 +20,6 @@ pub fn validate_config(config: &Config) -> Result<()> {
     // Validate logging configuration
     validate_log_level(&config.log.level)?;
     validate_log_format(&config.log.format)?;
-    validate_time_format(&config.log.time_format)?;
     validate_log_rotation(&config.log.rotate)?;
 
     // Validate plugins
@@ -54,22 +53,6 @@ fn validate_log_format(format: &str) -> Result<()> {
         )));
     }
     Ok(())
-}
-
-fn validate_time_format(fmt: &str) -> Result<()> {
-    if fmt == "iso8601"
-        || fmt == "timestamp"
-        || fmt == "local"
-        || fmt.starts_with("custom:")
-        || fmt.starts_with("custom_local:")
-    {
-        Ok(())
-    } else {
-        Err(Error::Config(format!(
-            "Invalid time_format '{}'. Must be 'iso8601', 'timestamp', 'local', 'custom:<fmt>', or 'custom_local:<fmt>'",
-            fmt
-        )))
-    }
 }
 
 fn validate_log_rotation(rot: &str) -> Result<()> {
@@ -130,19 +113,6 @@ mod tests {
     #[test]
     fn test_validate_log_level_invalid() {
         let result = validate_log_level("invalid");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_time_format_valid_local() {
-        assert!(validate_time_format("local").is_ok());
-        assert!(validate_time_format("custom_local:%Y-%m-%d %H:%M:%S").is_ok());
-        assert!(validate_time_format("custom:%Y-%m-%d").is_ok());
-    }
-
-    #[test]
-    fn test_validate_time_format_invalid() {
-        let result = validate_time_format("weirdfmt");
         assert!(result.is_err());
     }
 

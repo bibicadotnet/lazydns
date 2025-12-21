@@ -12,13 +12,14 @@ The configuration loader will automatically apply environment variable overrides
 
 Override top-level logging settings using these environment variables:
 
-| Variable          | Config Field      | Example                | Valid Values                              |
-| ----------------- | ----------------- | ---------------------- | ----------------------------------------- |
-| `LOG_LEVEL`       | `log.level`       | `debug`                | `trace`, `debug`, `info`, `warn`, `error` |
-| `LOG_FORMAT`      | `log.format`      | `json`                 | `text`, `json`                            |
-| `LOG_FILE`        | `log.file`        | `/var/log/lazydns.log` | Any file path                             |
-| `LOG_TIME_FORMAT` | `log.time_format` | `iso8601`              | `iso8601`, `rfc3339`, `rfc2822`, `unix`   |
-| `LOG_ROTATE`      | `log.rotate`      | `daily`                | `never`, `daily`, `hourly`, `size:100M`   |
+| Variable     | Config Field | Example                | Valid Values                              |
+| ------------ | ------------ | ---------------------- | ----------------------------------------- |
+| `LOG_LEVEL`  | `log.level`  | `debug`                | `trace`, `debug`, `info`, `warn`, `error` |
+| `LOG_FORMAT` | `log.format` | `json`                 | `text`, `json`                            |
+| `LOG_FILE`   | `log.file`   | `/var/log/lazydns.log` | Any file path                             |
+| `LOG_ROTATE` | `log.rotate` | `daily`                | `never`, `daily`, `hourly`, `size:100M`   |
+
+> Note: The `time_format` option (and `LOG_TIME_FORMAT`) has been removed; logs now use local time by default.
 
 ### 2. Plugin Arguments
 

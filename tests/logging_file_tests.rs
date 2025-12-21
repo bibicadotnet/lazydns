@@ -13,7 +13,6 @@ fn test_file_logging_disables_ansi_text() {
         level: "info".to_string(),
         file: Some(path.clone()),
         format: "text".to_string(),
-        time_format: "iso8601".to_string(),
         rotate: "never".to_string(),
         rotate_dir: None,
     };
@@ -63,7 +62,6 @@ fn test_file_logging_disables_ansi_json() {
         level: "info".to_string(),
         file: Some(path.clone()),
         format: "json".to_string(),
-        time_format: "iso8601".to_string(),
         rotate: "never".to_string(),
         rotate_dir: None,
     };
@@ -114,7 +112,6 @@ fn test_rolling_daily_creates_file() {
         level: "info".to_string(),
         file: Some("app.log".to_string()),
         format: "text".to_string(),
-        time_format: "iso8601".to_string(),
         rotate: "daily".to_string(),
         rotate_dir: Some(dir_str.clone()),
     };

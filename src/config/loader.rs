@@ -184,11 +184,7 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
                 config.log.file = Some(value_str);
                 continue;
             }
-            "LOG_TIME_FORMAT" => {
-                tracing::info!("Applied env override: LOG_TIME_FORMAT = {}", value_str);
-                config.log.time_format = value_str;
-                continue;
-            }
+
             "LOG_ROTATE" => {
                 tracing::info!("Applied env override: LOG_ROTATE = {}", value_str);
                 config.log.rotate = value_str;
@@ -581,7 +577,6 @@ plugins:
         env::remove_var("LOG_LEVEL");
         env::remove_var("LOG_FORMAT");
         env::remove_var("LOG_FILE");
-        env::remove_var("LOG_TIME_FORMAT");
         env::remove_var("LOG_ROTATE");
         env::remove_var("PLUGINS_CACHE_ARGS_SIZE");
         env::remove_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER");

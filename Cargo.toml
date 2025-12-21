@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.1.29"
+version = "0.1.30"
 edition = "2021"
 authors = ["lazydns contributors"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
@@ -33,12 +33,10 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = [
     "fmt",
-    "std",
 ], optional = true }
 tracing-appender = { version = "0.2", optional = true }
+# time crate is used for constructing UTC fallback for OffsetTime
 time = { version = "0.3", default-features = false, features = [
-    "formatting",
-    "parsing",
     "local-offset",
 ], optional = true }
 
@@ -101,7 +99,12 @@ rcgen = "0.9"
 
 [features]
 default = ["log"]
-log = ["tracing-subscriber/env-filter", "tracing-subscriber/json", "time"]
+log = [
+    "tracing-subscriber/env-filter",
+    "tracing-subscriber/json",
+    "tracing-subscriber/local-time",
+    "time/local-offset",
+]
 log-ansi = ["log", "tracing-subscriber/ansi"]
 log-file = ["log", "tracing-appender"]
 tls = ["dep:rustls"]

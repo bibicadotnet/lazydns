@@ -2,20 +2,15 @@
 //!
 //! This module provides helpers to initialize the global `tracing` subscriber
 //! according to the application's `LogConfig`. It supports JSON and plain
-//! text output, optional file output with rotation, and configurable
-//! timestamp formats (including custom `time` crate format descriptions).
+//! text output, optional file output with rotation, and timestamps via
+//! `tracing-subscriber`'s `local-time` feature.
 
 use crate::config::LogConfig;
 use anyhow::Result;
-#[cfg(all(feature = "tracing-subscriber", feature = "time"))]
-use std::fmt;
-#[cfg(feature = "time")]
-use time::{
-    format_description::parse as parse_format, format_description::well_known::Rfc3339,
-    OffsetDateTime,
-};
 #[cfg(feature = "tracing-subscriber")]
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{
+    fmt::time::OffsetTime, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+};
 
 /// Guard to hold the background log file worker alive for the lifetime of the
 /// process. The worker guard is stored in a `OnceCell` so it can be initialized
@@ -23,151 +18,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 #[cfg(feature = "log-file")]
 static FILE_GUARD: once_cell::sync::OnceCell<tracing_appender::non_blocking::WorkerGuard> =
     once_cell::sync::OnceCell::new();
-
-/// Formatter used to render timestamps according to the configured
-/// `time_format` value in `LogConfig`.
-///
-/// Supported formats:
-/// - `iso8601`: UTC RFC3339 timestamps
-/// - `timestamp`: unix seconds (UTC)
-/// - `local`: local time in RFC3339
-/// - `custom:<fmt>`: custom UTC format using `time` crate's format descriptions
-/// - `custom_local:<fmt>`: custom local time format
-#[cfg(feature = "time")]
-struct TimeFormatter {
-    fmt: String,
-}
-
-#[cfg(feature = "time")]
-impl TimeFormatter {
-    /// Create a new `TimeFormatter` with the given format string.
-    ///
-    /// The format value is interpreted as described on [`TimeFormatter`]:
-    /// see module-level documentation for supported values.
-    fn new(fmt: impl Into<String>) -> Self {
-        Self { fmt: fmt.into() }
-    }
-}
-
-/// Implementation of `tracing_subscriber`'s `FormatTime` trait.
-///
-/// Chooses the correct timestamp representation based on the configured
-/// format string and emits a normalized timestamp to the provided writer.
-#[cfg(feature = "tracing-subscriber")]
-#[cfg(all(feature = "tracing-subscriber", feature = "time"))]
-impl tracing_subscriber::fmt::time::FormatTime for TimeFormatter {
-    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> fmt::Result {
-        let now_utc = OffsetDateTime::now_utc();
-
-        // Helper to format an OffsetDateTime with RFC3339
-        let fmt_rfc3339 = |dt: &OffsetDateTime| match dt.format(&Rfc3339) {
-            Ok(s) => s,
-            Err(_) => "".to_string(),
-        };
-
-        // Support local timezone formats:
-        // - "local" -> local time in iso8601 with offset
-        // - "custom_local:<fmt>" -> custom fmt applied to local time
-        let mut s = if self.fmt == "iso8601" {
-            fmt_rfc3339(&now_utc)
-        } else if self.fmt == "timestamp" {
-            now_utc.unix_timestamp().to_string()
-        } else if self.fmt == "local" {
-            match OffsetDateTime::now_local() {
-                Ok(local) => fmt_rfc3339(&local),
-                Err(_) => fmt_rfc3339(&now_utc),
-            }
-        } else if let Some(rest) = self.fmt.strip_prefix("custom_local:") {
-            match OffsetDateTime::now_local() {
-                Ok(local) => match parse_format(rest) {
-                    Ok(desc) => match local.format(&desc) {
-                        Ok(s) => s,
-                        Err(_) => fmt_rfc3339(&local),
-                    },
-                    Err(_) => fmt_rfc3339(&local),
-                },
-                Err(_) => fmt_rfc3339(&now_utc),
-            }
-        } else if let Some(rest) = self.fmt.strip_prefix("custom:") {
-            match parse_format(rest) {
-                Ok(desc) => match now_utc.format(&desc) {
-                    Ok(s) => s,
-                    Err(_) => fmt_rfc3339(&now_utc),
-                },
-                Err(_) => fmt_rfc3339(&now_utc),
-            }
-        } else {
-            match OffsetDateTime::now_local() {
-                Ok(local) => fmt_rfc3339(&local),
-                Err(_) => fmt_rfc3339(&now_utc),
-            }
-        };
-
-        // Normalize fractional seconds to fixed width (milliseconds, 3 digits)
-        // by delegating to the module-level helper `normalize_subsec`.
-        s = normalize_subsec(&s, 3);
-        w.write_str(&s)
-    }
-}
-
-/// Normalize fractional seconds in an RFC3339-like timestamp string to `digits`
-/// precision (truncating or padding as necessary). If no fractional part is
-/// present it will insert `.000...` with `digits` zeros. This helper is
-/// extracted to make the behavior testable.
-///
-/// # Examples
-/// ```rust,no_run
-/// // Truncate to 3 digits
-/// assert_eq!(lazydns::logging::normalize_subsec("2025-12-16T22:39:35.926487+08:00", 3),
-///            "2025-12-16T22:39:35.926+08:00");
-/// ```
-/// Normalize fractional seconds in an RFC3339-like timestamp string to `digits`
-/// precision (truncating or padding as necessary). If no fractional part is
-/// present it will insert `.000...` with `digits` zeros. This helper is
-/// extracted to make the behavior testable and is public so it can be used by
-/// documentation tests and external tooling.
-///
-/// # Examples
-/// ```rust
-/// assert_eq!(lazydns::logging::normalize_subsec("2025-12-16T22:39:35.926487+08:00", 3),
-///            "2025-12-16T22:39:35.926+08:00");
-/// ```
-#[cfg(feature = "time")]
-pub fn normalize_subsec(s: &str, digits: usize) -> String {
-    let mut s = s.to_string();
-
-    // Find 'T' to locate time part
-    if let Some(tpos) = s.find('T') {
-        // Search for timezone indicator ('+' or '-' or 'Z') after the 'T'
-        let rest = &s[tpos..];
-        let tz_rel = rest
-            .find('+')
-            .or_else(|| rest.find('-'))
-            .or_else(|| rest.find('Z'));
-        if let Some(tz_rel) = tz_rel {
-            let tz_idx = tpos + tz_rel;
-            if let Some(dot_rel) = s[tpos..tz_idx].find('.') {
-                let dot_idx = tpos + dot_rel;
-                let frac = &s[dot_idx + 1..tz_idx];
-                let mut frac_owned = frac.to_string();
-                if frac_owned.len() > digits {
-                    frac_owned.truncate(digits);
-                } else {
-                    while frac_owned.len() < digits {
-                        frac_owned.push('0');
-                    }
-                }
-                s.replace_range(dot_idx + 1..tz_idx, &frac_owned);
-            } else {
-                // No fractional part: insert .000... before tz
-                let zeros = "0".repeat(digits);
-                s.insert_str(tz_idx, &format!(".{}", zeros));
-            }
-        }
-    }
-
-    s
-}
 
 /// Determine the effective log specification string used to build an `EnvFilter`.
 ///
@@ -210,10 +60,10 @@ pub(crate) fn effective_log_spec(cfg: &LogConfig, cli_verbose: Option<u8>) -> St
 ///
 /// This configures `tracing_subscriber` with an `EnvFilter` derived from
 /// `effective_log_spec`, applies either JSON or human-readable formatting,
-/// configures timestamp formatting via `TimeFormatter`, and optionally
-/// routes logs to a rotating file. When a file writer is created a
-/// background worker guard is stored in a global `OnceCell` to keep the
-/// file appender alive for the process lifetime.
+/// and optionally routes logs to a rotating file via `tracing-appender`.
+/// Timestamps are handled by `tracing-subscriber`'s `local-time` feature.
+/// When a file writer is created a background worker guard is stored in a
+/// global `OnceCell` to keep the file appender alive for the process lifetime.
 ///
 /// Returns `anyhow::Result<()>` to make initialization errors easy to
 /// propagate from application startup.
@@ -232,11 +82,18 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
             layer = layer.with_ansi(false);
         }
 
-        #[cfg(feature = "time")]
-        let layer = layer.with_timer(TimeFormatter::new(cfg.time_format.clone()));
-
-        #[cfg(not(feature = "time"))]
-        let layer = layer;
+        // Use local timezone formatter when possible; fall back to UTC if local offset unavailable
+        let layer = match OffsetTime::local_rfc_3339() {
+            Ok(timer) => layer.with_timer(timer),
+            Err(_) => {
+                // Construct an explicit UTC rfc3339 OffsetTime fallback
+                let fallback = OffsetTime::new(
+                    time::UtcOffset::UTC,
+                    time::format_description::well_known::Rfc3339,
+                );
+                layer.with_timer(fallback)
+            }
+        };
 
         if let Some(path) = &cfg.file {
             #[cfg(feature = "log-file")]
@@ -297,11 +154,18 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
             layer = layer.with_ansi(false);
         }
 
-        #[cfg(feature = "time")]
-        let layer = layer.with_timer(TimeFormatter::new(cfg.time_format.clone()));
-
-        #[cfg(not(feature = "time"))]
-        let layer = layer;
+        // Use local timezone formatter when possible; fall back to UTC if local offset unavailable
+        let layer = match OffsetTime::local_rfc_3339() {
+            Ok(timer) => layer.with_timer(timer),
+            Err(_) => {
+                // Construct an explicit UTC rfc3339 OffsetTime fallback
+                let fallback = OffsetTime::new(
+                    time::UtcOffset::UTC,
+                    time::format_description::well_known::Rfc3339,
+                );
+                layer.with_timer(fallback)
+            }
+        };
 
         if let Some(path) = &cfg.file {
             #[cfg(feature = "log-file")]
@@ -417,34 +281,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "time")]
-    fn normalize_subsec_truncates_and_pads() {
-        // Truncate to 3 digits
-        let s = "2025-12-16T22:39:35.926487+08:00";
-        assert_eq!(normalize_subsec(s, 3), "2025-12-16T22:39:35.926+08:00");
-
-        // Truncate shorter fractional part
-        let s2 = "2025-12-16T22:39:35.9266+08:00";
-        assert_eq!(normalize_subsec(s2, 3), "2025-12-16T22:39:35.926+08:00");
-
-        // Pad when too short
-        let s3 = "2025-12-16T22:39:35.9+08:00";
-        assert_eq!(normalize_subsec(s3, 3), "2025-12-16T22:39:35.900+08:00");
-
-        // Insert when no fractional part
-        let s4 = "2025-12-16T22:39:35+08:00";
-        assert_eq!(normalize_subsec(s4, 3), "2025-12-16T22:39:35.000+08:00");
-
-        // Works with 'Z' timezone
-        let s5 = "2025-12-16T22:39:35.9Z";
-        assert_eq!(normalize_subsec(s5, 3), "2025-12-16T22:39:35.900Z");
-
-        // Unchanged if no 'T' time separator
-        let s6 = "not-a-timestamp";
-        assert_eq!(normalize_subsec(s6, 3), "not-a-timestamp");
-    }
-
-    #[test]
     fn init_logging_ignores_file_when_feature_disabled() {
         // This test compiles and runs with default features (which do not include
         // `log-file`). When `cfg.file` is set but the feature is disabled, we
@@ -456,69 +292,5 @@ mod tests {
 
         // If the feature is disabled this should return Ok without touching the filesystem.
         assert!(init_logging(&cfg, None).is_ok());
-    }
-
-    // New tests to exercise TimeFormatter::format_time via a scoped subscriber
-    #[cfg(all(feature = "tracing-subscriber", feature = "time"))]
-    fn capture_logs_with_timer(fmt_spec: &str, msg: &str) -> String {
-        use std::sync::{Arc, Mutex};
-        let buf = Arc::new(Mutex::new(Vec::new()));
-        let buf_clone = Arc::clone(&buf);
-
-        // MakeWriter that clones the Arc buffer
-        let make_writer = move || {
-            let buf_clone = Arc::clone(&buf_clone);
-            move || {
-                struct Guard {
-                    buf: Arc<Mutex<Vec<u8>>>,
-                }
-                impl std::io::Write for Guard {
-                    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-                        self.buf.lock().unwrap().extend_from_slice(b);
-                        Ok(b.len())
-                    }
-                    fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
-                }
-                Guard { buf: Arc::clone(&buf_clone) }
-            }
-        }();
-
-        let layer = tracing_subscriber::fmt::layer()
-            .with_timer(TimeFormatter::new(fmt_spec.to_string()))
-            .with_writer(make_writer);
-
-        let subscriber = tracing_subscriber::registry().with(layer);
-        let dispatch = tracing::Dispatch::new(subscriber);
-
-        tracing::dispatcher::with_default(&dispatch, || {
-            tracing::info!("{}", msg);
-        });
-
-        // Clone the buffer contents while holding the lock, then drop the lock
-        let data = {
-            let guard = buf.lock().unwrap();
-            guard.clone()
-        };
-        String::from_utf8(data).unwrap_or_default()
-    }
-
-    #[cfg(feature = "tracing-subscriber")]
-    #[test]
-    fn timeformatter_outputs_iso8601_with_millis() {
-        let out = capture_logs_with_timer("iso8601", "iso-test");
-        assert!(out.contains("iso-test"));
-        // Expect a fractional part with 3 digits before timezone (+ or Z)
-        assert!(out.contains('.'));
-        assert!(out.contains('+') || out.contains('Z'));
-    }
-
-    #[cfg(feature = "tracing-subscriber")]
-    #[test]
-    fn timeformatter_timestamp_outputs_integer_seconds() {
-        let out = capture_logs_with_timer("timestamp", "ts-test");
-        assert!(out.contains("ts-test"));
-        // timestamp should be numeric (unix seconds)
-        let numeric_found = out.chars().any(|c| c.is_ascii_digit());
-        assert!(numeric_found);
     }
 }
