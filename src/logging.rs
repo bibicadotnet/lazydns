@@ -456,4 +456,3 @@ mod tests {
         assert!(numeric_found);
     }
 }
-
