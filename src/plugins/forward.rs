@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::time::{timeout, Duration, Instant};
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 /// Load balancing strategy for upstream selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,7 +232,7 @@ impl Forward {
 
     /// Forward a query to an upstream server
     pub async fn forward_query(&self, request: &Message, upstream: &Upstream) -> Result<Message> {
-        debug!("Forwarding query to upstream: {}", upstream.addr);
+        trace!("Forwarding query to upstream: {}", upstream.addr);
 
         if upstream.addr.starts_with("http://") || upstream.addr.starts_with("https://") {
             self.forward_query_doh(request, &upstream.addr).await
@@ -250,13 +250,13 @@ impl Forward {
         let request_data = Self::serialize_message(request)?;
 
         let sent = socket.send_to(&request_data, upstream_addr).await?;
-        debug!("Sent {} bytes to upstream {}", sent, upstream_addr);
+        trace!("Sent {} bytes to upstream {}", sent, upstream_addr);
 
         let mut response_buf = vec![0u8; 512];
         let recv_res = timeout(self.timeout, socket.recv_from(&mut response_buf)).await;
         let (len, _) = match recv_res {
             Ok(Ok((len, peer))) => {
-                debug!("Received {} bytes from upstream {}", len, peer);
+                trace!("Received {} bytes from upstream {}", len, peer);
                 (len, peer)
             }
             Ok(Err(e)) => {
@@ -278,7 +278,7 @@ impl Forward {
 
     /// Forward via DNS over HTTPS
     async fn forward_query_doh(&self, request: &Message, upstream_url: &str) -> Result<Message> {
-        debug!("Forwarding query over DoH to {}", upstream_url);
+        trace!("Forwarding query over DoH to {}", upstream_url);
 
         let mut client_builder = HttpClient::builder();
         // In test environments, accept invalid certificates for self-signed test servers
@@ -725,7 +725,7 @@ impl ForwardPlugin {
         // Wait for first success
         for task in tasks {
             if let Ok(Ok(response)) = task.await {
-                debug!("Got fastest response in concurrent mode");
+                trace!("Got fastest response in concurrent mode");
                 return Ok(response);
             }
         }

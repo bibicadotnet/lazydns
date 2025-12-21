@@ -133,7 +133,7 @@ impl TcpServer {
             )));
         }
 
-        debug!("Reading {} bytes", msg_len);
+        trace!("Reading {} bytes", msg_len);
 
         // Read message data
         let mut buf = vec![0u8; msg_len];

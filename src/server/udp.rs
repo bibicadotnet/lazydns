@@ -291,7 +291,7 @@ impl UdpServer {
         loop {
             match self.socket.recv_from(&mut buf).await {
                 Ok((len, peer_addr)) => {
-                    debug!("Received {} bytes from {}", len, peer_addr);
+                    trace!("Received {} bytes from {}", len, peer_addr);
 
                     // Copy the data so we can move it to the spawned task
                     let request_data = buf[..len].to_vec();
