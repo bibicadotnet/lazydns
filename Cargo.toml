@@ -43,7 +43,6 @@ time = { version = "0.3", default-features = false, features = [
 
 # # cron expression parsing for cron plugin
 cron = "0.10"
-chrono-tz = "0.6"
 chrono = "0.4"
 
 # Async utilities

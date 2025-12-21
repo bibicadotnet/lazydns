@@ -4,8 +4,7 @@ use crate::plugin::Context;
 use crate::plugin::factory as plugin_factory;
 use crate::plugin::traits::Plugin;
 use async_trait::async_trait;
-use chrono::Utc;
-use chrono_tz::Tz;
+use chrono::{Local, Utc};
 use cron::Schedule;
 use reqwest::Client;
 use serde_yaml::Value;
@@ -36,7 +35,6 @@ crate::register_plugin_builder!(CronPlugin);
 ///           url: http://127.0.0.1:8080/ping
 ///     - name: invoke_cache
 ///       cron: "0/10 * * * * *"
-///       timezone: "Asia/Shanghai"
 ///       action:
 ///         invoke_plugin:
 ///           type: cache
@@ -63,7 +61,8 @@ struct JobHandle {
 #[derive(Debug)]
 enum ScheduleDef {
     Interval(u64),
-    Cron(Box<Schedule>, Option<Tz>),
+    /// Second field: if true, use machine local timezone; otherwise use UTC
+    Cron(Box<Schedule>, bool),
 }
 
 #[derive(Debug)]
@@ -103,12 +102,12 @@ impl CronPlugin {
                 // determine next delay
                 let delay = match &sched {
                     ScheduleDef::Interval(s) => Duration::from_secs(*s),
-                    ScheduleDef::Cron(schedule, tz_opt) => {
-                        // compute next occurrence in specified timezone (or UTC)
+                    ScheduleDef::Cron(schedule, use_local) => {
+                        // compute next occurrence in local timezone (or UTC)
                         // normalize to UTC so both branches have the same DateTime type
-                        let next = if let Some(tz) = tz_opt {
+                        let next = if *use_local {
                             schedule
-                                .upcoming(*tz)
+                                .upcoming(Local)
                                 .next()
                                 .map(|dt| dt.with_timezone(&Utc))
                         } else {
@@ -259,13 +258,14 @@ impl Plugin for CronPlugin {
                     } else if let Some(Value::String(expr)) =
                         jmap.get(Value::String("cron".to_string()))
                     {
-                        // timezone support
-                        let tz = jmap
-                            .get(Value::String("timezone".to_string()))
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| s.parse::<Tz>().ok());
+                        // timezone support: we now use machine local timezone for cron schedules.
+                        // If user specified a timezone value it will be ignored and a warning emitted.
+                        let tz_present = jmap.get(Value::String("timezone".to_string())).is_some();
+                        if tz_present {
+                            warn!(job=%name, "timezone in config ignored; using machine local timezone instead");
+                        }
                         match Schedule::from_str(expr) {
-                            Ok(s) => ScheduleDef::Cron(Box::new(s), tz),
+                            Ok(s) => ScheduleDef::Cron(Box::new(s), tz_present),
                             Err(e) => {
                                 warn!(job=%name, error=%e, "invalid cron expression, skipping");
                                 continue;
