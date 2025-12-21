@@ -17,8 +17,8 @@ plugins:
   - tag: cache
     type: cache
     args:
-      size: 10240
-      lazy_cache_ttl: 86400
+      size: 1024
+      negative_cache: true
 
   # 重定向域名
   - tag: redirect
