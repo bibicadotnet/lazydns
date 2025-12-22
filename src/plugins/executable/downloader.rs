@@ -1,9 +1,11 @@
 //! File downloader plugin for updating rule files
 //!
 //! This plugin provides a simple way to download files from URLs and save them locally.
-//! Designed to work with CronPlugin for scheduled file updates.
+//! It can be used in two ways:
+//! 1. Direct configuration as a plugin (files configured in this plugin's args)
+//! 2. Called by other plugins like CronPlugin via invoke_plugin (files passed as args)
 //!
-//! Configuration example:
+//! ## Direct configuration example:
 //! ```yaml
 //! - tag: file_downloader
 //!   type: downloader
@@ -15,6 +17,25 @@
 //!         path: "gfw.txt"
 //!     timeout_secs: 30
 //!     concurrent: false
+//! ```
+//!
+//! ## Called by CronPlugin example:
+//! ```yaml
+//! - tag: cron_scheduler
+//!   type: cron
+//!   args:
+//!     jobs:
+//!       - name: auto_update
+//!         cron: "0 0 */6 * * *"  # every 6 hours
+//!         action:
+//!           invoke_plugin:
+//!             type: "downloader"
+//!             args:
+//!               files:
+//!                 - url: "https://example.com/reject-list.txt"
+//!                   path: "reject-list.txt"
+//!               timeout_secs: 30
+//!               concurrent: false
 //! ```
 
 #![allow(dead_code)]
@@ -57,58 +78,92 @@ impl DownloaderPlugin {
     /// Download all files
     async fn download_files(&self) -> Result<()> {
         if self.files.is_empty() {
+            warn!("No files configured for download");
             return Ok(());
         }
 
         info!(
             count = self.files.len(),
             concurrent = self.concurrent,
-            "Starting file downloads"
+            timeout_secs = self.timeout_secs,
+            "Downloader: Starting file downloads"
         );
 
         let start = std::time::Instant::now();
 
-        if self.concurrent {
+        let result = if self.concurrent {
             self.download_concurrent().await
         } else {
             self.download_sequential().await
-        }?;
+        };
 
         let duration = start.elapsed();
-        info!(
-            count = self.files.len(),
-            duration_ms = duration.as_millis(),
-            "All files downloaded successfully"
-        );
-
-        Ok(())
+        match result {
+            Ok(()) => {
+                info!(
+                    count = self.files.len(),
+                    duration_ms = duration.as_millis(),
+                    "Downloader: All files downloaded successfully"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                warn!(
+                    count = self.files.len(),
+                    duration_ms = duration.as_millis(),
+                    error = %e,
+                    "Downloader: File download failed"
+                );
+                Err(e)
+            }
+        }
     }
 
     /// Download files sequentially
     async fn download_sequential(&self) -> Result<()> {
-        for spec in &self.files {
+        debug!(
+            count = self.files.len(),
+            "Downloader: Starting sequential downloads"
+        );
+        for (idx, spec) in self.files.iter().enumerate() {
+            debug!(idx = idx, file_count = self.files.len(), url = %spec.url, "Downloader: Downloading file");
             self.download_single(spec).await?;
         }
+        debug!("Downloader: Sequential downloads completed");
         Ok(())
     }
 
     /// Download files concurrently
     async fn download_concurrent(&self) -> Result<()> {
+        debug!(
+            count = self.files.len(),
+            "Downloader: Starting concurrent downloads"
+        );
         let handles: Vec<_> = self
             .files
             .iter()
-            .map(|spec| {
+            .enumerate()
+            .map(|(idx, spec)| {
                 let spec_clone = spec.clone();
-                tokio::spawn(async move { Self::download_single_static(&spec_clone).await })
+                tokio::spawn(async move {
+                    debug!(idx = idx, url = %spec_clone.url, "Downloader: Downloading file concurrently");
+                    Self::download_single_static(&spec_clone).await
+                })
             })
             .collect();
 
-        for handle in handles {
-            handle
-                .await
-                .map_err(|e| crate::Error::Config(format!("Download task failed: {}", e)))??;
+        debug!(
+            task_count = handles.len(),
+            "Downloader: Waiting for {} concurrent download tasks",
+            handles.len()
+        );
+        for (idx, handle) in handles.into_iter().enumerate() {
+            handle.await.map_err(|e| {
+                warn!(idx = idx, error = %e, "Downloader: Download task panicked");
+                crate::Error::Config(format!("Download task {} failed: {}", idx, e))
+            })??;
         }
-
+        debug!("Downloader: Concurrent downloads completed");
         Ok(())
     }
 
@@ -117,16 +172,22 @@ impl DownloaderPlugin {
         let start = std::time::Instant::now();
         let client = reqwest::Client::new();
 
-        debug!(url = %spec.url, path = %spec.path, "Downloading file");
+        debug!(url = %spec.url, path = %spec.path, "Downloader: Connecting to URL");
 
         let resp = client
             .get(&spec.url)
             .timeout(std::time::Duration::from_secs(30))
             .send()
             .await
-            .map_err(|e| crate::Error::Config(format!("Failed to download {}: {}", spec.url, e)))?;
+            .map_err(|e| {
+                warn!(url = %spec.url, error = %e, "Downloader: Failed to download file");
+                crate::Error::Config(format!("Failed to download {}: {}", spec.url, e))
+            })?;
+
+        debug!(url = %spec.url, status = %resp.status(), "Downloader: Received response");
 
         if !resp.status().is_success() {
+            warn!(url = %spec.url, status = %resp.status(), "Downloader: HTTP error");
             return Err(crate::Error::Config(format!(
                 "HTTP {} for {}",
                 resp.status(),
@@ -134,23 +195,31 @@ impl DownloaderPlugin {
             )));
         }
 
-        let content = resp
-            .text()
-            .await
-            .map_err(|e| crate::Error::Config(format!("Failed to read response body: {}", e)))?;
+        let content = resp.text().await.map_err(|e| {
+            warn!(url = %spec.url, error = %e, "Downloader: Failed to read response body");
+            crate::Error::Config(format!("Failed to read response body: {}", e))
+        })?;
+
+        debug!(url = %spec.url, content_len = content.len(), "Downloader: Response received");
 
         if content.is_empty() {
+            warn!(url = %spec.url, "Downloader: Downloaded file is empty");
             return Err(crate::Error::Config("Downloaded file is empty".to_string()));
         }
 
         // Write to temporary file first
         let temp_path = format!("{}.tmp", spec.path);
-        fs::write(&temp_path, &content)
-            .map_err(|e| crate::Error::Config(format!("Failed to write temp file: {}", e)))?;
+        debug!(path = %spec.path, temp_path = %temp_path, "Downloader: Writing temporary file");
+        fs::write(&temp_path, &content).map_err(|e| {
+            warn!(temp_path = %temp_path, error = %e, "Downloader: Failed to write temp file");
+            crate::Error::Config(format!("Failed to write temp file: {}", e))
+        })?;
 
         // Then rename to target (atomic operation)
+        debug!(temp_path = %temp_path, final_path = %spec.path, "Downloader: Moving temporary file to final path");
         fs::rename(&temp_path, &spec.path).map_err(|e| {
             let _ = fs::remove_file(&temp_path);
+            warn!(temp_path = %temp_path, final_path = %spec.path, error = %e, "Downloader: Failed to move file to final path");
             crate::Error::Config(format!("Failed to move file to {}: {}", spec.path, e))
         })?;
 
@@ -162,7 +231,7 @@ impl DownloaderPlugin {
             path = %spec.path,
             size_bytes = size_bytes,
             duration_ms = duration.as_millis(),
-            "File downloaded"
+            "Downloader: File downloaded successfully"
         );
 
         Ok(())

@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use tokio::process::Command;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 crate::register_plugin_builder!(CronPlugin);
 
@@ -33,7 +33,7 @@ crate::register_plugin_builder!(CronPlugin);
 ///           method: GET
 ///           url: http://127.0.0.1:8080/ping
 ///     - name: invoke_cache
-///       cron: "0/10 * * * * *"
+///       cron: "0 0 */6 * * *"  # every 6 hours (00:00, 06:00, 12:00, 18:00 local time)
 ///       action:
 ///         invoke_plugin:
 ///           type: cache
@@ -44,6 +44,17 @@ crate::register_plugin_builder!(CronPlugin);
 ///       action:
 ///         command: "echo hello > /tmp/cron_test.txt"
 /// ```
+///
+/// Cron expression format: "minute hour day month weekday" (5 fields).
+/// The parser uses system local timezone by default when timezone is omitted.
+/// To use a specific timezone, append it as the last token (e.g. "0 */6 * * * UTC").
+///
+/// Examples:
+/// - "5 2 * * *" = every day at 02:05 (local time)
+/// - "0 */6 * * *" = every 6 hours at minute 0 (00:00, 06:00, 12:00, 18:00 local time)
+/// - "0 * * * *" = every hour at minute 0
+///
+/// Field ranges: minute(0-59), hour(0-23), day(1-31), month(1-12), weekday(0-6)
 #[derive(Debug)]
 pub struct CronPlugin {
     jobs: Mutex<Vec<JobHandle>>,
@@ -144,37 +155,50 @@ impl CronPlugin {
                 let start = Instant::now();
                 tokio::select! {
                     _ = tokio::time::sleep(delay) => {
+                        debug!(job=%name, action=?&action, "Cron job triggered, executing action");
                         match &action {
                             JobAction::Http { method, url, body } => {
                                 let m = method.clone(); let u = url.clone(); let b = body.clone(); let client = client.clone();
                                 let job_name = name.clone();
+                                debug!(job=%job_name, method=%m, url=%u, "Executing HTTP action");
                                 tokio::spawn(async move {
                                     let req = client.request(m.parse().unwrap_or(reqwest::Method::GET), &u);
                                     let req = if let Some(body) = b { req.body(body) } else { req };
                                     match req.send().await {
-                                        Ok(resp) => info!(job=%job_name, status = %resp.status(), "http action succeeded"),
-                                        Err(e) => warn!(job=%job_name, error=%e, "http action failed"),
+                                        Ok(resp) => info!(job=%job_name, status = %resp.status(), "HTTP action succeeded"),
+                                        Err(e) => warn!(job=%job_name, error=%e, "HTTP action failed"),
                                     }
                                 });
                             }
                             JobAction::InvokePlugin { plugin_type, plugin_args } => {
                                 let mut pconf = PluginConfig::new(plugin_type.clone());
                                 if let Some(args) = plugin_args { pconf.args = args.clone(); }
+                                debug!(job=%name, plugin_type=%plugin_type, "Creating plugin instance for invoke_plugin action");
                                 if let Some(factory) = plugin_factory::get_plugin_factory(plugin_type.as_str()) {
-                                    if let Ok(instance) = factory.create(&pconf) {
-                                        let mut ctx = Context::new(crate::dns::Message::new());
-                                        let plugin = instance.clone();
-                                        let job_name = name.clone();
-                                        tokio::spawn(async move {
-                                            if let Err(e) = plugin.execute(&mut ctx).await { warn!(job=%job_name, error=%e, "invoke_plugin failed"); }
-                                            else { info!(job=%job_name, "invoke_plugin executed"); }
-                                        });
-                                    } else { warn!(job=%name, plugin=%plugin_type, "factory create failed"); }
-                                } else { warn!(job=%name, plugin=%plugin_type, "factory not found"); }
+                                    match factory.create(&pconf) {
+                                        Ok(instance) => {
+                                            let mut ctx = Context::new(crate::dns::Message::new());
+                                            let plugin = instance.clone();
+                                            let job_name = name.clone();
+                                            let plugin_type_clone = plugin_type.clone();
+                                            tokio::spawn(async move {
+                                                debug!(job=%job_name, plugin_type=%plugin_type_clone, "Executing invoke_plugin action");
+                                                match plugin.execute(&mut ctx).await {
+                                                    Ok(()) => info!(job=%job_name, plugin_type=%plugin_type_clone, "invoke_plugin action succeeded"),
+                                                    Err(e) => warn!(job=%job_name, plugin_type=%plugin_type_clone, error=%e, "invoke_plugin action failed"),
+                                                }
+                                            });
+                                        }
+                                        Err(e) => warn!(job=%name, plugin=%plugin_type, error=%e, "invoke_plugin factory create failed"),
+                                    }
+                                } else {
+                                    warn!(job=%name, plugin=%plugin_type, "invoke_plugin factory not found");
+                                }
                             }
                             JobAction::Command { cmd } => {
                                 let c = cmd.clone();
                                 let job_name = name.clone();
+                                debug!(job=%job_name, cmd=%c, "Executing command action");
                                 tokio::spawn(async move {
                                     #[cfg(windows)]
                                     let mut command = Command::new("cmd");
@@ -182,13 +206,13 @@ impl CronPlugin {
                                     let mut command = Command::new("sh");
 
                                     #[cfg(windows)]
-                                    { command.arg("/C").arg(c); }
+                                    { command.arg("/C").arg(&c); }
                                     #[cfg(not(windows))]
-                                    { command.arg("-c").arg(c); }
+                                    { command.arg("-c").arg(&c); }
 
                                     match command.status().await {
-                                        Ok(st) => info!(job=%job_name, status = ?st, "command executed"),
-                                        Err(e) => warn!(job=%job_name, error=%e, "command execution failed"),
+                                        Ok(st) => info!(job=%job_name, cmd=%c, status = ?st, "Command action executed successfully"),
+                                        Err(e) => warn!(job=%job_name, cmd=%c, error=%e, "Command action execution failed"),
                                     }
                                 });
                             }
