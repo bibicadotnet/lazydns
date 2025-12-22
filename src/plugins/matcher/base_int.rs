@@ -2,8 +2,8 @@
 //!
 //! Matches based on integer value comparisons (useful for metadata)
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;

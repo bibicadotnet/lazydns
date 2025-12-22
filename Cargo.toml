@@ -1,8 +1,8 @@
 [package]
 name = "lazydns"
-version = "0.1.30"
-edition = "2021"
-authors = ["lazydns contributors"]
+version = "0.2.6"
+edition = "2024"
+authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
 repository = "https://github.com/lazywalker/lazydns"
 license = "GPL-3.0-only"
@@ -15,6 +15,7 @@ tokio = { version = "1.35", default-features = false, features = [
     "rt",
     "signal",
     "macros",
+    "process",
 ] }
 
 # DNS protocol
@@ -36,9 +37,10 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
 ], optional = true }
 tracing-appender = { version = "0.2", optional = true }
 # time crate is used for constructing UTC fallback for OffsetTime
-time = { version = "0.3", default-features = false, features = [
-    "local-offset",
-], optional = true }
+time = { version = "0.3", default-features = false, optional = true }
+
+# cron expression parsing for cron plugin
+cronexpr = { version = "1.4", optional = true }
 
 # Async utilities
 async-trait = "0.1"
@@ -98,12 +100,14 @@ tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = ["log"]
+default = ["log-ansi", "cron"]
+cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
 log = [
     "tracing-subscriber/env-filter",
     "tracing-subscriber/json",
     "tracing-subscriber/local-time",
     "time/local-offset",
+    "time/macros",
 ]
 log-ansi = ["log", "tracing-subscriber/ansi"]
 log-file = ["log", "tracing-appender"]

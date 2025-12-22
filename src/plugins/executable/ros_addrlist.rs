@@ -2,9 +2,9 @@
 //!
 //! Adds matched IPs to RouterOS address lists (stub implementation)
 
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -171,19 +171,19 @@ impl RosAddrlistPlugin {
                         return Err(crate::Error::Other(format!(
                             "unauthorized when adding {}",
                             ip
-                        )))
+                        )));
                     }
                     StatusCode::INTERNAL_SERVER_ERROR => {
                         return Err(crate::Error::Other(format!(
                             "internal server error when adding {}",
                             ip
-                        )))
+                        )));
                     }
                     s => {
                         return Err(crate::Error::Other(format!(
                             "unexpected status code {} when adding {}",
                             s, ip
-                        )))
+                        )));
                     }
                 }
             }
@@ -256,10 +256,10 @@ impl Plugin for RosAddrlistPlugin {
             plugin = plugin.with_server(server.to_string());
         }
 
-        if let Some(user) = args.get("user").and_then(|v| v.as_str()) {
-            if let Some(pass) = args.get("passwd").and_then(|v| v.as_str()) {
-                plugin = plugin.with_auth(user.to_string(), pass.to_string());
-            }
+        if let Some(user) = args.get("user").and_then(|v| v.as_str())
+            && let Some(pass) = args.get("passwd").and_then(|v| v.as_str())
+        {
+            plugin = plugin.with_auth(user.to_string(), pass.to_string());
         }
 
         if let Some(mask4) = args.get("mask4").and_then(|v| v.as_i64()) {

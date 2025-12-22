@@ -2,9 +2,9 @@
 //!
 //! Matches DNS queries based on their query class (IN, CH, HS)
 
+use crate::Result;
 use crate::dns::types::RecordClass;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;
@@ -91,7 +91,7 @@ impl Plugin for QClassMatcherPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dns::{types::RecordType, Message, Question};
+    use crate::dns::{Message, Question, types::RecordType};
 
     #[tokio::test]
     async fn test_qclass_matcher() {

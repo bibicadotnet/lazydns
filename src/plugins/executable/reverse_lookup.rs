@@ -1,6 +1,6 @@
+use crate::Result;
 use crate::dns::{Message, RData, ResourceRecord};
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::fmt;
@@ -92,13 +92,13 @@ impl ReverseLookupPlugin {
                 .step_by(2)
                 .map(|i| u8::from_str_radix(&hex[i..i + 2], 16))
                 .collect();
-            if let Ok(bytes) = bytes_res {
-                if bytes.len() == 16 {
-                    use std::net::Ipv6Addr;
-                    let mut arr = [0u8; 16];
-                    arr.copy_from_slice(&bytes);
-                    return Some(IpAddr::V6(Ipv6Addr::from(arr)));
-                }
+            if let Ok(bytes) = bytes_res
+                && bytes.len() == 16
+            {
+                use std::net::Ipv6Addr;
+                let mut arr = [0u8; 16];
+                arr.copy_from_slice(&bytes);
+                return Some(IpAddr::V6(Ipv6Addr::from(arr)));
             }
         }
         None
@@ -184,28 +184,25 @@ impl Plugin for ReverseLookupPlugin {
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         // If PTR and configured, attempt to reply from cache
         let req = ctx.request();
-        if self.args.handle_ptr {
-            if let Some(q) = req.questions().first() {
-                if q.qtype() == crate::dns::types::RecordType::PTR {
-                    if let Some(ip) = Self::parse_ptr(q.qname()) {
-                        if let Some(fqdn) = self.lookup(&ip) {
-                            let mut r = Message::new();
-                            r.set_id(req.id());
-                            r.set_response(true);
-                            r.add_question(q.clone());
-                            r.add_answer(ResourceRecord::new(
-                                q.qname().to_string(),
-                                crate::dns::types::RecordType::PTR,
-                                crate::dns::types::RecordClass::IN,
-                                5,
-                                RData::PTR(fqdn),
-                            ));
-                            ctx.set_response(Some(r));
-                            return Ok(());
-                        }
-                    }
-                }
-            }
+        if self.args.handle_ptr
+            && let Some(q) = req.questions().first()
+            && q.qtype() == crate::dns::types::RecordType::PTR
+            && let Some(ip) = Self::parse_ptr(q.qname())
+            && let Some(fqdn) = self.lookup(&ip)
+        {
+            let mut r = Message::new();
+            r.set_id(req.id());
+            r.set_response(true);
+            r.add_question(q.clone());
+            r.add_answer(ResourceRecord::new(
+                q.qname().to_string(),
+                crate::dns::types::RecordType::PTR,
+                crate::dns::types::RecordClass::IN,
+                5,
+                RData::PTR(fqdn),
+            ));
+            ctx.set_response(Some(r));
+            return Ok(());
         }
 
         // Otherwise do nothing here; saving of IPs is expected to be triggered
@@ -236,10 +233,10 @@ impl ReverseLookupPlugin {
     /// cache size; otherwise defaults are applied.
     pub fn quick_setup(s: &str) -> Self {
         let mut args = ReverseLookupArgs::default();
-        if !s.is_empty() {
-            if let Ok(n) = s.parse::<usize>() {
-                args.size = n;
-            }
+        if !s.is_empty()
+            && let Ok(n) = s.parse::<usize>()
+        {
+            args.size = n;
         }
         Self::new(args)
     }

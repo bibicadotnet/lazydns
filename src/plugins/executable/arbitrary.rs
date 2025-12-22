@@ -1,6 +1,6 @@
+use crate::Result;
 use crate::dns::{Message, RData, ResourceRecord};
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -165,8 +165,8 @@ impl Plugin for ArbitraryPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dns::types::{RecordClass, RecordType};
     use crate::dns::Message;
+    use crate::dns::types::{RecordClass, RecordType};
     use crate::dns::{Question, RData};
 
     #[tokio::test]

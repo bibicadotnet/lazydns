@@ -2,8 +2,8 @@
 //!
 //! Matches based on environment variable values
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;
@@ -116,7 +116,9 @@ mod tests {
     #[tokio::test]
     async fn test_env_matcher_exact() {
         let var = "TEST_VAR_EXACT";
-        std::env::set_var(var, "test_value");
+        unsafe {
+            std::env::set_var(var, "test_value");
+        }
 
         let matcher = EnvMatcherPlugin::new(var, "test_value");
         let mut ctx = Context::new(Message::new());
@@ -126,13 +128,17 @@ mod tests {
         let matched = ctx.get_metadata::<bool>("env_matched").unwrap();
         assert!(*matched);
 
-        std::env::remove_var(var);
+        unsafe {
+            std::env::remove_var(var);
+        }
     }
 
     #[tokio::test]
     async fn test_env_matcher_no_match() {
         let var = "TEST_VAR_NO_MATCH";
-        std::env::set_var(var, "wrong_value");
+        unsafe {
+            std::env::set_var(var, "wrong_value");
+        }
 
         let matcher = EnvMatcherPlugin::new(var, "expected_value");
         let mut ctx = Context::new(Message::new());
@@ -142,13 +148,17 @@ mod tests {
         let matched = ctx.get_metadata::<bool>("env_matched").unwrap();
         assert!(!(*matched));
 
-        std::env::remove_var(var);
+        unsafe {
+            std::env::remove_var(var);
+        }
     }
 
     #[tokio::test]
     async fn test_env_matcher_exists() {
         let var = "TEST_VAR_EXISTS";
-        std::env::set_var(var, "any_value");
+        unsafe {
+            std::env::set_var(var, "any_value");
+        }
 
         let matcher = EnvMatcherPlugin::exists(var);
         let mut ctx = Context::new(Message::new());
@@ -158,13 +168,17 @@ mod tests {
         let matched = ctx.get_metadata::<bool>("env_matched").unwrap();
         assert!(*matched);
 
-        std::env::remove_var(var);
+        unsafe {
+            std::env::remove_var(var);
+        }
     }
 
     #[tokio::test]
     async fn test_env_matcher_not_exists() {
         let var = "NONEXISTENT_VAR_ENV_MATCHER";
-        std::env::remove_var(var);
+        unsafe {
+            std::env::remove_var(var);
+        }
 
         let matcher = EnvMatcherPlugin::exists(var);
         let mut ctx = Context::new(Message::new());
@@ -178,7 +192,9 @@ mod tests {
     #[tokio::test]
     async fn test_env_matcher_custom_key() {
         let var = "TEST_VAR_CUSTOM_KEY";
-        std::env::set_var(var, "value");
+        unsafe {
+            std::env::set_var(var, "value");
+        }
 
         let matcher =
             EnvMatcherPlugin::new(var, "value").with_metadata_key("my_env_key".to_string());
@@ -189,6 +205,8 @@ mod tests {
         let matched = ctx.get_metadata::<bool>("my_env_key").unwrap();
         assert!(*matched);
 
-        std::env::remove_var(var);
+        unsafe {
+            std::env::remove_var(var);
+        }
     }
 }

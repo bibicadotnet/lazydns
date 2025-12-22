@@ -2,9 +2,9 @@
 //!
 //! Defines the core Plugin trait that all plugins must implement.
 
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::plugin::Context;
-use crate::Result;
 use async_trait::async_trait;
 use std::any::Any;
 use std::fmt::Debug;
@@ -55,7 +55,9 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
     /// # Returns
     ///
     /// Returns `Ok(())` on success, or an error if plugin execution fails.
-    async fn execute(&self, ctx: &mut Context) -> Result<()>;
+    async fn execute(&self, _ctx: &mut Context) -> Result<()> {
+        Ok(())
+    }
 
     /// Get the plugin name
     ///

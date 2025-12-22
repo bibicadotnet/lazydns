@@ -12,8 +12,8 @@
 //!     key: has_resp_key   # optional: metadata key to set (default: "has_resp")
 //! ```
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;

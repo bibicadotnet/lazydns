@@ -2,8 +2,8 @@
 //!
 //! Generic marking/tagging plugin for labeling queries and responses
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;

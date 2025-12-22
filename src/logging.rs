@@ -9,8 +9,14 @@ use crate::config::LogConfig;
 use anyhow::Result;
 #[cfg(feature = "tracing-subscriber")]
 use tracing_subscriber::{
-    fmt::time::OffsetTime, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+    EnvFilter, fmt::time::OffsetTime, layer::SubscriberExt, util::SubscriberInitExt,
 };
+
+/// Custom RFC3339 format with 3-digit subseconds (milliseconds).
+#[cfg(feature = "tracing-subscriber")]
+const RFC3339_MS: &[time::format_description::FormatItem<'static>] = time::macros::format_description!(
+    "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3][offset_hour sign:mandatory]:[offset_minute]"
+);
 
 /// Guard to hold the background log file worker alive for the lifetime of the
 /// process. The worker guard is stored in a `OnceCell` so it can be initialized
@@ -91,14 +97,14 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
         }
 
         // Use local timezone formatter when possible; fall back to UTC if local offset unavailable
-        let layer = match OffsetTime::local_rfc_3339() {
-            Ok(timer) => layer.with_timer(timer),
+        let layer = match time::UtcOffset::current_local_offset() {
+            Ok(offset) => {
+                let timer = OffsetTime::new(offset, RFC3339_MS);
+                layer.with_timer(timer)
+            }
             Err(_) => {
                 // Construct an explicit UTC rfc3339 OffsetTime fallback
-                let fallback = OffsetTime::new(
-                    time::UtcOffset::UTC,
-                    time::format_description::well_known::Rfc3339,
-                );
+                let fallback = OffsetTime::new(time::UtcOffset::UTC, RFC3339_MS);
                 layer.with_timer(fallback)
             }
         };
@@ -163,14 +169,14 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
         }
 
         // Use local timezone formatter when possible; fall back to UTC if local offset unavailable
-        let layer = match OffsetTime::local_rfc_3339() {
-            Ok(timer) => layer.with_timer(timer),
+        let layer = match time::UtcOffset::current_local_offset() {
+            Ok(offset) => {
+                let timer = OffsetTime::new(offset, RFC3339_MS);
+                layer.with_timer(timer)
+            }
             Err(_) => {
                 // Construct an explicit UTC rfc3339 OffsetTime fallback
-                let fallback = OffsetTime::new(
-                    time::UtcOffset::UTC,
-                    time::format_description::well_known::Rfc3339,
-                );
+                let fallback = OffsetTime::new(time::UtcOffset::UTC, RFC3339_MS);
                 layer.with_timer(fallback)
             }
         };
@@ -247,7 +253,9 @@ mod tests {
         // Preserve existing RUST_LOG and restore at the end to avoid
         // interfering with other tests running in parallel.
         let prev = std::env::var_os("RUST_LOG");
-        std::env::set_var("RUST_LOG", "trace");
+        unsafe {
+            std::env::set_var("RUST_LOG", "trace");
+        }
         let cfg = LogConfig {
             level: "info".to_string(),
             ..Default::default()
@@ -256,9 +264,11 @@ mod tests {
         assert_eq!(effective_log_spec(&cfg, None), "trace");
 
         // Restore previous value
-        match prev {
-            Some(v) => std::env::set_var("RUST_LOG", v),
-            None => std::env::remove_var("RUST_LOG"),
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("RUST_LOG", v),
+                None => std::env::remove_var("RUST_LOG"),
+            }
         }
     }
 
@@ -266,7 +276,9 @@ mod tests {
     fn cfg_level_used_when_no_rust_log() {
         // Preserve and remove RUST_LOG to ensure the default is used.
         let prev = std::env::var_os("RUST_LOG");
-        std::env::remove_var("RUST_LOG");
+        unsafe {
+            std::env::remove_var("RUST_LOG");
+        }
         let cfg = LogConfig {
             level: "warn".to_string(),
             ..Default::default()
@@ -282,9 +294,11 @@ mod tests {
         assert_eq!(effective_log_spec(&cfg, Some(3)), "trace");
 
         // Restore previous value
-        match prev {
-            Some(v) => std::env::set_var("RUST_LOG", v),
-            None => std::env::remove_var("RUST_LOG"),
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("RUST_LOG", v),
+                None => std::env::remove_var("RUST_LOG"),
+            }
         }
     }
 

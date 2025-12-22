@@ -1,0 +1,115 @@
+# Test configuration for Cron + Downloader debugging
+# This is the same as config-cron-downloader.yaml but with more frequent cron schedule
+# Set cron to trigger every 10 seconds for testing
+
+plugins:
+  # Load domain blocklists (Ad, etc.)
+  - tag: domain_reject_list
+    type: domain_set
+    args:
+      files:
+        - "reject-list.txt"
+      auto_reload: true
+
+  # Load domain proxy list
+  - tag: domain_proxy_list
+    type: domain_set
+    args:
+      files:
+        - "proxy-list.txt"
+        - "proxy-ext-list.txt"
+      auto_reload: true
+
+  # Load domain direct list
+  - tag: domain_direct_list
+    type: domain_set
+    args:
+      files:
+        - "direct-list.txt"
+        - "apple-cn.txt"
+        - "my-domain-list.txt"
+      auto_reload: true
+
+  # Load IP direct list
+  - tag: ip_direct_list
+    type: ip_set
+    args:
+      files:
+        - "china-ip-list.txt"
+        - "white-ip-list.txt"
+      auto_reload: true
+
+  # Load hosts files
+  - tag: hosts_files
+    type: hosts
+    args:
+      files:
+        - "hosts.txt"
+        - "hosts-github.txt"
+      auto_reload: true
+
+  # File Downloader Plugin
+  - tag: file_downloader
+    type: downloader
+    args:
+      files:
+        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt"
+          path: "gfw.txt"
+        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt"
+          path: "reject-list.txt"
+      timeout_secs: 30
+      concurrent: false
+
+  # Cron Scheduler - for testing, trigger every 10 seconds
+  - tag: auto_update_scheduler
+    type: cron
+    args:
+      jobs:
+        - name: test_download
+          # For testing: run every 10 seconds
+          interval_seconds: 10
+          action:
+            invoke_plugin:
+              type: "downloader"
+              args:
+                files:
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt"
+                    path: "gfw.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt"
+                    path: "reject-list.txt"
+                timeout_secs: 30
+                concurrent: false
+
+  # Simple forward plugin
+  - tag: upstream
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "8.8.8.8:53"
+
+  # Simple sequence
+  - tag: sequence_main
+    type: sequence
+    args:
+      - exec: $upstream
+      - exec: accept
+
+  # UDP server
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: sequence_main
+      listen: :15354
+
+  # TCP server
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: sequence_main
+      listen: :15354
+
+# Logging configuration
+log:
+  level: debug
+  format: text

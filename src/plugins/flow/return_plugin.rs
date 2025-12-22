@@ -1,6 +1,6 @@
 use crate::{
-    plugin::{Context, Plugin, RETURN_FLAG},
     Result,
+    plugin::{Context, Plugin, RETURN_FLAG},
 };
 use async_trait::async_trait;
 
@@ -30,8 +30,8 @@ mod tests {
     use super::*;
     use crate::dns::Message;
     use crate::plugin::Executor;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[tokio::test]
     async fn test_return_plugin_stops_execution() {

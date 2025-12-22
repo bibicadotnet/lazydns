@@ -2,8 +2,8 @@
 //!
 //! Forwards queries with custom EDNS0 options
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use tracing::{debug, trace};

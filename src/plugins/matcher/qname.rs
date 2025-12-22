@@ -2,8 +2,8 @@
 //!
 //! Matches queries based on the query name (domain)
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;
@@ -127,8 +127,8 @@ impl Plugin for QNameMatcherPlugin {
 mod tests {
     use super::*;
     use crate::dns::{
-        types::{RecordClass, RecordType},
         Message, Question,
+        types::{RecordClass, RecordType},
     };
 
     #[tokio::test]

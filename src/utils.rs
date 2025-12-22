@@ -1,8 +1,9 @@
 use notify::{Event, EventKind, RecursiveMode, Watcher};
-use std::collections::HashMap;
+// HashSet used by previous debounce implementation (replaced by HashMap)
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{Mutex, mpsc};
 use tracing::{debug, error, info, warn};
 
 /// Spawn a generic file watcher task.
@@ -15,7 +16,7 @@ pub fn spawn_file_watcher<F>(
     name: impl Into<String>,
     files: Vec<PathBuf>,
     debounce_ms: u64,
-    mut on_reload: F,
+    on_reload: F,
 ) where
     F: FnMut(&PathBuf, &Vec<PathBuf>) + Send + 'static,
 {
@@ -50,8 +51,14 @@ pub fn spawn_file_watcher<F>(
         let canonical_files: Vec<PathBuf> =
             files.iter().filter_map(|p| p.canonicalize().ok()).collect();
 
-        // Debounce state
-        let mut last_reload: HashMap<PathBuf, Instant> = HashMap::new();
+        // Debounce scheduling: we keep a per-path map of last event time and
+        // a marker that a task is scheduled. This allows resetting the debounce
+        // timer on rapid successive events so only one callback fires after
+        // events have quiesced.
+        use std::time::Instant as StdInstant;
+        let pending_map: Arc<Mutex<std::collections::HashMap<PathBuf, StdInstant>>> =
+            Arc::new(Mutex::new(std::collections::HashMap::new()));
+        let on_reload_mutex: Arc<Mutex<F>> = Arc::new(Mutex::new(on_reload));
 
         // Watch provided files
         for file_path in &files {
@@ -76,37 +83,75 @@ pub fn spawn_file_watcher<F>(
                         .and_then(|n| n.to_str())
                         .unwrap_or("unknown");
 
-                    // Debounce rapid reloads per-file
-                    let now = Instant::now();
                     if let Some(cp) = canonical_path.as_ref() {
-                        if let Some(prev) = last_reload.get(cp) {
-                            if now.duration_since(*prev) < Duration::from_millis(debounce_ms) {
-                                debug!(name = %name, file = file_name, "skipping reload due to debounce");
-                                continue;
+                        // Record last event timestamp for this path and schedule a debounced
+                        // task only if not already scheduled. The scheduled task will wait
+                        // until events have quiesced for `debounce_ms` before invoking
+                        // the callback; new events update the timestamp and reset the wait.
+                        let cp_clone = cp.clone();
+                        let now = StdInstant::now();
+                        let mut map = pending_map.lock().await;
+                        let already_scheduled = map.contains_key(&cp_clone);
+                        map.insert(cp_clone.clone(), now);
+                        drop(map);
+
+                        // Handle file removal/rename immediately (attempt to re-watch)
+                        if matches!(event.kind, EventKind::Remove(_)) {
+                            info!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                            if path.exists() {
+                                if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
+                                    warn!(name = %name, file = file_name, error = %e, "failed to re-watch file");
+                                } else {
+                                    info!(name = %name, file = file_name, "successfully re-added file to watch list");
+                                }
                             }
                         }
-                        last_reload.insert(cp.clone(), now);
-                    }
 
-                    // Handle file removal/rename: attempt to re-watch
-                    if matches!(event.kind, EventKind::Remove(_)) {
-                        info!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
-                        tokio::time::sleep(Duration::from_millis(50)).await;
-                        if path.exists() {
-                            if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
-                                warn!(name = %name, file = file_name, error = %e, "failed to re-watch file");
-                            } else {
-                                info!(name = %name, file = file_name, "successfully re-added file to watch list");
-                            }
+                        if !already_scheduled {
+                            // Clone for the spawned task
+                            let pending_map_clone = Arc::clone(&pending_map);
+                            let on_reload_clone = Arc::clone(&on_reload_mutex);
+                            let files_clone = files.clone();
+                            let path_clone = path.clone();
+                            let name_clone = name.clone();
+
+                            tokio::spawn(async move {
+                                loop {
+                                    tokio::time::sleep(Duration::from_millis(debounce_ms)).await;
+
+                                    // Check last event time
+                                    let mut guard = pending_map_clone.lock().await;
+                                    let last = guard.get(&cp_clone).cloned();
+                                    if let Some(ts) = last {
+                                        if StdInstant::now().duration_since(ts)
+                                            >= Duration::from_millis(debounce_ms)
+                                        {
+                                            // Invoke the callback under mutex
+                                            let mut f = on_reload_clone.lock().await;
+                                            (f)(&path_clone, &files_clone);
+
+                                            // Remove pending marker
+                                            guard.remove(&cp_clone);
+                                            info!(name = %name_clone, file = ?path_clone, "scheduled reload: invoking callback (debounced)");
+                                            break;
+                                        } else {
+                                            // Not yet quiesced; loop and wait again
+                                            continue;
+                                        }
+                                    } else {
+                                        // No pending entry; nothing to do
+                                        break;
+                                    }
+                                }
+                            });
+                        } else {
+                            debug!(name = %name, file = file_name, "updated pending debounce timestamp");
                         }
+
+                        // Only reload once per event batch
+                        break;
                     }
-
-                    // Notify caller to perform reload
-                    info!(name = %name, file = file_name, "scheduled reload: invoking callback");
-                    (on_reload)(path, &files);
-
-                    // Only reload once per event batch
-                    break;
                 }
             }
         }
@@ -118,11 +163,13 @@ pub fn spawn_file_watcher<F>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::collections::HashMap;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Instant;
     use tempfile::NamedTempFile;
     use tokio::sync::Notify;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     // Exposed for unit testing debounce logic without relying on filesystem events
     fn should_reload(
@@ -131,10 +178,10 @@ mod tests {
         debounce_ms: u64,
     ) -> bool {
         let now = Instant::now();
-        if let Some(prev) = last_reload.get(cp) {
-            if now.duration_since(*prev) < Duration::from_millis(debounce_ms) {
-                return false;
-            }
+        if let Some(prev) = last_reload.get(cp)
+            && now.duration_since(*prev) < Duration::from_millis(debounce_ms)
+        {
+            return false;
         }
         last_reload.insert(cp.clone(), now);
         true

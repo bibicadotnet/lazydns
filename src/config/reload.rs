@@ -2,8 +2,8 @@
 //!
 //! Provides the ability to reload configuration without restarting the server.
 
-use crate::config::Config;
 use crate::Result;
+use crate::config::Config;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;

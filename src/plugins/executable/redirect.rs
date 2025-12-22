@@ -2,8 +2,8 @@
 //!
 //! Redirects DNS queries to a different domain
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;

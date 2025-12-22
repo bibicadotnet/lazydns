@@ -18,8 +18,8 @@ use lazydns::plugin::PluginBuilder;
 use lazydns::server::ServerLauncher;
 use std::sync::Arc;
 #[cfg(unix)]
-use tokio::signal::unix::{signal, SignalKind};
-use tokio::time::{timeout, Duration};
+use tokio::signal::unix::{SignalKind, signal};
+use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info};
 
 // Command-line arguments are parsed in `src/cli.rs` using `pico-args`.

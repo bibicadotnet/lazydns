@@ -211,16 +211,16 @@ impl Plugin for GeoIpPlugin {
 
         // Check answer section for IP addresses
         for record in response.answers() {
-            if let Some(ip) = Self::extract_ip(record.rdata()) {
-                if let Some(country) = self.lookup(&ip) {
-                    // Set country code in metadata
-                    context.set_metadata(self.metadata_key.clone(), country.clone());
+            if let Some(ip) = Self::extract_ip(record.rdata())
+                && let Some(country) = self.lookup(&ip)
+            {
+                // Set country code in metadata
+                context.set_metadata(self.metadata_key.clone(), country.clone());
 
-                    debug!("GeoIP: IP {} belongs to country {}", ip, country);
+                debug!("GeoIP: IP {} belongs to country {}", ip, country);
 
-                    // Return after first match
-                    return Ok(());
-                }
+                // Return after first match
+                return Ok(());
             }
         }
 

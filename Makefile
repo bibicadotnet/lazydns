@@ -69,9 +69,9 @@ check: lint fmt
 
 # Build for a single PLATFORM (e.g. PLATFORM=linux/arm/v7)
 build-for:
-	@PLATFORM=$(PLATFORM); \
-	if [ -z "$$PLATFORM" ]; then echo "Usage: make build-for PLATFORM=linux/arm/v7"; exit 1; fi; \
-	sh scripts/cross_build.sh "$$PLATFORM"
+	@PLATFORM=$(PLATFORM); EXTRA=$(EXTRA); \
+	if [ -z "$$PLATFORM" ]; then echo "Usage: make build-for PLATFORM=linux/arm/v7 [EXTRA='--no-default-features --features \"log,cron\"']"; exit 1; fi; \
+	sh scripts/cross_build.sh "$$PLATFORM" "$$EXTRA"
 
 build-all:
 	$(MAKE) build-for PLATFORM=linux/amd64; \
@@ -80,7 +80,8 @@ build-all:
 
 # local build: prebuild binary for the platform then build image
 PLATFORM ?= linux/arm/v7
+EXTRA ?= "--no-default-features --features log,cron"
 local: build-for
 	@echo "Building Docker image for $(PLATFORM)"; \
-	docker buildx build --platform $(PLATFORM) --output=type=docker -f docker/Dockerfile.local -t lazywalker/lazydns .; \
-	docker save lazywalker/lazydns > lazydns.tar
+	docker buildx build --platform $(PLATFORM) --output=type=docker -f docker/Dockerfile.local.scratch -t lazywalker/lazydns:local .; \
+	docker save lazywalker/lazydns:local > lazydns.tar

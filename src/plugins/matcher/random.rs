@@ -2,8 +2,8 @@
 //!
 //! Randomly matches queries based on a probability
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use rand::Rng;
 use std::fmt;

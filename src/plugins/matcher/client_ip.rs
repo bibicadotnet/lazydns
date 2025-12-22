@@ -2,8 +2,8 @@
 //!
 //! Matches queries based on the client's IP address
 
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use ipnet::IpNet;
 use std::fmt;

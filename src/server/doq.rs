@@ -21,8 +21,8 @@
 //! installation. Tests and binaries should ensure a provider is installed
 //! (see `rustls::crypto::ring::default_provider().install_default()`).
 
-use crate::server::RequestHandler;
 use crate::Result;
+use crate::server::RequestHandler;
 use quinn::{Endpoint, ServerConfig};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -194,7 +194,7 @@ fn build_quic_server_config(cert_path: &str, key_path: &str) -> Result<ServerCon
         _ => {
             return Err(crate::Error::Config(
                 "Unsupported private key type".to_string(),
-            ))
+            ));
         }
     };
 

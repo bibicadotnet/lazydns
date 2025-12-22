@@ -3,10 +3,10 @@
 //! Tests the DNS server with real UDP queries
 
 use async_trait::async_trait;
+use lazydns::Result;
 use lazydns::dns::wire::{parse_message, serialize_message};
 use lazydns::dns::{Message, Question, RData, RecordClass, RecordType, ResourceRecord};
 use lazydns::server::{RequestHandler, ServerConfig, UdpServer};
-use lazydns::Result;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;

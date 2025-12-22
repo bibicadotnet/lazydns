@@ -77,13 +77,11 @@ async fn integration_sequence_save_hook() {
     if ctx.has_response() {
         let resp_ref = ctx.response().unwrap();
         for name in registry.plugin_names() {
-            if let Some(p) = registry.get(&name) {
-                if p.name() == "reverse_lookup" {
-                    if let Some(rldown) = p.as_ref().as_any().downcast_ref::<ReverseLookupPlugin>()
-                    {
-                        rldown.save_ips_after(ctx.request(), resp_ref);
-                    }
-                }
+            if let Some(p) = registry.get(&name)
+                && p.name() == "reverse_lookup"
+                && let Some(rldown) = p.as_ref().as_any().downcast_ref::<ReverseLookupPlugin>()
+            {
+                rldown.save_ips_after(ctx.request(), resp_ref);
             }
         }
     }

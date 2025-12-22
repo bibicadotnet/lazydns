@@ -138,8 +138,8 @@ async fn spawn_dot_single_accept(
     use lazydns::dns::types::{RecordClass, RecordType};
     use lazydns::dns::{RData, ResourceRecord};
     use rcgen::generate_simple_self_signed;
-    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
     use rustls::ServerConfig;
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
     use std::sync::Arc;
     use tokio_rustls::TlsAcceptor;
 
@@ -161,35 +161,35 @@ async fn spawn_dot_single_accept(
     let ip = response_ip.to_string();
 
     let handle = tokio::spawn(async move {
-        if let Ok((socket, _)) = listener.accept().await {
-            if let Ok(mut tls_stream) = acceptor.accept(socket).await {
-                // Read 2-byte length prefix
-                let mut len_buf = [0u8; 2];
-                let n = tls_stream.read(&mut len_buf).await.unwrap_or(0);
-                if n < 2 {
-                    return;
-                }
-                let msg_len = u16::from_be_bytes(len_buf) as usize;
-                let mut buf = vec![0u8; msg_len];
-                let _ = tls_stream.read_exact(&mut buf).await;
+        if let Ok((socket, _)) = listener.accept().await
+            && let Ok(mut tls_stream) = acceptor.accept(socket).await
+        {
+            // Read 2-byte length prefix
+            let mut len_buf = [0u8; 2];
+            let n = tls_stream.read(&mut len_buf).await.unwrap_or(0);
+            if n < 2 {
+                return;
+            }
+            let msg_len = u16::from_be_bytes(len_buf) as usize;
+            let mut buf = vec![0u8; msg_len];
+            let _ = tls_stream.read_exact(&mut buf).await;
 
-                if let Ok(req_msg) = lazydns::dns::wire::parse_message(&buf) {
-                    let mut resp = req_msg.clone();
-                    resp.set_response(true);
-                    resp.add_answer(ResourceRecord::new(
-                        req_msg.questions()[0].qname().to_string(),
-                        RecordType::A,
-                        RecordClass::IN,
-                        60,
-                        RData::A(ip.parse().unwrap()),
-                    ));
-                    resp.set_id(req_msg.id());
+            if let Ok(req_msg) = lazydns::dns::wire::parse_message(&buf) {
+                let mut resp = req_msg.clone();
+                resp.set_response(true);
+                resp.add_answer(ResourceRecord::new(
+                    req_msg.questions()[0].qname().to_string(),
+                    RecordType::A,
+                    RecordClass::IN,
+                    60,
+                    RData::A(ip.parse().unwrap()),
+                ));
+                resp.set_id(req_msg.id());
 
-                    if let Ok(data) = lazydns::dns::wire::serialize_message(&resp) {
-                        let response_len = (data.len() as u16).to_be_bytes();
-                        let _ = tls_stream.write_all(&response_len).await;
-                        let _ = tls_stream.write_all(&data).await;
-                    }
+                if let Ok(data) = lazydns::dns::wire::serialize_message(&resp) {
+                    let response_len = (data.len() as u16).to_be_bytes();
+                    let _ = tls_stream.write_all(&response_len).await;
+                    let _ = tls_stream.write_all(&data).await;
                 }
             }
         }
@@ -248,7 +248,7 @@ async fn integration_dot_tls_exchange() {
 async fn integration_dot_concurrent_clients() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     async fn connect_tcp_retry(addr: std::net::SocketAddr) -> tokio::net::TcpStream {
         for _ in 0..20u8 {
@@ -321,7 +321,7 @@ async fn integration_dot_concurrent_clients() {
 async fn integration_dot_malformed_frames() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     async fn connect_tcp_retry(addr: std::net::SocketAddr) -> tokio::net::TcpStream {
         for _ in 0..20u8 {
@@ -399,7 +399,7 @@ async fn integration_dot_malformed_frames() {
 async fn integration_dot_timeout_behavior() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     let (addr, _cert_der, _server_handle) = spawn_dot_single_accept("127.0.0.1").await;
     let client_cfg = ClientConfig::builder()

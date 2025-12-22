@@ -26,18 +26,18 @@ use crate::dns::Message;
 use crate::error::{Error, Result};
 use crate::server::{RequestHandler, TlsConfig};
 use axum::{
+    Router,
     body::Bytes,
     extract::{Query as AxumQuery, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::post,
-    Router,
 };
 #[cfg(feature = "doh")]
 use axum_server::bind_rustls as axum_bind_rustls;
 #[cfg(feature = "doh")]
 use axum_server::tls_rustls::RustlsConfig as AxumRustlsConfig;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -358,10 +358,10 @@ mod tests {
     use super::*;
     use crate::server::RequestHandler;
     use async_trait::async_trait;
-    use axum::body::to_bytes;
     use axum::body::Bytes as AxumBytes;
+    use axum::body::to_bytes;
     use axum::http::header::CONTENT_TYPE;
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     use std::collections::HashMap;
 
     struct TestHandler;

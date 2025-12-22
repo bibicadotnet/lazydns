@@ -2,10 +2,10 @@
 //!
 //! Implements rate limiting to prevent DoS attacks and resource exhaustion.
 
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::ResponseCode;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::any::Any;
@@ -185,7 +185,7 @@ impl Plugin for RateLimitPlugin {
                 _ => {
                     return Err(crate::Error::Config(
                         "Invalid 'max_queries' type".to_string(),
-                    ))
+                    ));
                 }
             }
         }
@@ -211,7 +211,7 @@ impl Plugin for RateLimitPlugin {
                 _ => {
                     return Err(crate::Error::Config(
                         "Invalid 'window_secs' type".to_string(),
-                    ))
+                    ));
                 }
             }
         }

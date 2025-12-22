@@ -2,8 +2,8 @@
 //!
 //! Provides fallback mechanism for query processing
 
-use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;

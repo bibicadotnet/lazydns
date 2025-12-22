@@ -1,5 +1,5 @@
-use crate::plugin::{Context, Plugin};
 use crate::Result;
+use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
@@ -119,12 +119,12 @@ impl Plugin for EcsHandler {
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         // If forward mode, attempt to copy client EDNS0 options from metadata `client_edns0_options`.
-        if self.forward {
-            if let Some(options) = ctx.get_metadata::<Vec<(u16, Vec<u8>)>>("client_edns0_options") {
-                ctx.set_metadata("edns0_options", options.clone());
-                ctx.set_metadata("edns0_preserve_existing", true);
-                return Ok(());
-            }
+        if self.forward
+            && let Some(options) = ctx.get_metadata::<Vec<(u16, Vec<u8>)>>("client_edns0_options")
+        {
+            ctx.set_metadata("edns0_options", options.clone());
+            ctx.set_metadata("edns0_preserve_existing", true);
+            return Ok(());
         }
 
         // If preset is configured, add ECS option derived from preset
@@ -138,18 +138,14 @@ impl Plugin for EcsHandler {
         }
 
         // If send: try to derive client IP from metadata `client_addr` (string)
-        if self.send {
-            if let Some(addr) = ctx.get_metadata::<String>("client_addr") {
-                if let Ok(ip) = addr.parse::<IpAddr>() {
-                    if let Some((code, data)) =
-                        EcsHandler::make_ecs_option(ip, self.mask4, self.mask6)
-                    {
-                        let opt = vec![(code, data)];
-                        ctx.set_metadata("edns0_options", opt);
-                        ctx.set_metadata("edns0_preserve_existing", true);
-                    }
-                }
-            }
+        if self.send
+            && let Some(addr) = ctx.get_metadata::<String>("client_addr")
+            && let Ok(ip) = addr.parse::<IpAddr>()
+            && let Some((code, data)) = EcsHandler::make_ecs_option(ip, self.mask4, self.mask6)
+        {
+            let opt = vec![(code, data)];
+            ctx.set_metadata("edns0_options", opt);
+            ctx.set_metadata("edns0_preserve_existing", true);
         }
 
         Ok(())

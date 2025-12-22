@@ -4,9 +4,9 @@
 //! Then test with: dig @127.0.0.1 -p 5353 example.com
 
 use async_trait::async_trait;
+use lazydns::Result;
 use lazydns::dns::{Message, RData, RecordClass, RecordType, ResourceRecord};
 use lazydns::server::{RequestHandler, ServerConfig, UdpServer};
-use lazydns::Result;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 

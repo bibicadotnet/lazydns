@@ -1,5 +1,5 @@
-use crate::plugin::{Context, ExecPlugin, Plugin, RETURN_FLAG};
 use crate::Result;
+use crate::plugin::{Context, ExecPlugin, Plugin, RETURN_FLAG};
 use std::sync::Arc;
 
 // Auto-register exec factory only (no init factory implementation provided)

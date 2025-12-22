@@ -1,3 +1,4 @@
+use crate::Result;
 use crate::config::PluginConfig;
 /// TTL plugin: fix or clamp TTLs on responses.
 ///
@@ -8,7 +9,6 @@ use crate::config::PluginConfig;
 /// Quick setup strings are supported via `quick_setup`, e.g. "60" (fix=60)
 /// or "30-300" (min=30, max=300).
 use crate::plugin::{Context, ExecPlugin, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;

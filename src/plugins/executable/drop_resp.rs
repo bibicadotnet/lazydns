@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::plugin::{Context, ExecPlugin, Plugin};
 use crate::Result;
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use async_trait::async_trait;
 
 // Auto-register using the exec register macro

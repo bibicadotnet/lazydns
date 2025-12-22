@@ -57,16 +57,16 @@
 //! - CachePlugin automatically handles both cache reads (before sequence) and
 //!   cache writes (after sequence completes), eliminating the need for a separate
 //!   store plugin.
+use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::Message;
 use crate::error::Error;
 use crate::plugin::{Context, Plugin};
-use crate::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::debug;
 
@@ -574,7 +574,7 @@ impl Plugin for CachePlugin {
                 Some(_) => {
                     return Err(Error::Config(
                         "prefetch_threshold must be a number".to_string(),
-                    ))
+                    ));
                 }
                 None => 0.1,
             };
