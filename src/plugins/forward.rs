@@ -624,7 +624,7 @@ impl ForwardPlugin {
 
         if success {
             upstream.health.record_success(elapsed);
-            #[cfg(feature = "admin")]
+            #[cfg(feature = "metrics")]
             {
                 use crate::metrics::{UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL};
                 UPSTREAM_QUERIES_TOTAL
@@ -636,7 +636,7 @@ impl ForwardPlugin {
             }
         } else {
             upstream.health.record_failure();
-            #[cfg(feature = "admin")]
+            #[cfg(feature = "metrics")]
             {
                 use crate::metrics::UPSTREAM_QUERIES_TOTAL;
                 UPSTREAM_QUERIES_TOTAL

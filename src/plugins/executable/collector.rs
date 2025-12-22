@@ -10,7 +10,7 @@
 use crate::Result;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
-#[cfg(feature = "admin")]
+#[cfg(feature = "metrics")]
 use prometheus::{Counter, Gauge, Histogram, HistogramOpts, Opts, Registry};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -100,7 +100,7 @@ impl Plugin for MetricsCollectorPlugin {
 }
 
 // --- Prometheus-backed QuickSetup (ported from Go) ---
-#[cfg(feature = "admin")]
+#[cfg(feature = "metrics")]
 /// Create and register a Prometheus-backed metrics collector.
 ///
 /// This mirrors the Go `QuickSetup` behavior: callers supply a

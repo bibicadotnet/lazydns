@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.2.8"
+version = "0.2.9"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
@@ -117,7 +117,8 @@ dot = ["tls", "rustls-pemfile", "tokio-rustls"]
 doh = ["tls", "rustls-pemfile", "axum-server", "axum"]
 # Enable DoQ (QUIC) server implementation
 doq = ["tls", "rustls-pemfile", "quinn"]
-admin = ["axum", "prometheus"]
+admin = ["axum"]
+metrics = ["prometheus"]
 
 [profile.release]
 opt-level = 3

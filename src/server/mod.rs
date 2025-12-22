@@ -48,7 +48,7 @@ pub mod doq;
 pub mod dot;
 pub mod handler;
 pub mod launcher;
-#[cfg(feature = "admin")]
+#[cfg(feature = "metrics")]
 pub mod monitoring;
 pub mod tcp;
 #[cfg(any(feature = "doh", feature = "dot"))]
@@ -67,7 +67,7 @@ pub use doq::DoqServer;
 pub use dot::DotServer;
 pub use handler::{DefaultHandler, RequestHandler};
 pub use launcher::ServerLauncher;
-#[cfg(feature = "admin")]
+#[cfg(feature = "metrics")]
 pub use monitoring::MonitoringServer;
 pub use tcp::TcpServer;
 #[cfg(any(feature = "doh", feature = "dot"))]
@@ -140,7 +140,7 @@ mod tests {
         assert!(std::mem::size_of::<DotServer>() > 0);
         #[cfg(feature = "admin")]
         assert!(std::mem::size_of::<AdminServer>() > 0);
-        #[cfg(feature = "admin")]
+        #[cfg(feature = "metrics")]
         assert!(std::mem::size_of::<MonitoringServer>() > 0);
     }
 }
