@@ -45,12 +45,19 @@ EOF
   exit 0
 fi
 
-if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <PLATFORM>  (e.g. linux/arm/v7)" >&2
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 <PLATFORM> [EXTRA_BUILD_ARGS]  (e.g. linux/arm/v7 \"--no-default-features --features log,cron\")" >&2
   exit 1
 fi
 
 PLATFORM="$1"
+# Extra args to append to the underlying build command (can be used to pass flags like
+# --no-default-features --features "log,cron" or --release etc.)
+EXTRA_ARGS=""
+if [ "$#" -ge 2 ]; then
+  # Join all remaining args as the extra args
+  EXTRA_ARGS="${@:2}"
+fi
 # Map buildx TARGETPLATFORM (e.g. linux/arm/v7) to Rust target triple
 case "$PLATFORM" in
   linux/amd64|linux/x86_64|linux/amd64*)
@@ -106,7 +113,7 @@ if command -v cross >/dev/null 2>&1; then
   else
     echo "(cross) rustup target add returned non-zero or is not supported in this environment - continuing and hoping the image already supports the target"
   fi
-  cross build --target "$TRIPLE" --profile minimal
+  cross build --target "$TRIPLE" --profile minimal ${EXTRA_ARGS}
 else
   echo "'cross' not found: falling back to host cargo build"
   # Try to ensure the rust target is installed on the host
@@ -120,7 +127,7 @@ else
   else
     echo "rustup not found on host, can't auto-install host target - continuing and may fail"
   fi
-  cargo build --target "$TRIPLE" --profile minimal
+  cargo build --target "$TRIPLE" --profile minimal ${EXTRA_ARGS}
 fi
 
 # For Windows triples, use .exe suffix
@@ -140,6 +147,6 @@ fi
 mkdir -p "target/bin/$PLATFORM"
 cp "$SRC" "target/bin/$PLATFORM/lazydns${EXE_SUFFIX}"
 chmod +x "target/bin/$PLATFORM/lazydns${EXE_SUFFIX}" 2>/dev/null || true
-upx -q --best --lzma "target/bin/$PLATFORM/lazydns${EXE_SUFFIX}"
+upx -q --best --lzma "target/bin/$PLATFORM/lazydns${EXE_SUFFIX}" || true
 
 echo "Wrote target/bin/$PLATFORM/lazydns${EXE_SUFFIX}"
