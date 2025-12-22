@@ -19,6 +19,7 @@ use lazydns::server::ServerLauncher;
 use std::sync::Arc;
 #[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal};
+use tokio::sync::RwLock;
 use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info};
 
@@ -31,9 +32,16 @@ async fn wait_for_shutdown_signal() -> anyhow::Result<()> {
         let mut sighup = signal(SignalKind::hangup())?;
 
         tokio::select! {
-            res = tokio::signal::ctrl_c() => { res?; },
-            _ = sigterm.recv() => {},
-            _ = sighup.recv() => {},
+            res = tokio::signal::ctrl_c() => {
+                info!("Received Ctrl-C signal");
+                res?;
+            },
+            _ = sigterm.recv() => {
+                info!("Received SIGTERM signal");
+            },
+            _ = sighup.recv() => {
+                info!("Received SIGHUP signal");
+            },
         }
     }
 
@@ -131,7 +139,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Launch all configured servers using ServerLauncher
     let launcher = ServerLauncher::new(Arc::clone(&registry));
-    let startup_receivers = launcher.launch_all(&config.plugins).await;
+    let mut startup_receivers = launcher.launch_all(&config.plugins).await;
+
+    // Launch admin API server if enabled
+    let config_arc = Arc::new(RwLock::new(config.clone()));
+    if let Some(rx) = launcher.launch_admin_server(config_arc).await {
+        startup_receivers.push(rx);
+    }
 
     // Wait for all servers to start listening
     for rx in startup_receivers {
@@ -139,9 +153,10 @@ async fn main() -> anyhow::Result<()> {
     }
 
     info!("lazydns initialized successfully");
-
     // Wait for shutdown signal (Ctrl-C, SIGTERM, SIGHUP)
-    wait_for_shutdown_signal().await?;
+    if let Err(e) = wait_for_shutdown_signal().await {
+        error!("Error waiting for shutdown signal: {}", e);
+    }
     info!("Shutdown signal received, beginning graceful shutdown...");
 
     // Shutdown all plugins that implement the Shutdown trait, with timeout

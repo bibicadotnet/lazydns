@@ -77,6 +77,35 @@ impl Default for LogConfig {
     }
 }
 
+/// Admin API configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminConfig {
+    /// Enable admin API
+    #[serde(default = "default_admin_enabled")]
+    pub enabled: bool,
+
+    /// Listen address for admin API (e.g., "127.0.0.1:8080")
+    #[serde(default = "default_admin_addr")]
+    pub addr: String,
+}
+
+fn default_admin_enabled() -> bool {
+    true
+}
+
+fn default_admin_addr() -> String {
+    "127.0.0.1:8080".to_string()
+}
+
+impl Default for AdminConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_admin_enabled(),
+            addr: default_admin_addr(),
+        }
+    }
+}
+
 /// Main configuration structure
 ///
 /// This is the root configuration object that contains settings for
@@ -91,10 +120,18 @@ pub struct Config {
     /// Logging configuration
     #[serde(default = "default_log_config")]
     pub log: LogConfig,
+
+    /// Admin API configuration
+    #[serde(default = "default_admin_config")]
+    pub admin: AdminConfig,
 }
 
 fn default_log_config() -> LogConfig {
     LogConfig::default()
+}
+
+fn default_admin_config() -> AdminConfig {
+    AdminConfig::default()
 }
 
 impl Default for Config {
@@ -102,6 +139,7 @@ impl Default for Config {
         Self {
             plugins: Vec::new(),
             log: default_log_config(),
+            admin: default_admin_config(),
             // rotation disabled by default
             // `rotate_dir` defaults to None which means use parent dir of `file` if provided
         }

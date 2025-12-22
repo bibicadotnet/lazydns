@@ -61,11 +61,16 @@ use crate::server::DoqServer;
 use crate::server::DotServer;
 #[cfg(any(feature = "doh", feature = "dot"))]
 use crate::server::TlsConfig;
+#[cfg(feature = "admin")]
+use crate::server::admin::{AdminServer, AdminState};
 use crate::server::{ServerConfig, TcpServer, UdpServer};
 use serde_yaml::Value;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::RwLock;
+#[cfg(feature = "admin")]
+use tracing::info;
 use tracing::{error, warn};
 
 /// Normalize listen address shorthand like ":5353" -> "0.0.0.0:5353"
@@ -670,6 +675,78 @@ impl ServerLauncher {
         _plugin_config: &PluginConfig,
     ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         warn!("DoQ server requested but DoQ feature is not enabled");
+        None
+    }
+
+    /// Launch Admin API server (admin feature enabled)
+    ///
+    /// Creates and starts the Admin API server based on the configuration.
+    /// The server provides HTTP endpoints for runtime management including
+    /// cache control, config reload, and server status.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Shared configuration reference
+    ///
+    /// # Configuration Parameters
+    ///
+    /// - `enabled`: Whether to start the admin server (default: false)
+    /// - `addr`: Listen address (default: "127.0.0.1:8080")
+    ///
+    /// # Behavior
+    ///
+    /// - Only starts if admin.enabled is true in configuration
+    /// - Parses the listen address from configuration
+    /// - Creates AdminServer with shared config
+    /// - Spawns the server in a background task
+    /// - Logs info when starting and errors if server creation fails
+    ///
+    /// # Examples
+    ///
+    /// ```yaml
+    /// admin:
+    ///   enabled: true
+    ///   addr: "127.0.0.1:8080"
+    /// ```
+    #[cfg(feature = "admin")]
+    pub async fn launch_admin_server(
+        &self,
+        config: Arc<RwLock<crate::config::Config>>,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
+        let cfg = config.read().await;
+        if !cfg.admin.enabled {
+            return None;
+        }
+
+        let addr = cfg.admin.addr.clone();
+        drop(cfg);
+
+        info!("Starting admin API server on {}", addr);
+
+        let state = AdminState::new(Arc::clone(&config), Arc::clone(&self.registry));
+        let server = AdminServer::new(addr, state);
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            info!("Admin server task started");
+            if let Err(e) = server.run_with_signal(Some(tx)).await {
+                error!("Admin server error: {}", e);
+            }
+            info!("Admin server task finished");
+        });
+        Some(rx)
+    }
+
+    /// Launch Admin API server (admin feature disabled)
+    ///
+    /// This is a stub implementation that returns None when the `admin` feature
+    /// is not enabled.
+    #[cfg(not(feature = "admin"))]
+    pub async fn launch_admin_server(
+        &self,
+        _config: Arc<RwLock<crate::config::Config>>,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
+        warn!("Admin server requested but admin feature is not enabled");
         None
     }
 }

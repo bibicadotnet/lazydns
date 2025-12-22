@@ -583,6 +583,10 @@ impl Plugin for CachePlugin {
 
         Ok(Arc::new(cache))
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[cfg(test)]

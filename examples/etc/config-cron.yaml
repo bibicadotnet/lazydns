@@ -16,6 +16,22 @@
 #
 
 # ============================================================================
+# ADMIN API CONFIGURATION
+# ============================================================================
+
+admin:
+  # Enable admin API for runtime management
+  # Admin API provides endpoints for:
+  #   - /api/cache/control - Cache management (clear, stats)
+  #   - /api/config/reload - Config hot-reload
+  #   - /api/server/status - Server status
+  enabled: true
+  # Listen address (default: 127.0.0.1:8080)
+  # Warning: Do NOT expose to untrusted networks!
+  # Use a reverse proxy with authentication in production
+  addr: "127.0.0.1:8080"
+
+# ============================================================================
 # PLUGINS CONFIGURATION
 # ============================================================================
 

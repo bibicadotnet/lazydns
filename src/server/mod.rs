@@ -110,7 +110,8 @@ mod tests {
 
         // Verify AdminState can be created
         let config = Arc::new(RwLock::new(Config::new()));
-        let state = AdminState::new(config, None);
+        let registry = Arc::new(crate::plugin::Registry::new());
+        let state = AdminState::new(config, Arc::clone(&registry));
         // AdminState doesn't have a version method, just verify it was created
         let _ = state;
     }

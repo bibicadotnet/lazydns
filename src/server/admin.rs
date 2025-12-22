@@ -3,6 +3,7 @@
 //! Provides HTTP endpoints for managing the DNS server at runtime.
 
 use crate::config::Config;
+use crate::plugin::Registry;
 use crate::plugins::CachePlugin;
 use axum::{
     Json, Router,
@@ -65,8 +66,8 @@ pub struct ErrorResponse {
 pub struct AdminState {
     /// Shared configuration
     config: Arc<RwLock<Config>>,
-    /// Cache plugin reference (optional)
-    cache: Option<Arc<CachePlugin>>,
+    /// Plugin registry reference for accessing plugins like cache
+    registry: Arc<Registry>,
 }
 
 impl AdminState {
@@ -75,21 +76,23 @@ impl AdminState {
     /// # Arguments
     ///
     /// * `config` - Shared configuration reference
-    /// * `cache` - Optional cache plugin reference
+    /// * `registry` - Plugin registry reference
     ///
     /// # Example
     ///
     /// ```no_run
     /// use lazydns::server::admin::AdminState;
     /// use lazydns::config::Config;
+    /// use lazydns::plugin::Registry;
     /// use std::sync::Arc;
     /// use tokio::sync::RwLock;
     ///
     /// let config = Arc::new(RwLock::new(Config::new()));
-    /// let state = AdminState::new(Arc::clone(&config), None);
+    /// let registry = Arc::new(Registry::new());
+    /// let state = AdminState::new(Arc::clone(&config), Arc::clone(&registry));
     /// ```
-    pub fn new(config: Arc<RwLock<Config>>, cache: Option<Arc<CachePlugin>>) -> Self {
-        Self { config, cache }
+    pub fn new(config: Arc<RwLock<Config>>, registry: Arc<Registry>) -> Self {
+        Self { config, registry }
     }
 }
 
@@ -107,7 +110,8 @@ impl AdminState {
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = Arc::new(RwLock::new(Config::new()));
-/// let state = AdminState::new(Arc::clone(&config), None);
+/// let registry = Arc::new(lazydns::plugin::Registry::new());
+/// let state = AdminState::new(Arc::clone(&config), Arc::clone(&registry));
 /// let server = AdminServer::new("127.0.0.1:8080", state);
 /// // server.run().await?;
 /// # Ok(())
@@ -132,25 +136,54 @@ impl AdminServer {
         }
     }
 
+    /// Start the admin server, with a channel to signal when startup is complete
+    ///
+    /// # Arguments
+    ///
+    /// * `startup_tx` - Optional channel to signal when the server starts listening
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server fails to bind or start.
+    pub async fn run_with_signal(
+        self,
+        startup_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    ) -> Result<(), std::io::Error> {
+        let app = Router::new()
+            .route("/api/cache/control", post(cache_control))
+            .route("/api/cache/stats", get(cache_stats))
+            .route("/api/config/reload", post(reload_config))
+            .route("/api/server/status", get(server_status))
+            .with_state(Arc::clone(&self.state));
+
+        let listener = TcpListener::bind(&self.addr).await?;
+        info!("Admin API server listening on {}", self.addr);
+
+        // Signal that startup is complete
+        if let Some(tx) = startup_tx {
+            let _ = tx.send(());
+        }
+
+        tracing::debug!("Admin API server entering serve loop");
+        info!("About to call axum::serve");
+        let result = axum::serve(listener, app).await;
+        info!("axum::serve returned: {:?}", result);
+        match &result {
+            Ok(_) => info!("Admin API server serve loop exited normally"),
+            Err(e) => tracing::error!("Admin API server serve loop exited with error: {}", e),
+        }
+        result?;
+
+        Ok(())
+    }
+
     /// Start the admin server
     ///
     /// # Errors
     ///
     /// Returns an error if the server fails to bind or start.
     pub async fn run(self) -> Result<(), std::io::Error> {
-        let app = Router::new()
-            .route("/api/cache/control", post(cache_control))
-            .route("/api/cache/stats", get(cache_stats))
-            .route("/api/config/reload", post(reload_config))
-            .route("/api/server/status", get(server_status))
-            .with_state(self.state);
-
-        info!("Admin API server listening on {}", self.addr);
-
-        let listener = TcpListener::bind(&self.addr).await?;
-        axum::serve(listener, app).await?;
-
-        Ok(())
+        self.run_with_signal(None).await
     }
 }
 
@@ -161,8 +194,26 @@ async fn cache_control(
     State(state): State<Arc<AdminState>>,
     Json(request): Json<CacheControlRequest>,
 ) -> Response {
-    let cache = match &state.cache {
-        Some(c) => c,
+    let cache = match state.registry.get("cache") {
+        Some(plugin) => {
+            // Try to downcast to CachePlugin
+            if plugin
+                .as_ref()
+                .as_any()
+                .downcast_ref::<CachePlugin>()
+                .is_some()
+            {
+                plugin
+            } else {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: "Cache plugin found but failed to access".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
+        }
         None => {
             return (
                 StatusCode::NOT_FOUND,
@@ -176,15 +227,25 @@ async fn cache_control(
 
     match request.action.as_str() {
         "clear" => {
-            cache.clear();
-            info!("Cache cleared via admin API");
-            (
-                StatusCode::OK,
-                Json(SuccessResponse {
-                    message: "Cache cleared successfully".to_string(),
-                }),
-            )
-                .into_response()
+            if let Some(cache_plugin) = cache.as_ref().as_any().downcast_ref::<CachePlugin>() {
+                cache_plugin.clear();
+                info!("Cache cleared via admin API");
+                (
+                    StatusCode::OK,
+                    Json(SuccessResponse {
+                        message: "Cache cleared successfully".to_string(),
+                    }),
+                )
+                    .into_response()
+            } else {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "Failed to downcast cache plugin".to_string(),
+                    }),
+                )
+                    .into_response()
+            }
         }
         _ => (
             StatusCode::BAD_REQUEST,
@@ -198,8 +259,22 @@ async fn cache_control(
 
 /// Get cache statistics
 async fn cache_stats(State(state): State<Arc<AdminState>>) -> Response {
-    let cache = match &state.cache {
-        Some(c) => c,
+    // Try to get cache plugin from registry
+    let cache = match state.registry.get("cache") {
+        Some(plugin) => {
+            // Try to downcast to CachePlugin
+            if let Some(_cache_plugin) = plugin.as_ref().as_any().downcast_ref::<CachePlugin>() {
+                plugin
+            } else {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: "Cache plugin found but failed to access".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
+        }
         None => {
             return (
                 StatusCode::NOT_FOUND,
@@ -211,25 +286,37 @@ async fn cache_stats(State(state): State<Arc<AdminState>>) -> Response {
         }
     };
 
-    let stats = cache.stats();
-    let hits = stats.hits();
-    let misses = stats.misses();
-    let total = hits + misses;
-    let hit_rate = if total > 0 {
-        (hits as f64 / total as f64) * 100.0
+    // Now we know plugin is a CachePlugin, get its stats
+    // We need to downcast again to access CachePlugin methods
+    if let Some(cache_plugin) = cache.as_ref().as_any().downcast_ref::<CachePlugin>() {
+        let stats = cache_plugin.stats();
+        let hits = stats.hits();
+        let misses = stats.misses();
+        let total = hits + misses;
+        let hit_rate = if total > 0 {
+            (hits as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        let response = CacheStatsResponse {
+            size: cache_plugin.size(),
+            hits,
+            misses,
+            evictions: stats.evictions(),
+            hit_rate,
+        };
+
+        (StatusCode::OK, Json(response)).into_response()
     } else {
-        0.0
-    };
-
-    let response = CacheStatsResponse {
-        size: cache.size(),
-        hits,
-        misses,
-        evictions: stats.evictions(),
-        hit_rate,
-    };
-
-    (StatusCode::OK, Json(response)).into_response()
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Failed to downcast cache plugin".to_string(),
+            }),
+        )
+            .into_response()
+    }
 }
 
 /// Reload configuration
@@ -279,7 +366,8 @@ async fn reload_config(
 }
 
 /// Get server status
-async fn server_status() -> Response {
+async fn server_status() -> impl IntoResponse {
+    info!("Admin API: server_status called - ENTRY");
     #[derive(Serialize)]
     struct StatusResponse {
         status: String,
@@ -291,7 +379,8 @@ async fn server_status() -> Response {
         version: env!("CARGO_PKG_VERSION").to_string(),
     };
 
-    (StatusCode::OK, Json(response)).into_response()
+    info!("Admin API: server_status - sending response");
+    (StatusCode::OK, Json(response))
 }
 
 #[cfg(test)]
@@ -301,8 +390,9 @@ mod tests {
     #[test]
     fn test_admin_state_creation() {
         let config = Arc::new(RwLock::new(Config::new()));
-        let state = AdminState::new(config, None);
-        assert!(state.cache.is_none());
+        let registry = Arc::new(Registry::new());
+        let _state = AdminState::new(config, Arc::clone(&registry));
+        assert_eq!(registry.len(), 0);
     }
 
     #[test]
@@ -330,7 +420,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_status_endpoint() {
-        let response = server_status().await;
+        let response = server_status().await.into_response();
         // Response should be OK
         let (parts, _body) = response.into_parts();
         assert_eq!(parts.status, StatusCode::OK);
