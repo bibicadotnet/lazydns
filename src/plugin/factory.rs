@@ -441,6 +441,8 @@ pub fn initialize_all_plugin_factories() {
 
         #[cfg(feature = "cron")]
         Lazy::force(&crate::plugins::cron::CRON_PLUGIN_FACTORY);
+        #[cfg(feature = "cron")]
+        Lazy::force(&crate::plugins::executable::downloader::DOWNLOADER_PLUGIN_FACTORY);
 
         // TODO: DoH, Dot, DoQ and other plugins
 

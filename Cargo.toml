@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
@@ -100,7 +100,7 @@ tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = ["log", "cron"]
+default = ["log-ansi", "cron"]
 cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
 log = [
     "tracing-subscriber/env-filter",
