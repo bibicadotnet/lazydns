@@ -160,7 +160,11 @@ pub fn load_from_yaml(yaml: &str) -> Result<Config> {
 fn apply_env_overrides(config: &mut Config) -> Result<()> {
     use serde_yaml::Value;
 
-    let plugin_pattern = Regex::new(r"^PLUGINS_([A-Z0-9_]+)_ARGS_([A-Z0-9_]+)$")
+    // Support plugin args env overrides with nested paths and indices.
+    // Examples supported:
+    //   PLUGINS_MYTAG_ARGS_SIZE=2048
+    //   PLUGINS_MYTAG_ARGS_JOBS_0_CRON="0 */6 * * *"
+    let plugin_pattern = Regex::new(r"^PLUGINS_([A-Z0-9_]+)_ARGS_(.+)$")
         .map_err(|e| Error::Config(format!("Regex error: {}", e)))?;
 
     // Collect all env vars into a HashMap to ensure we see all updates
@@ -193,20 +197,35 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
             _ => {}
         }
 
-        // Handle plugin args: PLUGINS_<TAG>_ARGS_<KEY>=value
+        // Handle plugin args: PLUGINS_<TAG>_ARGS_<KEYPATH>=value
         if let Some(caps) = plugin_pattern.captures(&key) {
             let tag_raw = &caps[1];
-            let key_raw = &caps[2];
+            let key_path_raw = &caps[2];
 
-            // Normalize tag and key (lowercase, _ -> -)
+            // Normalize tag (lowercase, _ -> -)
             let tag = normalize_identifier(tag_raw);
-            let key_normalized = normalize_identifier(key_raw);
 
-            // Find matching plugin by effective_name
+            // Parse key path into segments (keys or indices)
+            #[derive(Debug)]
+            enum Segment {
+                Key(String),
+                Index(usize),
+            }
+
+            let mut path: Vec<Segment> = Vec::new();
+            for part in key_path_raw.split('_') {
+                if let Ok(idx) = part.parse::<usize>() {
+                    path.push(Segment::Index(idx));
+                } else {
+                    path.push(Segment::Key(normalize_identifier(part)));
+                }
+            }
+
+            // Find matching plugin by effective_name (normalized)
             if let Some(plugin) = config
                 .plugins
                 .iter_mut()
-                .find(|p| p.effective_name() == tag)
+                .find(|p| normalize_identifier(p.effective_name()) == tag)
             {
                 let value = parse_yaml_value(&value_str);
 
@@ -215,16 +234,97 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
                     plugin.args = Value::Mapping(serde_yaml::Mapping::new());
                 }
 
-                // Insert the value
-                if let Value::Mapping(ref mut map) = plugin.args {
-                    map.insert(Value::String(key_normalized.clone()), value);
-                    tracing::info!(
-                        "Applied plugin env override: {} -> plugin[{}].args[{}]",
-                        key,
-                        tag,
-                        key_normalized
-                    );
+                // Set value into plugin.args following the path
+                fn set_path(target: &mut Value, path: &[Segment], value: Value) {
+                    use Segment::*;
+                    if path.is_empty() {
+                        *target = value;
+                        return;
+                    }
+
+                    let mut cur: &mut Value = target;
+                    for i in 0..path.len() {
+                        let is_last = i == path.len() - 1;
+                        match &path[i] {
+                            Key(k) => match cur {
+                                Value::Mapping(map) => {
+                                    if is_last {
+                                        map.insert(Value::String(k.clone()), value);
+                                        return;
+                                    }
+                                    // descend or create
+                                    if !map.contains_key(&Value::String(k.clone())) {
+                                        let next = match &path[i + 1] {
+                                            Index(_) => Value::Sequence(vec![]),
+                                            _ => Value::Mapping(serde_yaml::Mapping::new()),
+                                        };
+                                        map.insert(Value::String(k.clone()), next);
+                                    }
+                                    cur = map.get_mut(&Value::String(k.clone())).unwrap();
+                                }
+                                _ => {
+                                    // replace with mapping
+                                    *cur = Value::Mapping(serde_yaml::Mapping::new());
+                                    if let Value::Mapping(map) = cur {
+                                        if is_last {
+                                            map.insert(Value::String(k.clone()), value);
+                                            return;
+                                        }
+                                        let next = match &path[i + 1] {
+                                            Index(_) => Value::Sequence(vec![]),
+                                            _ => Value::Mapping(serde_yaml::Mapping::new()),
+                                        };
+                                        map.insert(Value::String(k.clone()), next);
+                                        cur = map.get_mut(&Value::String(k.clone())).unwrap();
+                                    }
+                                }
+                            },
+                            Index(idx) => match cur {
+                                Value::Sequence(seq) => {
+                                    if *idx >= seq.len() {
+                                        seq.resize(*idx + 1, Value::Null);
+                                    }
+                                    if is_last {
+                                        seq[*idx] = value;
+                                        return;
+                                    }
+                                    if seq[*idx].is_null() {
+                                        seq[*idx] = match &path[i + 1] {
+                                            Index(_) => Value::Sequence(vec![]),
+                                            _ => Value::Mapping(serde_yaml::Mapping::new()),
+                                        };
+                                    }
+                                    cur = &mut seq[*idx];
+                                }
+                                _ => {
+                                    // replace with sequence
+                                    *cur = Value::Sequence(vec![]);
+                                    if let Value::Sequence(seq) = cur {
+                                        seq.resize(*idx + 1, Value::Null);
+                                        if is_last {
+                                            seq[*idx] = value;
+                                            return;
+                                        }
+                                        seq[*idx] = match &path[i + 1] {
+                                            Index(_) => Value::Sequence(vec![]),
+                                            _ => Value::Mapping(serde_yaml::Mapping::new()),
+                                        };
+                                        cur = &mut seq[*idx];
+                                    }
+                                }
+                            },
+                        }
+                    }
                 }
+
+                set_path(&mut plugin.args, &path, value);
+
+                tracing::info!(
+                    "Applied plugin env override: {} -> plugin[{}].args path={:?}",
+                    key,
+                    tag,
+                    path
+                );
             } else {
                 tracing::warn!("Plugin '{}' not found for env override: {}", tag, key);
             }
@@ -547,6 +647,56 @@ plugins:
 
         unsafe {
             env::remove_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER");
+        }
+    }
+
+    #[test]
+    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
+    fn test_apply_env_overrides_jobs_index_cron() {
+        // Override jobs[0].cron via env var
+        unsafe {
+            env::set_var(
+                "PLUGINS_AUTO_UPDATE_SCHEDULER_ARGS_JOBS_0_CRON",
+                "0 */6 * * *",
+            );
+        }
+
+        let yaml = r#"
+plugins:
+  - tag: auto_update_scheduler
+    plugin_type: cron
+    args:
+      jobs: []
+"#;
+        let config = load_from_yaml(yaml).unwrap();
+
+        let plugin = config
+            .plugins
+            .iter()
+            .find(|p| p.effective_name() == "auto_update_scheduler")
+            .unwrap();
+
+        if let serde_yaml::Value::Mapping(args_map) = &plugin.args {
+            let jobs_val = args_map.get(&serde_yaml::Value::String("jobs".to_string()));
+            assert!(jobs_val.is_some());
+            if let serde_yaml::Value::Sequence(seq) = jobs_val.unwrap() {
+                assert!(!seq.is_empty());
+                if let serde_yaml::Value::Mapping(job0) = &seq[0] {
+                    let cron_val = job0.get(&serde_yaml::Value::String("cron".to_string()));
+                    assert!(cron_val.is_some());
+                    assert_eq!(cron_val.unwrap().as_str().unwrap(), "0 */6 * * *");
+                } else {
+                    panic!("jobs[0] is not a mapping");
+                }
+            } else {
+                panic!("jobs is not a sequence");
+            }
+        } else {
+            panic!("plugin.args is not a mapping");
+        }
+
+        unsafe {
+            env::remove_var("PLUGINS_AUTO_UPDATE_SCHEDULER_ARGS_JOBS_0_CRON");
         }
     }
 
