@@ -194,6 +194,23 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
                 config.log.rotate = value_str;
                 continue;
             }
+
+            // Admin server overrides
+            "ADMIN_ENABLED" => {
+                tracing::info!("Applied env override: ADMIN_ENABLED = {}", value_str);
+                // parse boolean-like values: true/false, 1/0
+                let normalized = value_str.to_lowercase();
+                config.admin.enabled =
+                    normalized == "true" || normalized == "1" || normalized == "yes";
+                continue;
+            }
+
+            "ADMIN_ADDR" => {
+                tracing::info!("Applied env override: ADMIN_ADDR = {}", value_str);
+                config.admin.addr = value_str;
+                continue;
+            }
+
             _ => {}
         }
 
@@ -567,6 +584,30 @@ plugins: []
 
         unsafe {
             env::remove_var("LOG_FORMAT");
+        }
+    }
+
+    #[test]
+    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
+    fn test_apply_env_overrides_admin_config() {
+        unsafe {
+            env::set_var("ADMIN_ENABLED", "false");
+            env::set_var("ADMIN_ADDR", "127.0.0.1:9999");
+        }
+
+        // minimal config with no admin section: env should override defaults
+        let yaml = r#"
+log:
+  level: info
+plugins: []
+"#;
+        let config = load_from_yaml(yaml).unwrap();
+        assert!(!config.admin.enabled);
+        assert_eq!(config.admin.addr, "127.0.0.1:9999");
+
+        unsafe {
+            env::remove_var("ADMIN_ENABLED");
+            env::remove_var("ADMIN_ADDR");
         }
     }
 
