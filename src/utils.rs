@@ -1,5 +1,5 @@
 use notify::{Event, EventKind, RecursiveMode, Watcher};
-use std::collections::HashSet;
+// HashSet used by previous debounce implementation (replaced by HashMap)
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -51,11 +51,13 @@ pub fn spawn_file_watcher<F>(
         let canonical_files: Vec<PathBuf> =
             files.iter().filter_map(|p| p.canonicalize().ok()).collect();
 
-        // Debounce scheduling: we keep a pending set to ensure only one callback
-        // is fired per path within the debounce window. This avoids races with
-        // delayed filesystem events on CI by scheduling the callback after the
-        // debounce interval instead of calling it immediately.
-        let pending: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
+        // Debounce scheduling: we keep a per-path map of last event time and
+        // a marker that a task is scheduled. This allows resetting the debounce
+        // timer on rapid successive events so only one callback fires after
+        // events have quiesced.
+        use std::time::Instant as StdInstant;
+        let pending_map: Arc<Mutex<std::collections::HashMap<PathBuf, StdInstant>>> =
+            Arc::new(Mutex::new(std::collections::HashMap::new()));
         let on_reload_mutex: Arc<Mutex<F>> = Arc::new(Mutex::new(on_reload));
 
         // Watch provided files
@@ -82,18 +84,16 @@ pub fn spawn_file_watcher<F>(
                         .unwrap_or("unknown");
 
                     if let Some(cp) = canonical_path.as_ref() {
-                        // If there's already a pending debounce for this file, skip
-                        // scheduling another one.
+                        // Record last event timestamp for this path and schedule a debounced
+                        // task only if not already scheduled. The scheduled task will wait
+                        // until events have quiesced for `debounce_ms` before invoking
+                        // the callback; new events update the timestamp and reset the wait.
                         let cp_clone = cp.clone();
-                        let mut guard = pending.lock().await;
-                        if guard.contains(&cp_clone) {
-                            debug!(name = %name, file = file_name, "skipping reload due to debounce (pending)");
-                            continue;
-                        }
-
-                        // Insert into pending set and schedule a debounced callback
-                        guard.insert(cp_clone.clone());
-                        drop(guard);
+                        let now = StdInstant::now();
+                        let mut map = pending_map.lock().await;
+                        let already_scheduled = map.contains_key(&cp_clone);
+                        map.insert(cp_clone.clone(), now);
+                        drop(map);
 
                         // Handle file removal/rename immediately (attempt to re-watch)
                         if matches!(event.kind, EventKind::Remove(_)) {
@@ -108,25 +108,46 @@ pub fn spawn_file_watcher<F>(
                             }
                         }
 
-                        // Clone for the spawned task
-                        let pending_clone = Arc::clone(&pending);
-                        let on_reload_clone = Arc::clone(&on_reload_mutex);
-                        let files_clone = files.clone();
-                        let path_clone = path.clone();
+                        if !already_scheduled {
+                            // Clone for the spawned task
+                            let pending_map_clone = Arc::clone(&pending_map);
+                            let on_reload_clone = Arc::clone(&on_reload_mutex);
+                            let files_clone = files.clone();
+                            let path_clone = path.clone();
+                            let name_clone = name.clone();
 
-                        tokio::spawn(async move {
-                            tokio::time::sleep(Duration::from_millis(debounce_ms)).await;
+                            tokio::spawn(async move {
+                                loop {
+                                    tokio::time::sleep(Duration::from_millis(debounce_ms)).await;
 
-                            // Invoke the callback under mutex
-                            let mut f = on_reload_clone.lock().await;
-                            (f)(&path_clone, &files_clone);
+                                    // Check last event time
+                                    let mut guard = pending_map_clone.lock().await;
+                                    let last = guard.get(&cp_clone).cloned();
+                                    if let Some(ts) = last {
+                                        if StdInstant::now().duration_since(ts)
+                                            >= Duration::from_millis(debounce_ms)
+                                        {
+                                            // Invoke the callback under mutex
+                                            let mut f = on_reload_clone.lock().await;
+                                            (f)(&path_clone, &files_clone);
 
-                            // Remove pending marker
-                            let mut guard = pending_clone.lock().await;
-                            guard.remove(&cp_clone);
-                        });
-
-                        info!(name = %name, file = file_name, "scheduled reload: invoking callback (debounced)");
+                                            // Remove pending marker
+                                            guard.remove(&cp_clone);
+                                            info!(name = %name_clone, file = ?path_clone, "scheduled reload: invoking callback (debounced)");
+                                            break;
+                                        } else {
+                                            // Not yet quiesced; loop and wait again
+                                            continue;
+                                        }
+                                    } else {
+                                        // No pending entry; nothing to do
+                                        break;
+                                    }
+                                }
+                            });
+                        } else {
+                            debug!(name = %name, file = file_name, "updated pending debounce timestamp");
+                        }
 
                         // Only reload once per event batch
                         break;
