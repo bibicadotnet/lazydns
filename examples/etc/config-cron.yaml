@@ -4,10 +4,15 @@
 # for automatically downloading and updating DNS rule files.
 #
 # Architecture:
-#   1. CronPlugin triggers on schedule (daily at 02:05 local time)
-#   2. CronPlugin invokes the Downloader plugin
+#   1. CronPlugin triggers on schedule (every 6 hours: 00:00, 06:00, 12:00, 18:00 local time)
+#   2. CronPlugin invokes the Downloader plugin via invoke_plugin action
 #   3. Downloader downloads files and updates them atomically
 #   4. DomainSet/IPSet/Hosts automatically detect changes and reload
+#
+# Logging:
+#   - CronPlugin outputs DEBUG logs for job scheduling and execution
+#   - DownloaderPlugin outputs detailed logs for each file download
+#   - Set log level to debug or trace to see detailed operation logs
 #
 
 # ============================================================================
@@ -65,68 +70,43 @@ plugins:
       auto_reload: true
 
   # ========================================================================
-  # File Downloader Plugin - Downloads and updates rule files
-  # ========================================================================
-
-  - tag: file_downloader
-    type: downloader
-    args:
-      # List of files to download: {url, path}
-      files:
-        # Domain blocklists (from v2ray-rules-dat release)
-        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt"
-          path: "gfw.txt"
-
-        # ad blocking / reject lists
-        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt"
-          path: "reject-list.txt"
-
-        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"
-          path: "direct-list.txt"
-
-        # IP cn (from geoip release)
-        - url: "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt"
-          path: "china-ip-list.txt"
-
-        # IP blocklists
-        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt"
-          path: "proxy-list.txt"
-
-        # Misc / hosts
-        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/apple-cn.txt"
-          path: "apple-cn.txt"
-
-        # Hosts file (from lazywalker/ghosts)
-        - url: "https://raw.githubusercontent.com/lazywalker/ghosts/refs/heads/master/hosts.mdns"
-          path: "hosts-github.txt"
-
-      # Download timeout in seconds (per file)
-      timeout_secs: 30
-
-      # Download strategy:
-      #   true  = download all files concurrently (faster but more resource-intensive)
-      #   false = download files sequentially (slower but uses less bandwidth)
-      concurrent: false
-
-  # ========================================================================
   # Cron Scheduler - Triggers downloader on schedule
   # ========================================================================
 
   - tag: auto_update_scheduler
     type: cron
     args:
-      # Cron expression: second minute hour day month day-of-week
-      #   "0 5 2 * * *" = every day at 02:05:00 local time
-      #   "0 0 */6 * * *" = every 6 hours
-      #   "0 0 0 1 * *" = first day of every month at 00:00 local time
-      cron: "0 8 2 * * *"
-
-      # Action to execute when cron triggers
-      action: invoke_plugin
-
-      # Target plugin to invoke
-      args:
-        plugin: "file_downloader"
+      jobs:
+        - name: auto_update
+          # Cron expression: minute hour day month weekday
+          # Note: cronexpr uses the standard crontab order (minute hour day month weekday)
+          # Examples:
+          #   "5 2 * * *" = every day at 02:05 (local time)
+          #   "0 */6 * * *" = every 6 hours at minute 0 (00:00, 06:00, 12:00, 18:00 local time)
+          #   "0 * * * *" = every hour at minute 0
+          # You may optionally append a TZ name as the last token: e.g. "0 */6 * * * UTC"
+          cron: "32 11  * * *"
+          action:
+            invoke_plugin:
+              type: "downloader"
+              args:
+                files:
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt"
+                    path: "gfw.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt"
+                    path: "reject-list.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"
+                    path: "direct-list.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt"
+                    path: "china-ip-list.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt"
+                    path: "proxy-list.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/apple-cn.txt"
+                    path: "apple-cn.txt"
+                  - url: "https://raw.githubusercontent.com/lazywalker/ghosts/refs/heads/master/hosts.mdns"
+                    path: "hosts-github.txt"
+                timeout_secs: 30
+                concurrent: false
 
   # ========================================================================
   # Cache, Redirect Plugins, and ROS Addrlist Updater
