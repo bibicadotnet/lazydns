@@ -253,14 +253,14 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
                                         return;
                                     }
                                     // descend or create
-                                    if !map.contains_key(&Value::String(k.clone())) {
+                                    if !map.contains_key(Value::String(k.clone())) {
                                         let next = match &path[i + 1] {
                                             Index(_) => Value::Sequence(vec![]),
                                             _ => Value::Mapping(serde_yaml::Mapping::new()),
                                         };
                                         map.insert(Value::String(k.clone()), next);
                                     }
-                                    cur = map.get_mut(&Value::String(k.clone())).unwrap();
+                                    cur = map.get_mut(Value::String(k.clone())).unwrap();
                                 }
                                 _ => {
                                     // replace with mapping
@@ -275,7 +275,7 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
                                             _ => Value::Mapping(serde_yaml::Mapping::new()),
                                         };
                                         map.insert(Value::String(k.clone()), next);
-                                        cur = map.get_mut(&Value::String(k.clone())).unwrap();
+                                        cur = map.get_mut(Value::String(k.clone())).unwrap();
                                     }
                                 }
                             },
@@ -677,12 +677,12 @@ plugins:
             .unwrap();
 
         if let serde_yaml::Value::Mapping(args_map) = &plugin.args {
-            let jobs_val = args_map.get(&serde_yaml::Value::String("jobs".to_string()));
+            let jobs_val = args_map.get(serde_yaml::Value::String("jobs".to_string()));
             assert!(jobs_val.is_some());
             if let serde_yaml::Value::Sequence(seq) = jobs_val.unwrap() {
                 assert!(!seq.is_empty());
                 if let serde_yaml::Value::Mapping(job0) = &seq[0] {
-                    let cron_val = job0.get(&serde_yaml::Value::String("cron".to_string()));
+                    let cron_val = job0.get(serde_yaml::Value::String("cron".to_string()));
                     assert!(cron_val.is_some());
                     assert_eq!(cron_val.unwrap().as_str().unwrap(), "0 */6 * * *");
                 } else {
