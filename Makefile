@@ -18,35 +18,7 @@ release:
 	
 minimal:
 	cargo build --profile minimal
-
-macos:
-	cargo build --release --target x86_64-apple-darwin
-
-armv7:
-	@# Use `cross` (recommended). If `cross` is not available, fall back to `cargo` (may fail without a cross toolchain).
-	@if command -v cross >/dev/null 2>&1; then \
-		cross build --profile minimal --target armv7-unknown-linux-musleabihf; \
-	else \
-		echo "cross not found: falling back to local cargo (may fail if no toolchain)"; \
-		cargo build --release --target armv7-unknown-linux-musleabihf; \
-	fi
-
-linux:
-	cargo build --release --target x86_64-unknown-linux-musl
-
-bin: macos linux armv7
-	@echo Creating tarball...
-	@mkdir -p ${TARBALL}
 	
-	@echo Creating x86_64-apple-darwin
-	@tar cvfz "${TARBALL}/${APP_NAME}-${APP_VERSION}-x86_64-apple-darwin.tar.gz" -C target/x86_64-apple-darwin/release/ ${APP_NAME} 
-
-	@echo Creating x86_64-unknown-linux-musl
-	@tar cvfz "${TARBALL}/${APP_NAME}-${APP_VERSION}-x86_64-unknown-linux-musl.tar.gz" -C target/x86_64-unknown-linux-musl/release/ ${APP_NAME}
-
-	@echo Creating armv7-unknown-linux-musleabihf
-	@tar cvfz "${TARBALL}/${APP_NAME}-${APP_VERSION}-armv7-unknown-linux-musleabihf.tar.gz" -C target/armv7-unknown-linux-musleabihf/release/ ${APP_NAME}
-
 lint:
 	cargo clippy --all-targets --all-features -- -D warnings
 	cargo clippy --all-targets --no-default-features -- -D warnings
