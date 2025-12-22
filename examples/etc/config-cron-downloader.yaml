@@ -4,17 +4,11 @@
 # for automatically downloading and updating DNS rule files.
 #
 # Architecture:
-#   1. CronPlugin triggers on schedule (daily at 02:05 UTC)
+#   1. CronPlugin triggers on schedule (daily at 02:05 local time)
 #   2. CronPlugin invokes the Downloader plugin
 #   3. Downloader downloads files and updates them atomically
 #   4. DomainSet/IPSet/Hosts automatically detect changes and reload
 #
-# Advantages:
-#   - No HTTP server or Admin API overhead
-#   - Pure async Rust operations
-#   - Atomic file operations (temp → rename)
-#   - Automatic reload via file watching
-#   - Simple and straightforward configuration
 
 # ============================================================================
 # PLUGINS CONFIGURATION
@@ -25,7 +19,7 @@ plugins:
   # Data Providers - Load DNS rule files
   # ========================================================================
 
-  # Load domain blocklists
+  # Load domain blocklists (Ad, etc.)
   - tag: domain_reject_list
     type: domain_set
     args:
@@ -33,41 +27,41 @@ plugins:
         - "reject-list.txt"
       auto_reload: true # Automatically reload when file changes
 
-  - tag: domain_gfw_list
+  # Load domain proxy list
+  - tag: domain_proxy_list
     type: domain_set
     args:
       files:
-        - "gfw.txt"
+        - "proxy-list.txt"
+        - "proxy-ext-list.txt"
       auto_reload: true
 
+  # Load domain direct list
   - tag: domain_direct_list
     type: domain_set
     args:
       files:
         - "direct-list.txt"
+        - "apple-cn.txt"
+        - "my-domain-list.txt"
       auto_reload: true
 
-  # Load IP blocklists
-  - tag: ip_reject_list
+  # Load IP direct list
+  - tag: ip_direct_list
     type: ip_set
     args:
       files:
-        - "reject-ip-list.txt"
+        - "china-ip-list.txt"
+        - "white-ip-list.txt"
       auto_reload: true
 
-  - tag: ip_proxy_list
-    type: ip_set
-    args:
-      files:
-        - "proxy-ip-list.txt"
-      auto_reload: true
-
-  # Load hosts file
-  - tag: hosts_file
+  # Load hosts files
+  - tag: hosts_files
     type: hosts
     args:
       files:
         - "hosts.txt"
+        - "hosts-github.txt"
       auto_reload: true
 
   # ========================================================================
@@ -79,26 +73,32 @@ plugins:
     args:
       # List of files to download: {url, path}
       files:
-        # Domain blocklists
-        - url: "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt"
+        # Domain blocklists (from v2ray-rules-dat release)
+        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt"
           path: "gfw.txt"
 
-        - url: "https://raw.githubusercontent.com/notracking/hosts-blocklists/master/domains.txt"
+        # ad blocking / reject lists
+        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt"
           path: "reject-list.txt"
 
-        - url: "https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/accelerated-domains.china.conf"
+        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"
           path: "direct-list.txt"
 
-        # IP blocklists (requires specialized processing)
-        - url: "https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt"
-          path: "reject-ip-list.txt"
+        # IP cn (from geoip release)
+        - url: "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt"
+          path: "china-ip-list.txt"
 
-        - url: "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt"
-          path: "proxy-ip-list.txt"
+        # IP blocklists
+        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt"
+          path: "proxy-list.txt"
 
-        # Hosts file (GitHub hosts project)
-        - url: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-          path: "hosts.txt"
+        # Misc / hosts
+        - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/apple-cn.txt"
+          path: "apple-cn.txt"
+
+        # Hosts file (from lazywalker/ghosts)
+        - url: "https://raw.githubusercontent.com/lazywalker/ghosts/refs/heads/master/hosts.mdns"
+          path: "hosts-github.txt"
 
       # Download timeout in seconds (per file)
       timeout_secs: 30
@@ -116,10 +116,10 @@ plugins:
     type: cron
     args:
       # Cron expression: second minute hour day month day-of-week
-      #   "0 5 2 * * *" = every day at 02:05:00 UTC
+      #   "0 5 2 * * *" = every day at 02:05:00 local time
       #   "0 0 */6 * * *" = every 6 hours
-      #   "0 0 0 1 * *" = first day of every month at 00:00 UTC
-      cron: "0 5 2 * * *"
+      #   "0 0 0 1 * *" = first day of every month at 00:00 local time
+      cron: "0 8 2 * * *"
 
       # Action to execute when cron triggers
       action: invoke_plugin
@@ -129,87 +129,221 @@ plugins:
         plugin: "file_downloader"
 
   # ========================================================================
-  # Matchers - Check if domain/IP is in blocklists
+  # Cache, Redirect Plugins, and ROS Addrlist Updater
   # ========================================================================
 
-  - tag: is_reject_domain
-    type: has_domain_set
+  # cache plugin to speed up lookups
+  - tag: cache
+    type: cache
     args:
-      domain_set: ["domain_reject_list"]
+      size: 1024
+      negative_cache: true
 
-  - tag: is_gfw_domain
-    type: has_domain_set
+  # redirect plugin for specific domains
+  - tag: redirect
+    type: redirect
     args:
-      domain_set: ["domain_gfw_list"]
+      rules:
+        - www.cnbeta.com www.cnbeta.com.cdn.cloudflare.net
 
-  - tag: is_direct_domain
-    type: has_domain_set
+  # ROS Addrlist updater for gfwlist IPs
+  - tag: add_gfwlist
+    type: ros_addrlist
     args:
-      domain_set: ["domain_direct_list"]
-
-  - tag: is_reject_ip
-    type: has_ip_set
-    args:
-      ip_set: ["ip_reject_list"]
-
-  - tag: is_proxy_ip
-    type: has_ip_set
-    args:
-      ip_set: ["ip_proxy_list"]
+      addrlist: "mosdns-gfwlist"
+      server: "http://192.168.88.1:80"
+      user: "mosdns"
+      passwd: "Mosisgood"
+      mask4: 24
+      mask6: 32
 
   # ========================================================================
   # Upstream Servers
   # ========================================================================
 
+  # forward to domestic DNS, concurrent queries
   - tag: upstream_direct
     type: forward
     args:
+      concurrent: 2
       upstreams:
-        - addr: "119.29.29.29" # Tencent Public DNS
-        - addr: "180.76.76.76" # Baidu Public DNS
+        - addr: udp://119.29.29.29 # Tencent Public DNS
+        - addr: udp://223.5.5.5 # AliDNS Public DNS
 
+  # forward to proxy DNS, concurrent queries
   - tag: upstream_proxy
     type: forward
     args:
+      concurrent: 2
       upstreams:
-        - addr: "8.8.8.8" # Google Public DNS
-        - addr: "1.1.1.1" # Cloudflare DNS
+        - addr: tcp://8.8.8.8 # Google Public DNS
+        - addr: tcp://1.1.1.1 # Cloudflare DNS
 
+  # blackhole upstream for rejected domains
   - tag: upstream_reject
-    type: black_hole
+    type: blackhole
 
   # ========================================================================
-  # Server Plugins - Listen for DNS queries
+  # Sub sequence and Fallback Logic
   # ========================================================================
 
-  - tag: dns_server_udp
+  # direct sub-sequence, accpt domestic IPs, drop others
+  - tag: sequence_direct
+    type: sequence
+    args:
+      - exec: $upstream_direct
+      - matches: resp_ip $ip_direct_list
+        exec: drop_resp
+      - exec: accept
+
+  # proxy sub-sequence
+  - tag: sequence_proxy
+    type: sequence
+    args:
+      - exec: $upstream_proxy
+      - exec: accept
+
+  # sub-sequence for gfwlist,
+  # adding IPs to some list(by exec ROS updater) before accepting when not domestic
+  - tag: sequence_gfwlist
+    type: sequence
+    args:
+      - exec: ttl 300-3600
+      - matches: "!resp_ip $ip_direct_list"
+        exec: $add_gfwlist
+      - exec: accept
+
+  # fallback sequence
+  - tag: fallback
+    type: fallback
+    args:
+      primary: sequence_direct
+      secondary: sequence_proxy
+      threshold: 500
+      always_standby: true
+
+  # ========================================================================
+  # Main sequence - the core DNS processing logic
+  # ========================================================================
+
+  # main sequence
+  - tag: sequence_main
+    type: sequence
+    args:
+      # check hosts files first
+      - exec: $hosts_files
+      - matches: has_resp
+        exec: accept
+
+      # reject PTR and DNSSEC to fix some iOS issues
+      - matches: qtype 12 65
+        exec: reject 0
+
+      # block ads
+      - matches: qname $domain_reject_list
+        # demonstration: use inline quick-setup to blackhole
+        exec: black_hole 127.0.0.1
+        # or use the upstream_reject defined above
+        # exec: $upstream_reject
+
+      - exec: prefer_ipv4
+
+      - exec: $redirect
+
+      # skip cache for dynamic domains, others use cache
+      - matches: "!qname 00006801.com"
+        exec: $cache
+      - matches: has_resp
+        exec: accept
+
+      # domestic domains
+      - matches: qname $domain_direct_list
+        exec: $upstream_direct
+      - matches: has_resp
+        exec: accept
+
+      # foreign domains
+      - matches: qname $domain_proxy_list
+        exec: $upstream_proxy
+      - matches: has_resp
+        exec: jump sequence_gfwlist
+
+      # other unknown domains
+      - exec: $fallback
+
+  # ========================================================================
+  # Server Configurations, listen on multiple protocols and ports
+  # ========================================================================
+
+  # UDP server (built-in)
+  - tag: udp_server
     type: udp_server
     args:
-      listen: ":53"
-      exec:
-        - rule: is_reject_domain | is_reject_ip
-          exec: upstream_reject
+      entry: sequence_main
+      listen: :5354
 
-        - rule: is_direct_domain
-          exec: upstream_direct
+  # TCP server (built-in)
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: sequence_main
+      listen: :5354
 
-        - rule: is_gfw_domain
-          exec: upstream_proxy
+  # DNS over HTTPS (DoH) server (requires tls and doh features)
+  - tag: doh_server
+    type: doh_server
+    args:
+      entry: sequence_main
+      # use unprivileged port for examples; change to :443 for production
+      listen: :8443
+      # Paths to certificate and private key PEM files (relative to this config dir)
+      cert_file: certs/cert.pem
+      key_file: certs/key.pem
 
-        - exec: upstream_direct # Default upstream for non-matched queries
+  # DNS over TLS (DoT) server (requires tls and dot features)
+  - tag: dot_server
+    type: dot_server
+    args:
+      entry: sequence_main
+      # standard DoT port is 853; use 8853 in examples if you need non-root port
+      listen: :8853
+      # Paths relative to this config directory
+      cert_file: certs/cert.pem
+      key_file: certs/key.pem
+
+  # DNS over QUIC (DoQ) server (requires tls and doq features)
+  - tag: doq_server
+    type: doq_server
+    args:
+      entry: sequence_main
+      # standard DoQ port is 784; use 8784 in examples if you need non-root port
+      listen: :8784
+      # Paths relative to this config directory
+      cert_file: certs/cert.pem
+      key_file: certs/key.pem
 
 # ============================================================================
 # LOGGING CONFIGURATION
 # ============================================================================
 
 log:
-  level: info
-  format: json
-  output:
-    file: "logs/lazydns.log"
-    max_size: 100 # MB
-    max_backups: 7
-    max_age: 30 # days
+  # * trace | debug | info |warn | error
+  level: debug
+
+  # * text (by default) | json
+  # format: text
+
+  # * optional; if not set, logs to stdout
+  # file: test.log
+
+  # * daily | hourly | never (by default)
+  # rotate: daily
+
+  # * optional; overrides parent dir of `file`
+  # rotate_dir: /var/log/lazydns
+# ============================================================================
+# END OF CONFIGURATION
+# ============================================================================
 
 # ============================================================================
 # FILE UPDATER SCHEDULE DETAILS
