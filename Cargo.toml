@@ -107,6 +107,7 @@ log = [
     "tracing-subscriber/json",
     "tracing-subscriber/local-time",
     "time/local-offset",
+    "time/macros",
 ]
 log-ansi = ["log", "tracing-subscriber/ansi"]
 log-file = ["log", "tracing-appender"]
