@@ -155,7 +155,7 @@ impl CronPlugin {
                 let start = Instant::now();
                 tokio::select! {
                     _ = tokio::time::sleep(delay) => {
-                        debug!(job=%name, action=?&action, "Cron job triggered, executing action");
+                        info!(job=%name, action=?&action, "Cron job triggered, executing action");
                         match &action {
                             JobAction::Http { method, url, body } => {
                                 let m = method.clone(); let u = url.clone(); let b = body.clone(); let client = client.clone();
@@ -173,7 +173,7 @@ impl CronPlugin {
                             JobAction::InvokePlugin { plugin_type, plugin_args } => {
                                 let mut pconf = PluginConfig::new(plugin_type.clone());
                                 if let Some(args) = plugin_args { pconf.args = args.clone(); }
-                                debug!(job=%name, plugin_type=%plugin_type, "Creating plugin instance for invoke_plugin action");
+                                info!(job=%name, plugin_type=%plugin_type, "Creating plugin instance for invoke_plugin action");
                                 if let Some(factory) = plugin_factory::get_plugin_factory(plugin_type.as_str()) {
                                     match factory.create(&pconf) {
                                         Ok(instance) => {
@@ -198,7 +198,7 @@ impl CronPlugin {
                             JobAction::Command { cmd } => {
                                 let c = cmd.clone();
                                 let job_name = name.clone();
-                                debug!(job=%job_name, cmd=%c, "Executing command action");
+                                info!(job=%job_name, cmd=%c, "Executing command action");
                                 tokio::spawn(async move {
                                     #[cfg(windows)]
                                     let mut command = Command::new("cmd");

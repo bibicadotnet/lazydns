@@ -48,7 +48,7 @@ use serde_yaml::Value;
 use std::any::Any;
 use std::fs;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 /// File download specification
 #[derive(Debug, Clone)]
@@ -121,7 +121,7 @@ impl DownloaderPlugin {
 
     /// Download files sequentially
     async fn download_sequential(&self) -> Result<()> {
-        debug!(
+        info!(
             count = self.files.len(),
             "Downloader: Starting sequential downloads"
         );
@@ -129,13 +129,13 @@ impl DownloaderPlugin {
             debug!(idx = idx, file_count = self.files.len(), url = %spec.url, "Downloader: Downloading file");
             self.download_single(spec).await?;
         }
-        debug!("Downloader: Sequential downloads completed");
+        info!("Downloader: Sequential downloads completed");
         Ok(())
     }
 
     /// Download files concurrently
     async fn download_concurrent(&self) -> Result<()> {
-        debug!(
+        info!(
             count = self.files.len(),
             "Downloader: Starting concurrent downloads"
         );
@@ -163,7 +163,7 @@ impl DownloaderPlugin {
                 crate::Error::Config(format!("Download task {} failed: {}", idx, e))
             })??;
         }
-        debug!("Downloader: Concurrent downloads completed");
+        info!("Downloader: Concurrent downloads completed");
         Ok(())
     }
 
@@ -200,7 +200,7 @@ impl DownloaderPlugin {
             crate::Error::Config(format!("Failed to read response body: {}", e))
         })?;
 
-        debug!(url = %spec.url, content_len = content.len(), "Downloader: Response received");
+        trace!(url = %spec.url, content_len = content.len(), "Downloader: Response received");
 
         if content.is_empty() {
             warn!(url = %spec.url, "Downloader: Downloaded file is empty");
@@ -209,14 +209,14 @@ impl DownloaderPlugin {
 
         // Write to temporary file first
         let temp_path = format!("{}.tmp", spec.path);
-        debug!(path = %spec.path, temp_path = %temp_path, "Downloader: Writing temporary file");
+        trace!(path = %spec.path, temp_path = %temp_path, "Downloader: Writing temporary file");
         fs::write(&temp_path, &content).map_err(|e| {
             warn!(temp_path = %temp_path, error = %e, "Downloader: Failed to write temp file");
             crate::Error::Config(format!("Failed to write temp file: {}", e))
         })?;
 
         // Then rename to target (atomic operation)
-        debug!(temp_path = %temp_path, final_path = %spec.path, "Downloader: Moving temporary file to final path");
+        trace!(temp_path = %temp_path, final_path = %spec.path, "Downloader: Moving temporary file to final path");
         fs::rename(&temp_path, &spec.path).map_err(|e| {
             let _ = fs::remove_file(&temp_path);
             warn!(temp_path = %temp_path, final_path = %spec.path, error = %e, "Downloader: Failed to move file to final path");
