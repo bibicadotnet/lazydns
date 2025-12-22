@@ -349,6 +349,7 @@ impl AdminServer {
     pub async fn run_with_signal(
         self,
         startup_tx: Option<tokio::sync::oneshot::Sender<()>>,
+        mut shutdown_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     ) -> Result<(), std::io::Error> {
         let app = Router::new()
             .route("/api/cache/control", post(cache_control))
@@ -365,7 +366,36 @@ impl AdminServer {
             let _ = tx.send(());
         }
 
-        axum::serve(listener, app).await?;
+        // Prepare graceful shutdown future. If an external shutdown receiver is
+        // provided we await it. Otherwise, listen to OS signals so the admin
+        // server can shut itself down similarly to the monitoring server.
+        let shutdown_fut = async move {
+            if let Some(rx) = shutdown_rx.as_mut() {
+                let _ = rx.await;
+            } else {
+                #[cfg(unix)]
+                {
+                    use tokio::signal::unix::{SignalKind, signal};
+                    let mut sigterm = signal(SignalKind::terminate()).unwrap();
+                    let mut sighup = signal(SignalKind::hangup()).unwrap();
+
+                    tokio::select! {
+                        _ = tokio::signal::ctrl_c() => {},
+                        _ = sigterm.recv() => {},
+                        _ = sighup.recv() => {},
+                    }
+                }
+
+                #[cfg(not(unix))]
+                {
+                    let _ = tokio::signal::ctrl_c().await;
+                }
+            }
+        };
+
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown_fut)
+            .await?;
 
         Ok(())
     }
@@ -388,7 +418,7 @@ impl AdminServer {
     /// - Insufficient permissions to bind to the port
     /// - Other network I/O errors occur
     pub async fn run(self) -> Result<(), std::io::Error> {
-        self.run_with_signal(None).await
+        self.run_with_signal(None, None).await
     }
 }
 

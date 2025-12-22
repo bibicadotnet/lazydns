@@ -146,11 +146,11 @@ async fn main() -> anyhow::Result<()> {
     if let Some(rx) = launcher.launch_admin_server(Arc::clone(&config_arc)).await {
         startup_receivers.push(rx);
     }
-    if let Some(startup_rx) = launcher
+    if let Some(rx) = launcher
         .launch_monitoring_server(Arc::clone(&config_arc))
         .await
     {
-        startup_receivers.push(startup_rx);
+        startup_receivers.push(rx);
     }
 
     // Wait for all servers to start listening

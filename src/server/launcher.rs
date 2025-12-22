@@ -731,7 +731,7 @@ impl ServerLauncher {
         let (tx, rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
             info!("Admin server task started");
-            if let Err(e) = server.run_with_signal(Some(tx)).await {
+            if let Err(e) = server.run_with_signal(Some(tx), None).await {
                 error!("Admin server error: {}", e);
             }
             info!("Admin server task finished");
