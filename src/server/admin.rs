@@ -365,7 +365,6 @@ impl AdminServer {
             let _ = tx.send(());
         }
 
-        tracing::debug!("Admin API server entering serve loop");
         axum::serve(listener, app).await?;
 
         Ok(())

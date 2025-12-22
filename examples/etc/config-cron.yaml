@@ -31,6 +31,12 @@ admin:
   # Use a reverse proxy with authentication in production
   addr: "127.0.0.1:8080"
 
+metrics:
+  # Enable monitoring server for Prometheus metrics and health checks
+  enabled: true
+  # Listen address (default: 127.0.0.1:9090)
+  addr: "127.0.0.1:9090"
+
 # ============================================================================
 # PLUGINS CONFIGURATION
 # ============================================================================

@@ -90,7 +90,7 @@ pub struct AdminConfig {
 }
 
 fn default_admin_enabled() -> bool {
-    true
+    false
 }
 
 fn default_admin_addr() -> String {
@@ -102,6 +102,35 @@ impl Default for AdminConfig {
         Self {
             enabled: default_admin_enabled(),
             addr: default_admin_addr(),
+        }
+    }
+}
+
+/// Monitoring server configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitoringConfig {
+    /// Enable monitoring server
+    #[serde(default = "default_monitoring_enabled")]
+    pub enabled: bool,
+
+    /// Listen address for monitoring server (e.g., "127.0.0.1:9090")
+    #[serde(default = "default_monitoring_addr")]
+    pub addr: String,
+}
+
+fn default_monitoring_enabled() -> bool {
+    false
+}
+
+fn default_monitoring_addr() -> String {
+    "127.0.0.1:9090".to_string()
+}
+
+impl Default for MonitoringConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_monitoring_enabled(),
+            addr: default_monitoring_addr(),
         }
     }
 }
@@ -124,6 +153,10 @@ pub struct Config {
     /// Admin API configuration
     #[serde(default = "default_admin_config")]
     pub admin: AdminConfig,
+
+    /// Monitoring server configuration
+    #[serde(default = "default_monitoring_config", alias = "metrics")]
+    pub monitoring: MonitoringConfig,
 }
 
 fn default_log_config() -> LogConfig {
@@ -134,12 +167,17 @@ fn default_admin_config() -> AdminConfig {
     AdminConfig::default()
 }
 
+fn default_monitoring_config() -> MonitoringConfig {
+    MonitoringConfig::default()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             plugins: Vec::new(),
             log: default_log_config(),
             admin: default_admin_config(),
+            monitoring: default_monitoring_config(),
             // rotation disabled by default
             // `rotate_dir` defaults to None which means use parent dir of `file` if provided
         }

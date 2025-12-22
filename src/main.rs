@@ -143,8 +143,14 @@ async fn main() -> anyhow::Result<()> {
 
     // Launch admin API server if enabled
     let config_arc = Arc::new(RwLock::new(config.clone()));
-    if let Some(rx) = launcher.launch_admin_server(config_arc).await {
+    if let Some(rx) = launcher.launch_admin_server(Arc::clone(&config_arc)).await {
         startup_receivers.push(rx);
+    }
+    if let Some(startup_rx) = launcher
+        .launch_monitoring_server(Arc::clone(&config_arc))
+        .await
+    {
+        startup_receivers.push(startup_rx);
     }
 
     // Wait for all servers to start listening
@@ -165,6 +171,8 @@ async fn main() -> anyhow::Result<()> {
         Ok(Err(e)) => error!("Error during plugin shutdown: {}", e),
         Err(_) => error!("Shutdown timed out after 30s"),
     }
+
+    // Monitoring server listens to OS signals itself for graceful shutdown.
 
     info!("lazydns exited normally");
 

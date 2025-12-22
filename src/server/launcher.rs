@@ -59,6 +59,8 @@ use crate::server::DohServer;
 use crate::server::DoqServer;
 #[cfg(feature = "dot")]
 use crate::server::DotServer;
+#[cfg(feature = "metrics")]
+use crate::server::MonitoringServer;
 #[cfg(any(feature = "doh", feature = "dot"))]
 use crate::server::TlsConfig;
 #[cfg(feature = "admin")]
@@ -69,7 +71,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-#[cfg(feature = "admin")]
+#[cfg(any(feature = "admin", feature = "metrics"))]
 use tracing::info;
 use tracing::{error, warn};
 
@@ -737,6 +739,56 @@ impl ServerLauncher {
         Some(rx)
     }
 
+    /// Launch monitoring server
+    ///
+    /// Creates and starts the monitoring HTTP server (metrics, health, stats)
+    /// based on the configuration. Returns a tuple of `(startup_rx, shutdown_tx)`
+    /// which can be used to wait for server startup and to trigger a graceful
+    /// shutdown.
+    #[cfg(feature = "metrics")]
+    pub async fn launch_monitoring_server(
+        &self,
+        config: Arc<RwLock<crate::config::Config>>,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
+        let cfg = config.read().await;
+        if !cfg.monitoring.enabled {
+            return None;
+        }
+
+        let addr = cfg.monitoring.addr.clone();
+        drop(cfg);
+
+        info!("Starting monitoring server on {}", addr);
+
+        let server = MonitoringServer::new(addr);
+
+        let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
+
+        tokio::spawn(async move {
+            info!("Monitoring server task started");
+            // No external shutdown receiver provided - the server will listen to
+            // OS signals itself for graceful shutdown.
+            if let Err(e) = server.run_with_signal(Some(startup_tx), None).await {
+                error!("Monitoring server error: {}", e);
+            }
+            info!("Monitoring server task finished");
+        });
+
+        Some(startup_rx)
+    }
+
+    /// Launch monitoring server (metrics feature disabled)
+    ///
+    /// Stub implementation when the `metrics` feature is not enabled.
+    #[cfg(not(feature = "metrics"))]
+    pub async fn launch_monitoring_server(
+        &self,
+        _config: Arc<RwLock<crate::config::Config>>,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
+        warn!("Monitoring server requested but metrics feature is not enabled");
+        None
+    }
+
     /// Launch Admin API server (admin feature disabled)
     ///
     /// This is a stub implementation that returns None when the `admin` feature
@@ -907,6 +959,30 @@ mod tests {
             let _receivers = launcher.launch_all(&plugins).await;
             // Note: We don't wait for receivers in tests as servers run indefinitely
         });
+    }
+
+    #[tokio::test]
+    async fn test_launch_monitoring_server() {
+        let registry = Arc::new(Registry::new());
+        let launcher = ServerLauncher::new(registry);
+
+        // Build a minimal config enabling monitoring
+        let mut cfg = crate::config::Config::new();
+        cfg.monitoring.enabled = true;
+        cfg.monitoring.addr = "127.0.0.1:0".to_string(); // 0 means OS assign port
+
+        let cfg_arc = Arc::new(RwLock::new(cfg));
+
+        if let Some(startup_rx) = launcher
+            .launch_monitoring_server(Arc::clone(&cfg_arc))
+            .await
+        {
+            // Wait for server to signal startup (should complete quickly)
+            let started = tokio::time::timeout(std::time::Duration::from_secs(2), startup_rx).await;
+            assert!(started.is_ok());
+        } else {
+            panic!("Expected monitoring server to be launched");
+        }
     }
 
     /// Test DoH server launching with doh feature
