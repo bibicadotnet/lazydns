@@ -714,11 +714,71 @@ scrape_configs:
 You can create dashboards using metrics from the monitoring server:
 
 - `dns_queries_total` - Total DNS queries
-- `cache_hits_total` - Cache hits
-- `cache_misses_total` - Cache misses
-- `cache_size` - Current cache size
+- `dns_responses_total` - DNS responses by status
+- `dns_query_duration_seconds` - Query latency histogram
+- `dns_cache_hits_total` - Cache hits
+- `dns_cache_misses_total` - Cache misses
+- `dns_cache_size` - Current cache size
 
 For real-time management, use Admin API endpoints directly in dashboard plugins.
+
+#### Cache metrics mapping & Prometheus usage
+
+The cache subsystem exposes the following Prometheus metrics when the crate is built with the `metrics` feature (enabled by default):
+
+- **`dns_cache_hits_total`** (counter): total number of cache hits recorded by the `CachePlugin`.
+- **`dns_cache_misses_total`** (counter): total number of cache misses recorded by the `CachePlugin`.
+- **`dns_cache_size`** (gauge): current number of entries in the cache (updated on insert/evict/clear).
+
+Notes:
+
+- These metrics are updated by the `CachePlugin` implementation and are only available when the `metrics` feature is enabled.
+- The Admin API endpoint `GET /api/cache/stats` returns a snapshot (size, hits, misses, evictions, hit_rate). Use Prometheus metrics for time-series and alerting, and the Admin API for on-demand inspection or control.
+
+##### Useful PromQL examples
+
+- Instant cache hit rate (5m window):
+
+```promql
+(sum(rate(dns_cache_hits_total[5m]))
+  / (sum(rate(dns_cache_hits_total[5m])) + sum(rate(dns_cache_misses_total[5m]))))
+```
+
+- Alert when hit rate is below 70% for 5 minutes:
+
+```yaml
+- alert: LowCacheHitRate
+  expr: (sum(rate(dns_cache_hits_total[5m]))
+    / (sum(rate(dns_cache_hits_total[5m])) + sum(rate(dns_cache_misses_total[5m])))) < 0.7
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Cache hit rate below 70%"
+    description: "Cache hit rate is below 70% for at least 5 minutes."
+```
+
+- Monitor cache size and alert when it grows unexpectedly (example):
+
+```yaml
+- alert: HighCacheSize
+  expr: max(dns_cache_size) > 10000
+  for: 10m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Cache size exceeds threshold"
+    description: "Cache size is larger than expected (threshold = 10000)."
+```
+
+##### Cross-check with Admin API
+
+For quick, on-demand verification you can cross-check Prometheus metrics against the Admin API snapshot:
+
+```bash
+curl http://127.0.0.1:8080/api/cache/stats | jq .
+# compare size/hits/misses with Prometheus values for sanity checks
+```
 
 ### Alerting Examples
 

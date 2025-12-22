@@ -100,7 +100,7 @@ tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = ["log-ansi", "admin"]
+default = ["log-ansi", "admin", "metrics"]
 cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
 log = [
     "tracing-subscriber/env-filter",
