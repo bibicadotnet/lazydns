@@ -1,0 +1,50 @@
+# Two-stage build: prepare tzdata and CA certs in an alpine stage, then copy into a minimal scratch runtime
+FROM alpine:3.23 AS build
+LABEL maintainer="lazywalker <lazywalkerz@gmail.com>"
+
+ARG TARGETPLATFORM
+
+# Install runtime files we need to copy into the final scratch image
+RUN apk add --no-cache curl tzdata
+
+# Copy examples and application; perform necessary adjustments while we still have a shell
+ADD examples/etc/*.txt /app/
+ADD examples/etc/config-cron.yaml /app/config.yaml
+ADD target/bin/$TARGETPLATFORM/lazydns /lazydns
+
+# Tweak shipped example config to use privileged ports if desired
+RUN sed -i 's/5354/53/g' /app/config.yaml || true
+
+# Ensure timezone file exists for a default build-time timezone (can be overridden at runtime)
+ARG TZ=Asia/Shanghai
+RUN echo "$TZ" > /etc/timezone
+
+# Final minimal image containing only files we need
+FROM scratch
+
+# Copy timezone and zoneinfo from the build stage
+COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=build /etc/timezone /etc/timezone
+
+# Copy prepared app files
+COPY --from=build /app /app
+COPY --from=build /lazydns /lazydns
+
+ENV TZ=Asia/Shanghai \
+    PLUGINS_AUTO_UPDATE_SCHEDULER_ARGS_JOBS_0_CRON="7 2 * * *"
+
+WORKDIR /app
+EXPOSE 53/tcp 53/udp
+
+# Run the static binary directly in scratch. If you need an ENTRYPOINT script (e.g. to start crond),
+# use an alpine-based image instead of scratch.
+CMD ["/lazydns", "start", "-d", "/app"]
+
+
+# How to run 
+# docker run --rm --name lazydns \
+#     -e LOG_LEVEL=debug \
+#     -e TZ=Asia/Shanghai \
+#     -e PLUGINS_AUTO_UPDATE_SCHEDULER_ARGS_JOBS_0_CRON="9 17 * * *" \
+#     -p 5354:53/udp -p 5354:53/tcp \
+#     lazywalker/lazydns:local
