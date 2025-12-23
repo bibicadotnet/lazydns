@@ -33,7 +33,19 @@ pub enum LoadBalanceStrategy {
     Fastest,
 }
 
-/// Health status tracking for an upstream server
+/// Health status tracker for an upstream server.
+///
+/// This struct maintains lightweight counters and timing information used
+/// by the forwarding code and optional health-checking logic. Counters are
+/// updated with relaxed atomic operations and are safe to read concurrently.
+///
+/// # Notes
+/// - `queries`, `successes` and `failures` are monotonically increasing
+///   counters used for simple health heuristics and Prometheus metrics.
+/// - `avg_response_time_us` stores an average response time in microseconds.
+/// - `last_success` stores the instant of the last successful query and is
+///   protected by a small Mutex since it is rarely accessed and not on
+///   the hot path.
 #[derive(Debug)]
 pub struct UpstreamHealth {
     /// Total queries sent
@@ -118,7 +130,13 @@ impl Default for UpstreamHealth {
     }
 }
 
-/// Configuration for an upstream DNS server
+/// Configuration for a single upstream DNS server
+///
+/// The `addr` field stores the network address used to contact the
+/// resolver (e.g. `1.2.3.4:53` or a DoH URL like `https://...`). The
+/// optional `tag` can be used to give a human-friendly identifier for
+/// logging or metrics registration. The `health` field contains the
+/// runtime health counters for this upstream.
 #[derive(Debug, Clone)]
 pub struct Upstream {
     /// Server address (ip:port or https://... for DoH)
@@ -149,10 +167,12 @@ impl Upstream {
     }
 }
 
-/// Core forward query logic (business logic, no Plugin trait)
+/// Core forwarding logic used by the `ForwardPlugin`.
 ///
-/// This struct encapsulates the upstream query forwarding logic
-/// and is used by the executable ForwardPlugin.
+/// `Forward` implements the actual network operations to contact upstream
+/// resolvers (UDP/TCP/DoH), timeouts, and selection strategies. It is
+/// intentionally independent of the plugin trait so it can be tested and
+/// reused from other places in the codebase.
 #[derive(Debug, Clone)]
 pub struct Forward {
     /// Upstream servers
@@ -327,6 +347,12 @@ impl Forward {
 }
 
 /// Builder for `Forward` (parsing/validation of core settings)
+/// Builder for `Forward`.
+///
+/// This builder parses configuration values (usually coming from plugin
+/// args) and produces a ready-to-use `Forward` core instance. Use
+/// `ForwardBuilder::from_args` to convert the YAML/JSON-like config map
+/// into a `Forward`.
 pub struct ForwardBuilder {
     upstreams: Vec<Upstream>,
     timeout: Duration,
@@ -530,6 +556,21 @@ impl Default for ForwardBuilder {
 ///     "8.8.4.4:53".to_string(),
 ///]);
 /// ```
+/// Runtime plugin wrapper for forwarding queries to upstream resolvers.
+///
+/// `ForwardPlugin` wraps a `Forward` core and implements the `Plugin`
+/// trait so it can be inserted into the plugin chain. The plugin supports
+/// optional concurrent (race) queries, health checks, and failover.
+///
+/// # Example
+///
+/// ```rust
+/// use lazydns::plugins::forward::ForwardPlugin;
+/// use std::time::Duration;
+///
+/// // Build a simple forward plugin that contacts two upstreams
+/// let plugin = ForwardPlugin::new(vec!["8.8.8.8:53".into(), "1.1.1.1:53".into()]);
+/// ```
 #[derive(Debug)]
 pub struct ForwardPlugin {
     /// Core forwarding logic
@@ -716,7 +757,43 @@ impl ForwardPlugin {
             let task = tokio::spawn(async move {
                 let upstream = &core.upstreams[idx];
                 trace!("Concurrent query to: {}", upstream.addr);
-                core.forward_query(&req, upstream).await
+                let start = std::time::Instant::now();
+
+                match core.forward_query(&req, upstream).await {
+                    Ok(response) => {
+                        let elapsed = start.elapsed();
+                        if core.health_checks_enabled {
+                            upstream.health.record_success(elapsed);
+                            #[cfg(feature = "metrics")]
+                            {
+                                use crate::metrics::{
+                                    UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL,
+                                };
+                                UPSTREAM_QUERIES_TOTAL
+                                    .with_label_values(&[&upstream.addr, "success"])
+                                    .inc();
+                                UPSTREAM_DURATION_SECONDS
+                                    .with_label_values(&[&upstream.addr])
+                                    .observe(elapsed.as_secs_f64());
+                            }
+                        }
+
+                        Ok(response)
+                    }
+                    Err(e) => {
+                        if core.health_checks_enabled {
+                            upstream.health.record_failure();
+                            #[cfg(feature = "metrics")]
+                            {
+                                use crate::metrics::UPSTREAM_QUERIES_TOTAL;
+                                UPSTREAM_QUERIES_TOTAL
+                                    .with_label_values(&[&upstream.addr, "error"])
+                                    .inc();
+                            }
+                        }
+                        Err(e)
+                    }
+                }
             });
 
             tasks.push(task);

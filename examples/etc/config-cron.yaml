@@ -171,6 +171,8 @@ plugins:
       upstreams:
         - addr: udp://119.29.29.29 # Tencent Public DNS
         - addr: udp://223.5.5.5 # AliDNS Public DNS
+      health_checks: true
+      max_attempts: 3
 
   # forward to proxy DNS, concurrent queries
   - tag: upstream_proxy
@@ -180,6 +182,8 @@ plugins:
       upstreams:
         - addr: tcp://8.8.8.8 # Google Public DNS
         - addr: tcp://1.1.1.1 # Cloudflare DNS
+      health_checks: true
+      max_attempts: 3
 
   # blackhole upstream for rejected domains
   - tag: upstream_reject
