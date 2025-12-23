@@ -1,13 +1,13 @@
 [package]
 name = "lazydns"
-version = "0.2.12"
+version = "0.2.13"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
 repository = "https://github.com/lazywalker/lazydns"
-license = "GPL-3.0-only"
+license = "GPL-3.0-or-later"
 readme = "README.md"
-keywords = ["dns", "server", "mosdns", "doh", "dot"]
+keywords = ["dns", "server", "mosdns", "doh", "dot", "doq"]
 categories = ["network-programming"]
 
 [dependencies]

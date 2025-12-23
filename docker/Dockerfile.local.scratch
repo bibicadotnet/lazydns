@@ -9,11 +9,14 @@ RUN apk add --no-cache curl tzdata
 
 # Copy examples and application; perform necessary adjustments while we still have a shell
 ADD examples/etc/*.txt /app/
-ADD examples/etc/config-cron.yaml /app/config.yaml
+ADD examples/etc/config.yaml /app/config.yaml
 ADD target/bin/$TARGETPLATFORM/lazydns /lazydns
 
 # Tweak shipped example config to use privileged ports if desired
 RUN sed -i 's/5354/53/g' /app/config.yaml || true
+RUN sed -i 's/8443/443/g' /app/config.yaml || true
+RUN sed -i 's/8853/853/g' /app/config.yaml || true
+RUN sed -i 's/8784/784/g' /app/config.yaml || true
 
 # Ensure timezone file exists for a default build-time timezone (can be overridden at runtime)
 ARG TZ=Asia/Shanghai

@@ -1,0 +1,224 @@
+log:
+  # * trace | debug | info |warn | error
+  level: debug
+  # * text (by default) | json
+  # format: text
+  # * optional
+  # file: test.log
+  # * daily | hourly | never (by default)
+  # rotate: daily
+  # * optional; overrides parent dir of `file`
+  # rotate_dir: /var/log/lazydns
+
+plugins:
+  # 缓存
+  - tag: cache
+    type: cache
+    args:
+      size: 1024
+      negative_cache: true
+
+  # 重定向域名
+  - tag: redirect
+    type: redirect
+    args:
+      rules:
+        - www.cnbeta.com www.cnbeta.com.cdn.cloudflare.net
+
+  # 转发至国内DNS, 并发查询
+  - tag: forward_local
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: udp://119.29.29.29
+        - addr: udp://223.5.5.5
+
+  # 转发至国外DNS, 并发查询
+  - tag: forward_remote
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: tcp://8.8.8.8
+        - addr: tcp://1.1.1.1
+
+  # 自定义hosts
+  - tag: hosts
+    type: hosts
+    args:
+      auto_reload: true
+      files:
+        - "hosts.txt"
+        - "hosts-github.txt"
+
+  # 定义广告域名列表
+  - tag: ad-domain-list
+    type: domain_set
+    args:
+      auto_reload: true
+      files:
+        - reject-list.txt
+
+  # 定义国内域名列表
+  - tag: cn-domain-list
+    type: domain_set
+    args:
+      auto_reload: true
+      files:
+        - direct-list.txt
+        - apple-cn.txt
+        - my-domain-list.txt
+
+  # 定义gfw域名列表
+  - tag: gfw-domain-list
+    type: domain_set
+    args:
+      auto_reload: true
+      files:
+        - proxy-list.txt
+        - proxy-ext-list.txt
+
+  # china ip和自己的vps ip、国内dns ip、内网ip，避免这些ip被加到ipset
+  - tag: local_ip
+    type: ip_set
+    args:
+      auto_reload: true
+      files:
+        - china-ip-list.txt
+        - white-ip-list.txt
+
+  # 转发至ROS地址表的插件
+  - tag: add_gfwlist
+    type: ros_addrlist
+    args:
+      addrlist: "mosdns-gfwlist"
+      server: "http://192.168.88.1:80"
+      user: "mosdns"
+      passwd: "Mosisgood"
+      mask4: 24
+      mask6: 32
+
+  # fallback的primary服务器, 返回国内ip则accept, 返回非国内ip则drop
+  - tag: local_sequence
+    type: sequence
+    args:
+      - exec: $forward_local
+      - matches: resp_ip $local_ip
+        exec: drop_resp
+      - exec: accept
+
+  # fallback的secondary服务器, 返回非国内ip则添加至ipset, 返回国内ip只接受不会添加ipset
+  - tag: remote_sequence
+    type: sequence
+    args:
+      - exec: $forward_remote
+      # - matches: "!resp_ip $local_ip"
+      # exec: ipset gfwlist,inet,32
+      # exec: ros_addrlist_gfwlist
+      - exec: accept
+
+  # fallback sequence
+  - tag: fallback
+    type: fallback
+    args:
+      primary: local_sequence
+      secondary: remote_sequence
+      threshold: 500
+      always_standby: true
+
+  # gfwlist解析出的ip添加至ipset，添加前先判断是否为国内ip或内网ip
+  - tag: gfw-list
+    type: sequence
+    args:
+      - exec: ttl 300-3600
+      - matches: "!resp_ip $local_ip"
+        exec: $add_gfwlist
+      - exec: accept
+
+  # 主运行序列
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $hosts
+      - matches: has_resp
+        exec: accept
+
+      # 屏蔽PTR和DNSSEC，解决ios系统的一些问题
+      - matches: qtype 12 65
+        exec: reject 0
+
+      # 屏蔽广告
+      - matches: qname $ad-domain-list
+        exec: black_hole 127.0.0.1
+
+      - exec: prefer_ipv4
+
+      - exec: $redirect
+
+      # 动态域名跳过缓存
+      - matches: "!qname 00006801.com"
+        exec: $cache
+      - matches: has_resp
+        exec: accept
+
+      # 国内域名
+      - matches: qname $cn-domain-list
+        exec: $forward_local
+      - matches: has_resp
+        exec: accept
+
+      # 国外域名
+      - matches: qname $gfw-domain-list
+        exec: $forward_remote
+      - matches: has_resp
+        exec: jump gfw-list
+
+      # 其他未知域名
+      - exec: $fallback
+
+  # 启动监听服务
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: :5354
+
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: :5354
+
+  # DNS over HTTPS (DoH) server (requires TLS)
+  - tag: doh_server
+    type: doh_server
+    args:
+      entry: main_sequence
+      # use unprivileged port for examples; change to :443 for production
+      listen: :8443
+      # Paths to certificate and private key PEM files (relative to this config dir)
+      cert_file: certs/cert.pem
+      key_file: certs/key.pem
+
+  # DNS over TLS (DoT) server (requires TLS)
+  - tag: dot_server
+    type: dot_server
+    args:
+      entry: main_sequence
+      # standard DoT port is 853; use 8853 in examples if you need non-root port
+      listen: :8853
+      # Paths relative to this config directory
+      cert_file: certs/cert.pem
+      key_file: certs/key.pem
+
+  # DNS over QUIC (DoQ) server (requires TLS)
+  - tag: doq_server
+    type: doq_server
+    args:
+      entry: main_sequence
+      # standard DoQ port is 784; use 8784 in examples if you need non-root port
+      listen: :8784
+      # Paths relative to this config directory
+      cert_file: certs/cert.pem
+      key_file: certs/key.pem
