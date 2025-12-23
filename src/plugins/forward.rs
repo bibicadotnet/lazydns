@@ -1068,7 +1068,7 @@ mod tests {
         let _ = server_task.await;
     }
 
-    #[cfg(feature = "tls")]
+    #[cfg(feature = "rustls")]
     #[tokio::test]
     async fn test_upstream_health_counters_on_success_and_failure() {
         // Install process-level CryptoProvider for rustls v0.23

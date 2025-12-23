@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.2.11"
+version = "0.2.12"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
@@ -101,8 +101,10 @@ tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = ["log-ansi", "dot"]
+default = ["log-ansi", "doh"]
+# Enable cron expression parsing for cron plugin
 cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
+# Enable structured  JSON logging output with time stamps
 log = [
     "tracing-subscriber/env-filter",
     "tracing-subscriber/json",
@@ -110,15 +112,19 @@ log = [
     "time/local-offset",
     "time/macros",
 ]
+# Enable ANSI-colored logging output to terminal
 log-ansi = ["log", "tracing-subscriber/ansi"]
+# Enable logging to file
 log-file = ["log", "tracing-appender"]
-tls = ["dep:rustls"]
-dot = ["tls", "rustls-pemfile", "tokio-rustls"]
+# Enable TLS-backed (DoT using tokio-rustls) server implementation
+dot = ["rustls", "rustls-pemfile", "tokio-rustls"]
 # Enable TLS-backed (DoH using axum-server + rustls) server implementation
-doh = ["tls", "rustls-pemfile", "axum-server", "axum"]
+doh = ["rustls", "rustls-pemfile", "tokio-rustls", "axum-server", "axum"]
 # Enable DoQ (QUIC) server implementation
-doq = ["tls", "rustls-pemfile", "quinn"]
+doq = ["rustls", "rustls-pemfile", "quinn"]
+# Enable admin HTTP server
 admin = ["axum"]
+# Enable metrics endpoint
 metrics = ["axum", "prometheus"]
 
 [profile.release]
