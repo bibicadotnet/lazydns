@@ -55,6 +55,7 @@ axum = { version = "0.8", default-features = false, features = [
     "query",
     "tokio",
     "macros",
+    # FIXME: connection will reset when test curl with admin features with http2
     "http1",
 ], optional = true }
 rustls = { version = "0.23", default-features = false, features = [
@@ -100,7 +101,7 @@ tempfile = "3.8"
 rcgen = "0.9"
 
 [features]
-default = ["log-ansi", "admin", "metrics"]
+default = ["log-ansi", "dot"]
 cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
 log = [
     "tracing-subscriber/env-filter",
