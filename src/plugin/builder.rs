@@ -370,8 +370,34 @@ fn parse_condition(
     builder: &PluginBuilder,
     condition_str: &str,
 ) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
-    // Simple condition parsing - this is a basic implementation
-    // In a full implementation, this would need to handle more complex expressions
+    use crate::plugin::condition::builder::get_condition_builder_registry;
+
+    // Get the condition builder registry
+    let registry = get_condition_builder_registry();
+
+    // Try to find a builder for this condition
+    if let Some(condition_builder) = registry.get_builder(condition_str) {
+        condition_builder.build(condition_str, builder)
+    } else {
+        // Fallback to legacy hardcoded implementation for backward compatibility
+        // (This can be removed once all conditions are migrated to builders)
+        tracing::debug!(
+            "No condition builder found for: {}, using legacy parser",
+            condition_str
+        );
+        legacy_parse_condition(builder, condition_str)
+    }
+}
+
+/// Legacy hardcoded condition parsing (fallback for backward compatibility)
+#[allow(clippy::type_complexity)]
+fn legacy_parse_condition(
+    builder: &PluginBuilder,
+    condition_str: &str,
+) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
+    // Legacy implementation - all conditions are now handled by builders
+    // This function is kept for backward compatibility and can be removed
+    // once all conditions are migrated to the builder framework
 
     if condition_str == "has_resp" {
         Ok(Arc::new(|ctx: &crate::plugin::Context| ctx.has_response()))

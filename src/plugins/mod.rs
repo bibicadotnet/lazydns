@@ -62,7 +62,7 @@ pub use hosts::HostsPlugin;
 pub use ip_matcher::IpMatcherPlugin;
 pub use mark::MarkPlugin;
 
-// Re-export matcher plugins (mostly deprecated, see condition_builders)
+// Re-export matcher plugins (mostly deprecated, see condition builders)
 
 // Re-export executable plugins
 pub use executable::{
