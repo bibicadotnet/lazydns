@@ -98,7 +98,7 @@ axum-server = { version = "0.7", optional = true, package = "axum-server", defau
 
 [dev-dependencies]
 tempfile = "3.8"
-rcgen = "0.9"
+rcgen = "0.14"
 
 [features]
 default = ["log-ansi"]
