@@ -52,7 +52,7 @@ build-all:
 
 # local build: prebuild binary for the platform then build image
 PLATFORM ?= linux/arm/v7
-EXTRA ?= "--no-default-features --features log,cron,admin"
+EXTRA ?= "--no-default-features --features log,cron#,admin,metrics,doh,dot,doq"
 local: build-for
 	@echo "Building Docker image for $(PLATFORM)"; \
 	docker buildx build --platform $(PLATFORM) --output=type=docker -f docker/Dockerfile.local.scratch -t lazywalker/lazydns:local .; \

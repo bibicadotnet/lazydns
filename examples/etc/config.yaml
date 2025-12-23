@@ -152,10 +152,10 @@ plugins:
   - tag: add_gfwlist
     type: ros_addrlist
     args:
-      addrlist: "mosdns-gfwlist"
+      addrlist: "lazydns-gfwlist"
       server: "http://192.168.88.1:80"
-      user: "mosdns"
-      passwd: "Mosisgood"
+      user: "lazydns"
+      passwd: "Lazyisgood"
       mask4: 24
       mask6: 32
 

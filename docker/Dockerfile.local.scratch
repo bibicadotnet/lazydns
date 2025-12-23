@@ -1,4 +1,4 @@
-# Two-stage build: prepare tzdata and CA certs in an alpine stage, then copy into a minimal scratch runtime
+# Two-stage build: prepare tzdata in an alpine stage, then copy into a minimal scratch runtime
 FROM alpine:3.23 AS build
 LABEL maintainer="lazywalker <lazywalkerz@gmail.com>"
 
@@ -9,6 +9,8 @@ RUN apk add --no-cache curl tzdata
 
 # Copy examples and application; perform necessary adjustments while we still have a shell
 ADD examples/etc/*.txt /app/
+# only for test
+ADD examples/etc/certs /app/certs
 ADD examples/etc/config.yaml /app/config.yaml
 ADD target/bin/$TARGETPLATFORM/lazydns /lazydns
 
