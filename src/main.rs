@@ -158,7 +158,11 @@ async fn main() -> anyhow::Result<()> {
         let _ = rx.await; // Ignore errors - servers may have exited
     }
 
+    // Give async server tasks a moment to start and output their listening messages
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
     info!("lazydns initialized successfully");
+
     // Wait for shutdown signal (Ctrl-C, SIGTERM, SIGHUP)
     if let Err(e) = wait_for_shutdown_signal().await {
         error!("Error waiting for shutdown signal: {}", e);
