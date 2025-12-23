@@ -99,8 +99,8 @@ async fn main() -> anyhow::Result<()> {
     info!("Configuration file: {}", args.config);
 
     // Ensure rustls has a process-level CryptoProvider installed (ring)
-    // #[cfg(feature = "tls")]
-    // let _ = rustls::crypto::ring::default_provider().install_default();
+    #[cfg(feature = "rustls")]
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
     // Build plugins from configuration
     let mut builder = PluginBuilder::new();
