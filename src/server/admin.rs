@@ -338,7 +338,7 @@ impl AdminServer {
     ///
     /// let (tx, rx) = tokio::sync::oneshot::channel();
     /// tokio::spawn(async move {
-    ///     server.run_with_signal(Some(tx)).await.ok();
+    ///     server.run_with_signal(Some(tx), None).await.ok();
     /// });
     ///
     /// // Wait for startup

@@ -48,6 +48,7 @@ impl ServerCertVerifier for NoCertificateVerification {
     }
 }
 
+#[cfg(feature = "doh")]
 #[tokio::test]
 async fn integration_doh_tls_post() {
     use async_trait::async_trait;

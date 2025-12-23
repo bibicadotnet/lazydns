@@ -961,6 +961,7 @@ mod tests {
         });
     }
 
+    #[cfg(feature = "metrics")]
     #[tokio::test]
     async fn test_launch_monitoring_server() {
         let registry = Arc::new(Registry::new());
