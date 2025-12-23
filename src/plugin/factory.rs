@@ -434,7 +434,6 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::executable::black_hole::BLACKHOLE_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::redirect::REDIRECT_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::matcher::has_resp::HAS_RESP_PLUGIN_FACTORY);
 
         Lazy::force(&crate::plugins::server::UDP_SERVER_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::server::TCP_SERVER_PLUGIN_FACTORY);
