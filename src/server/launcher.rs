@@ -720,7 +720,7 @@ impl ServerLauncher {
             return None;
         }
 
-        let addr = cfg.admin.addr.clone();
+        let addr = normalize_listen_addr(&cfg.admin.addr);
         drop(cfg);
 
         info!("Starting admin API server on {}", addr);
@@ -755,7 +755,7 @@ impl ServerLauncher {
             return None;
         }
 
-        let addr = cfg.monitoring.addr.clone();
+        let addr = normalize_listen_addr(&cfg.monitoring.addr);
         drop(cfg);
 
         info!("Starting monitoring server on {}", addr);
@@ -983,6 +983,65 @@ mod tests {
             assert!(started.is_ok());
         } else {
             panic!("Expected monitoring server to be launched");
+        }
+    }
+
+    /// Test monitoring server with shorthand address notation
+    ///
+    /// Verifies that monitoring server supports ":port" shorthand format
+    #[cfg(feature = "metrics")]
+    #[tokio::test]
+    async fn test_launch_monitoring_server_with_shorthand_addr() {
+        let registry = Arc::new(Registry::new());
+        let launcher = ServerLauncher::new(registry);
+
+        // Build a config with shorthand address notation
+        let mut cfg = crate::config::Config::new();
+        cfg.monitoring.enabled = true;
+        cfg.monitoring.addr = ":0".to_string(); // Shorthand: should expand to 0.0.0.0:0
+
+        let cfg_arc = Arc::new(RwLock::new(cfg));
+
+        if let Some(startup_rx) = launcher
+            .launch_monitoring_server(Arc::clone(&cfg_arc))
+            .await
+        {
+            // Wait for server to signal startup
+            let started = tokio::time::timeout(std::time::Duration::from_secs(2), startup_rx).await;
+            assert!(
+                started.is_ok(),
+                "Monitoring server should start with shorthand address"
+            );
+        } else {
+            panic!("Expected monitoring server to be launched with shorthand address");
+        }
+    }
+
+    /// Test admin server with shorthand address notation
+    ///
+    /// Verifies that admin server supports ":port" shorthand format
+    #[cfg(feature = "admin")]
+    #[tokio::test]
+    async fn test_launch_admin_server_with_shorthand_addr() {
+        let registry = Arc::new(Registry::new());
+        let launcher = ServerLauncher::new(registry);
+
+        // Build a config with shorthand address notation
+        let mut cfg = crate::config::Config::new();
+        cfg.admin.enabled = true;
+        cfg.admin.addr = ":0".to_string(); // Shorthand: should expand to 0.0.0.0:0
+
+        let cfg_arc = Arc::new(RwLock::new(cfg));
+
+        if let Some(startup_rx) = launcher.launch_admin_server(Arc::clone(&cfg_arc)).await {
+            // Wait for server to signal startup
+            let started = tokio::time::timeout(std::time::Duration::from_secs(2), startup_rx).await;
+            assert!(
+                started.is_ok(),
+                "Admin server should start with shorthand address"
+            );
+        } else {
+            panic!("Expected admin server to be launched with shorthand address");
         }
     }
 
