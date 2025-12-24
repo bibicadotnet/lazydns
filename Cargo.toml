@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.2.30"
+version = "0.2.31"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
@@ -145,6 +145,9 @@ opt-level = 1
 inherits = "release"
 panic = "abort"
 opt-level = "z"
+
+[profile.full]
+inherits = "minimal"
 
 [[bin]]
 name = "lazydns"
