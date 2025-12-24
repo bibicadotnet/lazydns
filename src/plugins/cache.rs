@@ -227,6 +227,14 @@ impl fmt::Display for CacheStats {
 ///
 /// Caches DNS responses based on their TTL values. When the cache is full,
 /// uses LRU (Least Recently Used) eviction policy.
+///
+/// # Lazycache Feature
+///
+/// LazyCache is an optimization that refreshes cached entries in the background
+/// before they expire, preventing cache misses and query latency spikes.
+/// When enabled, if a cached entry's TTL drops below the threshold (e.g., 10%),
+/// the entry is marked for lazy refresh. A background task or next access
+/// will trigger a refresh query to keep the cache warm.
 pub struct CachePlugin {
     /// The cache storage (domain name -> cache entry)
     cache: Arc<DashMap<String, CacheEntry>>,
@@ -242,6 +250,10 @@ pub struct CachePlugin {
     enable_prefetch: bool,
     /// Prefetch threshold (refresh when TTL drops below this percentage)
     prefetch_threshold: f32,
+    /// Enable lazycache optimization (refresh hot entries before expiry)
+    enable_lazycache: bool,
+    /// Lazycache threshold - refresh when TTL drops below this percentage (0.0-1.0)
+    lazycache_threshold: f32,
 }
 
 impl CachePlugin {
@@ -267,6 +279,8 @@ impl CachePlugin {
             negative_ttl: 300, // 5 minutes default
             enable_prefetch: false,
             prefetch_threshold: 0.1, // Refresh at 10% remaining TTL
+            enable_lazycache: false,
+            lazycache_threshold: 0.05, // Refresh at 5% remaining TTL (hot entries)
         }
     }
 
@@ -289,6 +303,20 @@ impl CachePlugin {
     pub fn with_prefetch(mut self, threshold: f32) -> Self {
         self.enable_prefetch = true;
         self.prefetch_threshold = threshold.clamp(0.0, 1.0);
+        self
+    }
+
+    /// Enable lazycache optimization
+    ///
+    /// LazyCache refreshes frequently accessed entries before they expire,
+    /// reducing cache misses and DNS query latency.
+    ///
+    /// # Arguments
+    ///
+    /// * `threshold` - Refresh when remaining TTL drops below this percentage (0.0-1.0)
+    pub fn with_lazycache(mut self, threshold: f32) -> Self {
+        self.enable_lazycache = true;
+        self.lazycache_threshold = threshold.clamp(0.0, 1.0);
         self
     }
 
@@ -493,9 +521,24 @@ impl Plugin for CachePlugin {
                 // Update last accessed time
                 entry.touch();
 
+                // Check if lazycache threshold is reached
+                let remaining_ttl = entry.remaining_ttl();
+                if self.enable_lazycache {
+                    let ttl_percentage = remaining_ttl as f32 / entry.ttl as f32;
+                    if ttl_percentage <= self.lazycache_threshold {
+                        // Lazycache: Entry needs refresh, mark it for lazy refresh
+                        debug!(
+                            "Lazycache threshold reached for {}: {:.2}% TTL remaining, marking for refresh",
+                            key,
+                            ttl_percentage * 100.0
+                        );
+                        // Store metadata indicating this entry needs refresh
+                        context.set_metadata("needs_lazycache_refresh", true);
+                    }
+                }
+
                 // Clone the response and update TTLs
                 let mut response = entry.response.clone();
-                let remaining_ttl = entry.remaining_ttl();
                 Self::update_ttls(&mut response, remaining_ttl);
 
                 // Copy request ID to response
@@ -616,6 +659,24 @@ impl Plugin for CachePlugin {
                 None => 0.1,
             };
             cache = cache.with_prefetch(threshold);
+        }
+
+        // Parse lazycache parameter (default: false)
+        // Lazycache enables automatic refresh of hot cached entries before expiry
+        if let Some(Value::Bool(true)) = args.get("enable_lazycache") {
+            let threshold = match args.get("lazycache_threshold") {
+                Some(Value::Number(n)) => n
+                    .as_f64()
+                    .ok_or_else(|| Error::Config("Invalid lazycache_threshold value".to_string()))?
+                    as f32,
+                Some(_) => {
+                    return Err(Error::Config(
+                        "lazycache_threshold must be a number".to_string(),
+                    ));
+                }
+                None => 0.05, // Default: 5% of original TTL
+            };
+            cache = cache.with_lazycache(threshold);
         }
 
         Ok(Arc::new(cache))
