@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::info;
 
 /// Load configuration from a YAML file
 ///
@@ -174,30 +175,30 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
         // Handle top-level environment variables
         match key.as_str() {
             "LOG_LEVEL" => {
-                tracing::info!("Applied env override: LOG_LEVEL = {}", value_str);
+                info!("Applied env override: LOG_LEVEL = {}", value_str);
                 config.log.level = value_str;
                 continue;
             }
             "LOG_FORMAT" => {
-                tracing::info!("Applied env override: LOG_FORMAT = {}", value_str);
+                info!("Applied env override: LOG_FORMAT = {}", value_str);
                 config.log.format = value_str;
                 continue;
             }
             "LOG_FILE" => {
-                tracing::info!("Applied env override: LOG_FILE = {}", value_str);
+                info!("Applied env override: LOG_FILE = {}", value_str);
                 config.log.file = Some(value_str);
                 continue;
             }
 
             "LOG_ROTATE" => {
-                tracing::info!("Applied env override: LOG_ROTATE = {}", value_str);
+                info!("Applied env override: LOG_ROTATE = {}", value_str);
                 config.log.rotate = value_str;
                 continue;
             }
 
             // Admin server overrides
             "ADMIN_ENABLED" => {
-                tracing::info!("Applied env override: ADMIN_ENABLED = {}", value_str);
+                info!("Applied env override: ADMIN_ENABLED = {}", value_str);
                 // parse boolean-like values: true/false, 1/0
                 let normalized = value_str.to_lowercase();
                 config.admin.enabled =
@@ -206,8 +207,24 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
             }
 
             "ADMIN_ADDR" => {
-                tracing::info!("Applied env override: ADMIN_ADDR = {}", value_str);
+                info!("Applied env override: ADMIN_ADDR = {}", value_str);
                 config.admin.addr = value_str;
+                continue;
+            }
+
+            // Monitoring server overrides
+            "METRICS_ENABLED" => {
+                info!("Applied env override: METRICS_ENABLED = {}", value_str);
+                // parse boolean-like values: true/false, 1/0
+                let normalized = value_str.to_lowercase();
+                config.monitoring.enabled =
+                    normalized == "true" || normalized == "1" || normalized == "yes";
+                continue;
+            }
+
+            "METRICS_ADDR" => {
+                info!("Applied env override: METRICS_ADDR = {}", value_str);
+                config.monitoring.addr = value_str;
                 continue;
             }
 
@@ -336,11 +353,9 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
 
                 set_path(&mut plugin.args, &path, value);
 
-                tracing::info!(
+                info!(
                     "Applied plugin env override: {} -> plugin[{}].args path={:?}",
-                    key,
-                    tag,
-                    path
+                    key, tag, path
                 );
             } else {
                 tracing::warn!("Plugin '{}' not found for env override: {}", tag, key);
@@ -608,6 +623,30 @@ plugins: []
         unsafe {
             env::remove_var("ADMIN_ENABLED");
             env::remove_var("ADMIN_ADDR");
+        }
+    }
+
+    #[test]
+    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
+    fn test_apply_env_overrides_monitoring_config() {
+        unsafe {
+            env::set_var("METRICS_ENABLED", "true");
+            env::set_var("METRICS_ADDR", "127.0.0.1:9999");
+        }
+
+        // minimal config with no metrics section: env should override defaults
+        let yaml = r#"
+log:
+  level: info
+plugins: []
+"#;
+        let config = load_from_yaml(yaml).unwrap();
+        assert!(config.monitoring.enabled);
+        assert_eq!(config.monitoring.addr, "127.0.0.1:9999");
+
+        unsafe {
+            env::remove_var("METRICS_ENABLED");
+            env::remove_var("METRICS_ADDR");
         }
     }
 
