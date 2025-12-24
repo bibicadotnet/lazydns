@@ -172,6 +172,17 @@ plugins:
       # prefetch_threshold: 0.1  # Refresh at 10% remaining TTL
 
   # ========================================================================
+  # LazyCache Background Refresh (Optional)
+  # ========================================================================
+
+  # Optional: Lazy refresh plugin to handle marked refresh requests
+  # This plugin detects when cache entries are marked for lazy refresh
+  # and can trigger background queries to keep cache entries fresh
+  - tag: lazy_refresh
+    type: lazy_refresh
+    args: {}
+
+  # ========================================================================
   # Alternative Cache Configurations (Commented Out Examples)
   # ========================================================================
 
