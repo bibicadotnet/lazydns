@@ -79,7 +79,7 @@ base64 = "0.21"
 prometheus = { version = "0.13", optional = true }
 
 # File watching for hot reload
-notify = "6.1"
+notify = "8.2"
 
 # CLI
 pico-args = "0.5"
