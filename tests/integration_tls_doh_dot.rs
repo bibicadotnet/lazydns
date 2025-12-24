@@ -71,8 +71,8 @@ async fn integration_doh_tls_post() {
 
     // Generate self-signed cert and key using rcgen and write PEM files
     let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-    let cert_pem = cert.serialize_pem().unwrap();
-    let key_pem = cert.get_key_pair().serialize_pem();
+    let cert_pem = cert.cert.pem();
+    let key_pem = cert.signing_key.serialize_pem();
 
     let mut cert_file = NamedTempFile::new().unwrap();
     cert_file.write_all(cert_pem.as_bytes()).unwrap();
@@ -140,15 +140,15 @@ async fn spawn_dot_single_accept(
     use lazydns::dns::{RData, ResourceRecord};
     use rcgen::generate_simple_self_signed;
     use rustls::ServerConfig;
-    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    use rustls::pki_types::PrivateKeyDer;
     use std::sync::Arc;
     use tokio_rustls::TlsAcceptor;
 
     let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-    let cert_der = cert.serialize_der().unwrap();
-    let key_der = cert.get_key_pair().serialize_der();
+    let cert_der = cert.cert.der().clone();
+    let key_der = cert.signing_key.serialize_der();
 
-    let certs = vec![CertificateDer::from(cert_der.clone())];
+    let certs = vec![cert_der.clone()];
     let priv_key = PrivateKeyDer::Pkcs8(key_der.clone().into());
     let server_config = ServerConfig::builder()
         .with_no_client_auth()
@@ -196,7 +196,7 @@ async fn spawn_dot_single_accept(
         }
     });
 
-    (local_addr, cert_der, handle)
+    (local_addr, cert_der.to_vec(), handle)
 }
 
 #[tokio::test]

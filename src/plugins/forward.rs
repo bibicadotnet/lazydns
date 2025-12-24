@@ -1286,17 +1286,17 @@ mod tests {
     async fn test_forward_plugin_doh_https_post_with_self_signed_cert() {
         use rcgen::generate_simple_self_signed;
         use rustls::ServerConfig;
-        use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+        use rustls::pki_types::PrivateKeyDer;
         use std::sync::Arc;
         use tokio_rustls::TlsAcceptor;
 
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-        let cert_der = cert.serialize_der().unwrap();
-        let key_der = cert.get_key_pair().serialize_der();
+        let cert_der = cert.cert.der().clone();
+        let key_der = cert.signing_key.serialize_der();
 
-        let certs = vec![CertificateDer::from(cert_der.clone())];
+        let certs = vec![cert_der.clone()];
         let priv_key = PrivateKeyDer::Pkcs8(key_der.clone().into());
         let server_config = ServerConfig::builder()
             .with_no_client_auth()
@@ -1484,7 +1484,7 @@ mod tests {
     async fn spawn_doh_https_server(response_ip: &str) -> (String, tokio::task::JoinHandle<()>) {
         use rcgen::generate_simple_self_signed;
         use rustls::ServerConfig;
-        use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+        use rustls::pki_types::PrivateKeyDer;
         use std::sync::Arc;
         use tokio_rustls::TlsAcceptor;
 
@@ -1493,10 +1493,10 @@ mod tests {
         }
 
         let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-        let cert_der = cert.serialize_der().unwrap();
-        let key_der = cert.get_key_pair().serialize_der();
+        let cert_der = cert.cert.der().clone();
+        let key_der = cert.signing_key.serialize_der();
 
-        let certs = vec![CertificateDer::from(cert_der.clone())];
+        let certs = vec![cert_der.clone()];
         let priv_key = PrivateKeyDer::Pkcs8(key_der.clone().into());
         let server_config = ServerConfig::builder()
             .with_no_client_auth()

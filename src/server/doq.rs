@@ -231,8 +231,8 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-        let cert_pem = cert.serialize_pem().unwrap();
-        let key_pem = cert.get_key_pair().serialize_pem();
+        let cert_pem = cert.cert.pem();
+        let key_pem = cert.signing_key.serialize_pem();
 
         let mut cert_file = NamedTempFile::new().unwrap();
         cert_file.write_all(cert_pem.as_bytes()).unwrap();
