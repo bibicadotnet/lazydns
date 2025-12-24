@@ -42,7 +42,6 @@ pub mod geoip;
 pub mod geosite;
 pub mod hosts;
 pub mod ip_matcher;
-pub mod lazy_refresh;
 pub mod mark;
 pub mod server;
 // utils module moved to crate-level `src/utils.rs`
@@ -61,7 +60,6 @@ pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
 pub use hosts::HostsPlugin;
 pub use ip_matcher::IpMatcherPlugin;
-pub use lazy_refresh::LazyRefreshPlugin;
 pub use mark::MarkPlugin;
 
 // Re-export matcher plugins (mostly deprecated, see condition builders)

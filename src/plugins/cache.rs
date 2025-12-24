@@ -63,7 +63,8 @@ use crate::dns::Message;
 use crate::error::Error;
 #[cfg(feature = "metrics")]
 use crate::metrics;
-use crate::plugin::{Context, Plugin, RETURN_FLAG};
+use crate::plugin::{Context, Plugin, PluginHandler, RETURN_FLAG};
+use crate::server::RequestHandler;
 use async_trait::async_trait;
 use dashmap::{DashMap, DashSet};
 use std::fmt;
@@ -653,32 +654,44 @@ impl Plugin for CachePlugin {
                 // Check if lazycache threshold is reached
                 let remaining_ttl = entry.remaining_ttl();
                 let should_lazy_refresh = if self.enable_lazycache {
-                    // Use original_ttl for percentage calculation to properly detect the 5% threshold
-                    let ttl_percentage = remaining_ttl as f32 / entry.original_ttl as f32;
-                    let threshold = self.lazycache_threshold;
-
-                    debug!(
-                        "Lazycache check: {}, original_ttl: {}s, remaining: {}s, percentage: {:.2}%, threshold: {:.2}%",
-                        key,
-                        entry.original_ttl,
-                        remaining_ttl,
-                        ttl_percentage * 100.0,
-                        threshold * 100.0
-                    );
-
-                    if ttl_percentage <= threshold {
-                        // Lazycache: Entry needs refresh
+                    // Skip lazy refresh if this is already a background refresh to prevent recursion
+                    if context
+                        .get_metadata::<bool>("background_lazy_refresh")
+                        .is_some()
+                    {
                         debug!(
-                            "Lazycache threshold REACHED for {}: {:.2}% TTL remaining (< {:.2}%), triggering refresh",
+                            "Background lazy refresh: skipping lazy refresh check for {}",
+                            key
+                        );
+                        false
+                    } else {
+                        // Use original_ttl for percentage calculation to properly detect the 5% threshold
+                        let ttl_percentage = remaining_ttl as f32 / entry.original_ttl as f32;
+                        let threshold = self.lazycache_threshold;
+
+                        debug!(
+                            "Lazycache check: {}, original_ttl: {}s, remaining: {}s, percentage: {:.2}%, threshold: {:.2}%",
                             key,
+                            entry.original_ttl,
+                            remaining_ttl,
                             ttl_percentage * 100.0,
                             threshold * 100.0
                         );
-                        // Record lazy refresh attempt
-                        self.lazycache_stats.record_refresh();
-                        true
-                    } else {
-                        false
+
+                        if ttl_percentage <= threshold {
+                            // Lazycache: Entry needs refresh
+                            debug!(
+                                "Lazycache threshold REACHED for {}: {:.2}% TTL remaining (< {:.2}%), triggering refresh",
+                                key,
+                                ttl_percentage * 100.0,
+                                threshold * 100.0
+                            );
+                            // Record lazy refresh attempt
+                            self.lazycache_stats.record_refresh();
+                            true
+                        } else {
+                            false
+                        }
                     }
                 } else {
                     debug!(
@@ -689,7 +702,7 @@ impl Plugin for CachePlugin {
                 };
 
                 if should_lazy_refresh {
-                    // Lazy refresh: return cached response immediately, spawn background refresh
+                    // LazyCache: return cached response immediately, spawn background refresh
                     let mut response = entry.response.clone();
                     Self::update_ttls(&mut response, remaining_ttl);
                     response.set_id(context.request().id());
@@ -701,44 +714,85 @@ impl Plugin for CachePlugin {
                     // Check if already refreshing this key to prevent duplicate refreshes
                     if self.refreshing_keys.insert(key.clone()) {
                         debug!(
-                            "Lazycache threshold REACHED: returning cached response immediately, triggering background refresh for {}",
+                            "LazyCache: returning cached response immediately, triggering background refresh for {}",
                             key
                         );
 
                         // Record the refresh attempt
                         self.lazycache_stats.record_refresh();
 
-                        // Spawn background task to invalidate and refresh this entry
-                        // We invalidate the entry so the next request will fetch fresh data
-                        let cache_clone = Arc::clone(&self.cache);
-                        let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
-                        let key_clone = key.clone();
-                        // Wait a small amount to ensure current response is sent
-                        let delay_ms = 10;
+                        // Get lazy refresh handler from metadata
+                        if let (Some(handler), Some(entry_name)) = (
+                            context.get_metadata::<Arc<PluginHandler>>("lazy_refresh_handler"),
+                            context.get_metadata::<String>("lazy_refresh_entry"),
+                        ) {
+                            // Create a new handler instance for background refresh
+                            let background_handler = Arc::new(PluginHandler {
+                                registry: Arc::clone(&handler.registry),
+                                entry: entry_name.clone(),
+                            });
 
-                        tokio::spawn(async move {
-                            // Small delay to ensure client gets the cached response first
-                            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                            let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
+                            let mut request_clone = context.request().clone();
+                            let key_clone = key.clone();
 
+                            // Mark this as a background refresh by setting a special ID
+                            request_clone.set_id(0xFFFF);
+
+                            tokio::spawn(async move {
+                                debug!(
+                                    "Background lazy refresh: starting fresh query for {}",
+                                    key_clone
+                                );
+
+                                // Execute complete query pipeline in background
+                                match background_handler.handle(request_clone).await {
+                                    Ok(response) => {
+                                        debug!(
+                                            "Background lazy refresh successful for {}: {}",
+                                            key_clone,
+                                            if response.response_code()
+                                                == crate::dns::ResponseCode::NoError
+                                            {
+                                                "NoError"
+                                            } else {
+                                                "Error"
+                                            }
+                                        );
+                                    }
+                                    Err(e) => {
+                                        debug!(
+                                            "Background lazy refresh failed for {}: {}",
+                                            key_clone, e
+                                        );
+                                    }
+                                }
+
+                                // Remove from refreshing set
+                                refreshing_keys_clone.remove(&key_clone);
+
+                                debug!("Background lazy refresh completed for {}", key_clone);
+                            });
+                        } else {
                             debug!(
-                                "Background refresh: invalidating cache entry for {}",
-                                key_clone
+                                "LazyCache: lazy_refresh_handler not available in metadata, falling back to cache invalidation"
                             );
 
-                            // Remove the entry from cache so next request fetches fresh data
-                            cache_clone.remove(&key_clone);
+                            // Fallback to old behavior: invalidate cache entry
+                            let cache_clone = Arc::clone(&self.cache);
+                            let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
+                            let key_clone = key.clone();
 
-                            // Remove from refreshing set
-                            refreshing_keys_clone.remove(&key_clone);
-
-                            debug!(
-                                "Background refresh: cache entry invalidated for {}, next request will fetch fresh data",
-                                key_clone
-                            );
-                        });
+                            tokio::spawn(async move {
+                                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                                debug!("Fallback: invalidating cache entry for {}", key_clone);
+                                cache_clone.remove(&key_clone);
+                                refreshing_keys_clone.remove(&key_clone);
+                            });
+                        }
                     } else {
                         debug!(
-                            "Lazycache: {} already being refreshed by another request, skipping duplicate refresh",
+                            "LazyCache: {} already being refreshed by another request, skipping duplicate refresh",
                             key
                         );
                     }
@@ -747,20 +801,32 @@ impl Plugin for CachePlugin {
                     context.set_metadata(RETURN_FLAG, true);
                     return Ok(());
                 } else {
-                    // Normal cache hit - return immediately
-                    let mut response = entry.response.clone();
-                    Self::update_ttls(&mut response, remaining_ttl);
-                    response.set_id(context.request().id());
-                    context.set_response(Some(response));
+                    // Normal cache hit - return immediately (unless this is a background refresh)
+                    if context
+                        .get_metadata::<bool>("background_lazy_refresh")
+                        .is_some()
+                    {
+                        debug!(
+                            "Background lazy refresh: cache hit but continuing downstream for {}",
+                            key
+                        );
+                        // Don't return cached response, let downstream execute to get fresh data
+                        return Ok(());
+                    } else {
+                        let mut response = entry.response.clone();
+                        Self::update_ttls(&mut response, remaining_ttl);
+                        response.set_id(context.request().id());
+                        context.set_response(Some(response));
 
-                    // Mark that response came from cache to prevent Phase 2 re-execution
-                    context.set_metadata("response_from_cache", true);
+                        // Mark that response came from cache to prevent Phase 2 re-execution
+                        context.set_metadata("response_from_cache", true);
 
-                    debug!("Normal cache hit: returning immediately and stopping chain");
-                    // Stop the plugin chain to prevent downstream plugins (like Forward)
-                    // from executing and overwriting our cached response.
-                    context.set_metadata(RETURN_FLAG, true);
-                    return Ok(());
+                        debug!("Normal cache hit: returning immediately and stopping chain");
+                        // Stop the plugin chain to prevent downstream plugins (like Forward)
+                        // from executing and overwriting our cached response.
+                        context.set_metadata(RETURN_FLAG, true);
+                        return Ok(());
+                    }
                 }
             }
 
