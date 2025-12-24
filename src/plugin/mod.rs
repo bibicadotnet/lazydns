@@ -75,7 +75,24 @@ impl RequestHandler for PluginHandler {
     async fn handle(&self, request: Message) -> Result<Message> {
         use crate::plugin::Context;
 
-        let mut ctx = Context::new(request);
+        let mut ctx = Context::new(request.clone());
+
+        // Check if this is a background lazy refresh (marked by special ID)
+        if request.id() == 0xFFFF {
+            ctx.set_metadata("background_lazy_refresh", true);
+        }
+
+        // Inject lazy refresh handler for plugins that need background processing
+        // This allows plugins like CachePlugin to perform lazy refresh by creating
+        // new PluginHandler instances for background queries
+        ctx.set_metadata(
+            "lazy_refresh_handler",
+            Arc::new(PluginHandler {
+                registry: Arc::clone(&self.registry),
+                entry: self.entry.clone(),
+            }),
+        );
+        ctx.set_metadata("lazy_refresh_entry", self.entry.clone());
 
         if let Some(plugin) = self.registry.get(&self.entry) {
             plugin.execute(&mut ctx).await?;
