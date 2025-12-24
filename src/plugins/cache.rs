@@ -73,6 +73,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::debug;
 
+/// TTL used when serving stale responses during cache_ttl window
+const STALE_RESPONSE_TTL_SECS: u32 = 5;
+
 // Auto-register using the register macro
 crate::register_plugin_builder!(CachePlugin);
 
@@ -83,8 +86,10 @@ struct CacheEntry {
     response: Message,
     /// When this entry was created
     cached_at: Instant,
-    /// Time-to-live for this entry (in seconds)
+    /// Time-to-live for this entry (message TTL in seconds)
     ttl: u32,
+    /// Maximum lifetime of the cached entry (cache TTL in seconds)
+    cache_ttl: u32,
     /// Original TTL when first cached (used for lazycache threshold calculation)
     original_ttl: u32,
     /// Last access time for LRU tracking
@@ -93,26 +98,27 @@ struct CacheEntry {
 
 impl CacheEntry {
     /// Create a new cache entry
-    fn new(response: Message, ttl: u32) -> Self {
+    fn new(response: Message, ttl: u32, cache_ttl: u32) -> Self {
         let now = Instant::now();
         Self {
             response,
             cached_at: now,
             ttl,
+            cache_ttl,
             original_ttl: ttl,
             last_accessed: now,
         }
     }
 
     /// Check if this entry has expired
-    fn is_expired(&self) -> bool {
+    fn is_cache_expired(&self) -> bool {
         // Entries with a TTL of 0 should be considered expired immediately.
-        if self.ttl == 0 {
+        if self.cache_ttl == 0 {
             return true;
         }
 
         // Use >= to avoid timing races where elapsed may equal the TTL.
-        self.cached_at.elapsed() >= Duration::from_secs(self.ttl as u64)
+        self.cached_at.elapsed() >= Duration::from_secs(self.cache_ttl as u64)
     }
 
     /// Update last accessed time
@@ -120,10 +126,16 @@ impl CacheEntry {
         self.last_accessed = Instant::now();
     }
 
-    /// Get remaining TTL in seconds
+    /// Get remaining message TTL in seconds
     fn remaining_ttl(&self) -> u32 {
         let elapsed = self.cached_at.elapsed().as_secs() as u32;
         self.ttl.saturating_sub(elapsed)
+    }
+
+    /// Get remaining cache TTL in seconds
+    fn remaining_cache_ttl(&self) -> u32 {
+        let elapsed = self.cached_at.elapsed().as_secs() as u32;
+        self.cache_ttl.saturating_sub(elapsed)
     }
 }
 
@@ -333,6 +345,8 @@ pub struct CachePlugin {
     enable_lazycache: bool,
     /// Lazycache threshold - refresh when TTL drops below this percentage (0.0-1.0)
     lazycache_threshold: f32,
+    /// Lazycache TTL (serve stale responses and refresh in background when original TTL expires)
+    cache_ttl: Option<u32>,
     /// LazyCache-specific statistics
     lazycache_stats: Arc<LazyCacheStats>,
     /// Mutable threshold for runtime adjustment
@@ -366,6 +380,7 @@ impl CachePlugin {
             prefetch_threshold: 0.1, // Refresh at 10% remaining TTL
             enable_lazycache: false,
             lazycache_threshold: 0.05, // Refresh at 5% remaining TTL (hot entries)
+            cache_ttl: None,
             lazycache_stats: Arc::new(LazyCacheStats::new()),
             lazycache_threshold_dynamic: Arc::new(tokio::sync::RwLock::new(0.05)),
             refreshing_keys: Arc::new(DashSet::new()),
@@ -405,6 +420,14 @@ impl CachePlugin {
     pub fn with_lazycache(mut self, threshold: f32) -> Self {
         self.enable_lazycache = true;
         self.lazycache_threshold = threshold.clamp(0.0, 1.0);
+        self
+    }
+
+    /// Enable cache TTL mode (serve stale responses and refresh in background)
+    pub fn with_cache_ttl(mut self, ttl_secs: u32) -> Self {
+        if ttl_secs > 0 {
+            self.cache_ttl = Some(ttl_secs);
+        }
         self
     }
 
@@ -629,8 +652,8 @@ impl Plugin for CachePlugin {
             if let Some(mut entry_ref) = self.cache.get_mut(&key) {
                 let entry = entry_ref.value_mut();
 
-                // Check if expired
-                if entry.is_expired() {
+                // Remove if cache lifetime has fully expired
+                if entry.is_cache_expired() {
                     debug!("Cache entry expired: {}", key);
                     drop(entry_ref); // Release lock before removing
                     self.cache.remove(&key);
@@ -651,8 +674,121 @@ impl Plugin for CachePlugin {
                 // Update last accessed time
                 entry.touch();
 
-                // Check if lazycache threshold is reached
                 let remaining_ttl = entry.remaining_ttl();
+
+                // Handle stale (message TTL expired) with cache_ttl semantics
+                if remaining_ttl == 0 {
+                    if let Some(lazy_ttl) = self.cache_ttl {
+                        debug!(
+                            "LazyCache TTL hit (stale entry): {}, cache_remaining: {}s, configured_lazy_ttl: {}s",
+                            key,
+                            entry.remaining_cache_ttl(),
+                            lazy_ttl
+                        );
+
+                        // Return stale response with a small TTL while refreshing in background
+                        let mut response = entry.response.clone();
+                        Self::update_ttls(&mut response, STALE_RESPONSE_TTL_SECS); // stale response TTL is fixed to 5s (matches upstream)
+                        response.set_id(context.request().id());
+                        context.set_response(Some(response));
+
+                        // Mark that response came from cache to prevent Phase 2 re-execution
+                        context.set_metadata("response_from_cache", true);
+
+                        // Trigger background refresh (de-duplicated)
+                        if self.refreshing_keys.insert(key.clone()) {
+                            self.lazycache_stats.record_refresh();
+
+                            if let (Some(handler), Some(entry_name)) = (
+                                context.get_metadata::<Arc<PluginHandler>>("lazy_refresh_handler"),
+                                context.get_metadata::<String>("lazy_refresh_entry"),
+                            ) {
+                                let background_handler = Arc::new(PluginHandler {
+                                    registry: Arc::clone(&handler.registry),
+                                    entry: entry_name.clone(),
+                                });
+
+                                let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
+                                let mut request_clone = context.request().clone();
+                                let key_clone = key.clone();
+
+                                // Mark as background refresh
+                                request_clone.set_id(0xFFFF);
+
+                                tokio::spawn(async move {
+                                    debug!(
+                                        "Background lazy TTL refresh: starting fresh query for {}",
+                                        key_clone
+                                    );
+
+                                    match background_handler.handle(request_clone).await {
+                                        Ok(response) => {
+                                            debug!(
+                                                "Background lazy TTL refresh successful for {}: {}",
+                                                key_clone,
+                                                if response.response_code()
+                                                    == crate::dns::ResponseCode::NoError
+                                                {
+                                                    "NoError"
+                                                } else {
+                                                    "Error"
+                                                }
+                                            );
+                                        }
+                                        Err(e) => {
+                                            debug!(
+                                                "Background lazy TTL refresh failed for {}: {}",
+                                                key_clone, e
+                                            );
+                                        }
+                                    }
+
+                                    refreshing_keys_clone.remove(&key_clone);
+                                    debug!(
+                                        "Background lazy TTL refresh completed for {}",
+                                        key_clone
+                                    );
+                                });
+                            } else {
+                                debug!(
+                                    "LazyCache TTL: handler metadata missing, falling back to invalidate stale entry"
+                                );
+                                let cache_clone = Arc::clone(&self.cache);
+                                let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
+                                let key_clone = key.clone();
+                                tokio::spawn(async move {
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(10))
+                                        .await;
+                                    cache_clone.remove(&key_clone);
+                                    refreshing_keys_clone.remove(&key_clone);
+                                });
+                            }
+                        } else {
+                            debug!(
+                                "LazyCache TTL: {} already being refreshed, skip duplicate background refresh",
+                                key
+                            );
+                        }
+
+                        // Stop the chain and return stale response
+                        context.set_metadata(RETURN_FLAG, true);
+                        return Ok(());
+                    } else {
+                        // No lazycache TTL configured: treat as expired
+                        debug!("Cache entry message TTL expired without cache_ttl: {}", key);
+                        drop(entry_ref);
+                        self.cache.remove(&key);
+                        self.stats.record_expiration();
+                        self.stats.record_miss();
+                        #[cfg(feature = "metrics")]
+                        {
+                            metrics::CACHE_SIZE.set(self.size() as i64);
+                        }
+                        return Ok(());
+                    }
+                }
+
+                // Check if lazycache threshold is reached (pre-expiry refresh)
                 let should_lazy_refresh = if self.enable_lazycache {
                     // Skip lazy refresh if this is already a background refresh to prevent recursion
                     if context
@@ -859,7 +995,8 @@ impl Plugin for CachePlugin {
                             self.evict_lru();
                         }
 
-                        let entry = CacheEntry::new(response.clone(), self.negative_ttl);
+                        let cache_ttl = self.cache_ttl.unwrap_or(self.negative_ttl);
+                        let entry = CacheEntry::new(response.clone(), self.negative_ttl, cache_ttl);
                         self.cache.insert(key.clone(), entry);
                     } else {
                         debug!("Not caching error response: {:?}", response_code);
@@ -869,15 +1006,16 @@ impl Plugin for CachePlugin {
                     let ttl = Self::get_min_ttl(response);
 
                     if ttl > 0 {
-                        debug!("Storing response in cache: {} (TTL: {}s)", key, ttl);
-                        // Evict if necessary
-                        if self.is_full() {
-                            self.evict_lru();
-                        }
+                        // Determine cache TTL: if cache_ttl is set, use it for positive answers
+                        let cache_ttl = self.cache_ttl.unwrap_or(ttl);
+                        debug!(
+                            "Storing response in cache: {} (message TTL: {}s, cache TTL: {}s)",
+                            key, ttl, cache_ttl
+                        );
 
                         // Always create/replace with new entry
                         // This resets original_ttl for the new cache cycle
-                        let entry = CacheEntry::new(response.clone(), ttl);
+                        let entry = CacheEntry::new(response.clone(), ttl, cache_ttl);
                         self.cache.insert(key.clone(), entry);
 
                         // Update cache size metric
@@ -949,6 +1087,17 @@ impl Plugin for CachePlugin {
             cache = cache.with_prefetch(threshold);
         }
 
+        // Parse cache_ttl (stale-serving) parameter (default: disabled)
+        if let Some(Value::Number(n)) = args.get("cache_ttl") {
+            let ttl = n
+                .as_i64()
+                .ok_or_else(|| Error::Config("Invalid cache_ttl value".to_string()))?
+                as u32;
+            if ttl > 0 {
+                cache = cache.with_cache_ttl(ttl);
+            }
+        }
+
         // Parse lazycache parameter (default: false)
         // Lazycache enables automatic refresh of hot cached entries before expiry
         if let Some(Value::Bool(true)) = args.get("enable_lazycache") {
@@ -1006,26 +1155,26 @@ mod tests {
     #[test]
     fn test_cache_entry_creation() {
         let response = create_test_response();
-        let entry = CacheEntry::new(response.clone(), 300);
+        let entry = CacheEntry::new(response.clone(), 300, 300);
 
         assert_eq!(entry.ttl, 300);
-        assert!(!entry.is_expired());
+        assert!(!entry.is_cache_expired());
         assert_eq!(entry.response.answers().len(), response.answers().len());
     }
 
     #[test]
     fn test_cache_entry_expiration() {
         let response = create_test_response();
-        let entry = CacheEntry::new(response, 0);
+        let entry = CacheEntry::new(response, 0, 0);
 
         // Entry with 0 TTL should be immediately expired
-        assert!(entry.is_expired());
+        assert!(entry.is_cache_expired());
     }
 
     #[test]
     fn test_cache_entry_remaining_ttl() {
         let response = create_test_response();
-        let entry = CacheEntry::new(response, 300);
+        let entry = CacheEntry::new(response, 300, 300);
 
         let remaining = entry.remaining_ttl();
         assert!(remaining <= 300);
@@ -1139,7 +1288,7 @@ mod tests {
         // Store an entry in the cache via store() so metric is updated
         let response = create_test_response();
         let key = "example.com:1:1".to_string();
-        let entry = CacheEntry::new(response.clone(), 300);
+        let entry = CacheEntry::new(response.clone(), 300, 300);
         cache.store(key.clone(), entry);
 
         // Cache size metric should be updated
@@ -1167,7 +1316,7 @@ mod tests {
         // Store an entry with 0 TTL (immediately expired)
         let response = create_test_response();
         let key = "example.com:1:1".to_string();
-        let entry = CacheEntry::new(response.clone(), 0);
+        let entry = CacheEntry::new(response.clone(), 0, 0);
         cache.cache.insert(key.clone(), entry);
 
         // Try to retrieve it
@@ -1192,7 +1341,7 @@ mod tests {
 
         // Add some entries via store() so metric is updated
         let response = create_test_response();
-        let entry = CacheEntry::new(response.clone(), 300);
+        let entry = CacheEntry::new(response.clone(), 300, 300);
         cache.store("key1".to_string(), entry.clone());
         cache.store("key2".to_string(), entry.clone());
 
@@ -1210,9 +1359,9 @@ mod tests {
         let cache = CachePlugin::new(2); // Small cache
 
         let response = create_test_response();
-        let entry1 = CacheEntry::new(response.clone(), 300);
-        let entry2 = CacheEntry::new(response.clone(), 300);
-        let entry3 = CacheEntry::new(response.clone(), 300);
+        let entry1 = CacheEntry::new(response.clone(), 300, 300);
+        let entry2 = CacheEntry::new(response.clone(), 300, 300);
+        let entry3 = CacheEntry::new(response.clone(), 300, 300);
 
         // Fill cache
         cache.cache.insert("key1".to_string(), entry1);
@@ -1338,5 +1487,38 @@ plugins:
 
         // With normal cache behavior, after cache hit the plugin should return
         // (not continue pipeline) unless lazy refresh is needed
+    }
+
+    #[tokio::test]
+    async fn test_cache_ttl_serves_stale_and_refreshes() {
+        use tokio::time::{Duration, sleep};
+
+        let cache = CachePlugin::new(100).with_cache_ttl(10);
+
+        // Build a response with a very small TTL to expire quickly
+        let mut response = create_test_response();
+        for rr in response.answers_mut() {
+            rr.set_ttl(1);
+        }
+
+        // Store response (Phase 2 path)
+        let mut ctx = crate::plugin::Context::new(create_test_message());
+        ctx.set_response(Some(response.clone()));
+        cache.execute(&mut ctx).await.expect("cache store");
+
+        // Wait for TTL to expire but keep within cache_ttl window
+        sleep(Duration::from_secs(2)).await;
+
+        // Query again: should get stale response with small TTL and trigger background refresh
+        let mut ctx = crate::plugin::Context::new(create_test_message());
+        cache.execute(&mut ctx).await.expect("cache stale hit");
+
+        let resp = ctx.response().expect("stale response returned");
+        // Stale response TTL should be clamped to the fixed stale TTL (5s)
+        assert!(resp.answers()[0].ttl() <= STALE_RESPONSE_TTL_SECS);
+
+        // Background refresh should be scheduled (refresh count increments)
+        sleep(Duration::from_millis(50)).await;
+        assert!(cache.lazycache_stats.refreshes() >= 1);
     }
 }

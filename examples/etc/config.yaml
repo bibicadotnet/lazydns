@@ -135,7 +135,7 @@ plugins:
   # ========================================================================
 
   # ========================================================================
-  # Cache with LazyCache Optimization
+  #   Cache with LazyCache Optimization
   # ========================================================================
 
   # Main cache plugin with lazycache enabled for hot entries
@@ -162,10 +162,17 @@ plugins:
       # TTL for cached error responses (in seconds)
       negative_ttl: 300
       # Enable LazyCache optimization
-      enable_lazycache: true
+      # Set to false to test cache_ttl stale-serving
+      enable_lazycache: false
       # Refresh hot entries when TTL drops to 5% of original value
       # Example: entry with TTL=300, refresh when remaining < 15 seconds
       lazycache_threshold: 0.05
+      # Optional: Enable stale-serving with extended cache TTL (in seconds)
+      # When DNS TTL expires but cache TTL remains, serve stale response with small TTL
+      # and refresh in background. Set to desired cache duration (e.g., 600 for 10 minutes)
+      cache_ttl: 600
+
+      # TODO: Prefetch extension can be enabled here in future
       # Optional: Enable prefetch for additional performance
       # Prefetch is more aggressive than lazycache and refreshes at higher threshold
       # enable_prefetch: true
