@@ -7,7 +7,7 @@ description = "A DNS server implementation in Rust, inspired by mosdns"
 repository = "https://github.com/lazywalker/lazydns"
 license = "GPL-3.0-or-later"
 readme = "README.md"
-keywords = ["dns", "server", "mosdns", "doh", "dot", "doq"]
+keywords = ["dns", "smartdns", "doh", "dot", "doq"]
 categories = ["network-programming"]
 
 [dependencies]
