@@ -13,6 +13,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::net::TcpListener;
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal};
 use tracing::info;
 
 /// Health check response
@@ -94,8 +96,16 @@ impl MonitoringServer {
         }
     }
 
-    /// Start the monitoring server
-    pub async fn run(self) -> Result<(), std::io::Error> {
+    /// Start the monitoring server, with optional startup signal and optional shutdown receiver
+    ///
+    /// If `startup_tx` is provided the function will send a `()` once the server has bound
+    /// to the configured address. If `shutdown_rx` is provided the server will run until
+    /// that channel receives a value, at which point it performs a graceful shutdown.
+    pub async fn run_with_signal(
+        self,
+        startup_tx: Option<tokio::sync::oneshot::Sender<()>>,
+        mut shutdown_rx: Option<tokio::sync::oneshot::Receiver<()>>,
+    ) -> Result<(), std::io::Error> {
         let app = Router::new()
             .route("/metrics", get(metrics_handler))
             .route("/health", get(health_handler))
@@ -105,9 +115,49 @@ impl MonitoringServer {
         info!("Monitoring server listening on {}", self.addr);
 
         let listener = TcpListener::bind(&self.addr).await?;
-        axum::serve(listener, app).await?;
+
+        // Signal startup if requested
+        if let Some(tx) = startup_tx {
+            let _ = tx.send(());
+        }
+
+        // Prepare graceful shutdown future. If an external shutdown receiver is
+        // provided we await it. Otherwise, listen to OS signals (Ctrl-C / SIGTERM / SIGHUP)
+        // so the monitoring server can shut itself down like the admin server.
+        let shutdown_fut = async move {
+            if let Some(rx) = shutdown_rx.as_mut() {
+                let _ = rx.await;
+            } else {
+                #[cfg(unix)]
+                {
+                    let mut sigterm = signal(SignalKind::terminate()).unwrap();
+                    let mut sighup = signal(SignalKind::hangup()).unwrap();
+
+                    tokio::select! {
+                        _ = tokio::signal::ctrl_c() => {},
+                        _ = sigterm.recv() => {},
+                        _ = sighup.recv() => {},
+                    }
+                }
+
+                #[cfg(not(unix))]
+                {
+                    let _ = tokio::signal::ctrl_c().await;
+                }
+            }
+        };
+
+        // Run server with graceful shutdown
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown_fut)
+            .await?;
 
         Ok(())
+    }
+
+    /// Start the monitoring server (no startup/shutdown channels)
+    pub async fn run(self) -> Result<(), std::io::Error> {
+        self.run_with_signal(None, None).await
     }
 }
 

@@ -13,6 +13,7 @@ use crate::plugins::*;
 use serde_yaml::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::trace;
 use tracing::{debug, error, info, warn};
 
 // ============================================================================
@@ -63,7 +64,7 @@ impl PluginBuilder {
         }
 
         // Fallback to legacy hardcoded match for backward compatibility
-        debug!(
+        trace!(
             name = %config.effective_name(),
             plugin_type = %plugin_type,
             "Plugin type not found in builder registry, using legacy match",
@@ -178,7 +179,7 @@ impl PluginBuilder {
                         let sequence_plugin = Arc::new(SequencePlugin::with_steps(steps));
                         let name = config.effective_name().to_string();
                         self.plugins.insert(name.clone(), sequence_plugin);
-                        debug!(
+                        trace!(
                             "Updated sequence plugin '{}' with resolved references",
                             name
                         );
@@ -260,7 +261,7 @@ impl Default for PluginBuilder {
 /// Parse complex sequence steps from YAML sequence
 fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<Vec<SequenceStep>> {
     use crate::plugins::executable::SequenceStep;
-    debug!("Parsing {} sequence steps", sequence.len());
+    trace!("Parsing {} sequence steps", sequence.len());
     let mut steps = Vec::new();
 
     for step_value in sequence {
@@ -370,8 +371,34 @@ fn parse_condition(
     builder: &PluginBuilder,
     condition_str: &str,
 ) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
-    // Simple condition parsing - this is a basic implementation
-    // In a full implementation, this would need to handle more complex expressions
+    use crate::plugin::condition::builder::get_condition_builder_registry;
+
+    // Get the condition builder registry
+    let registry = get_condition_builder_registry();
+
+    // Try to find a builder for this condition
+    if let Some(condition_builder) = registry.get_builder(condition_str) {
+        condition_builder.build(condition_str, builder)
+    } else {
+        // Fallback to legacy hardcoded implementation for backward compatibility
+        // (This can be removed once all conditions are migrated to builders)
+        tracing::debug!(
+            "No condition builder found for: {}, using legacy parser",
+            condition_str
+        );
+        legacy_parse_condition(builder, condition_str)
+    }
+}
+
+/// Legacy hardcoded condition parsing (fallback for backward compatibility)
+#[allow(clippy::type_complexity)]
+fn legacy_parse_condition(
+    builder: &PluginBuilder,
+    condition_str: &str,
+) -> Result<Arc<dyn Fn(&Context) -> bool + Send + Sync>> {
+    // Legacy implementation - all conditions are now handled by builders
+    // This function is kept for backward compatibility and can be removed
+    // once all conditions are migrated to the builder framework
 
     if condition_str == "has_resp" {
         Ok(Arc::new(|ctx: &crate::plugin::Context| ctx.has_response()))
@@ -508,6 +535,110 @@ fn parse_condition(
                 false
             }
         }))
+    } else if condition_str.starts_with("qclass ") {
+        // qclass IN CH HS - query class matching
+        let class_str = condition_str.strip_prefix("qclass ").unwrap_or_default();
+        let mut qclasses = Vec::new();
+
+        // Parse space-separated class names
+        for class_part in class_str.split_whitespace() {
+            let class_val = match class_part.to_uppercase().as_str() {
+                "IN" => 1u16,
+                "CH" => 3u16,
+                "HS" => 4u16,
+                _ => {
+                    // Try parsing as numeric value
+                    match class_part.parse::<u16>() {
+                        Ok(num) => num,
+                        Err(_) => {
+                            return Err(Error::Config(format!(
+                                "Invalid query class '{}': {}",
+                                class_part, condition_str
+                            )));
+                        }
+                    }
+                }
+            };
+            qclasses.push(class_val);
+        }
+
+        if qclasses.is_empty() {
+            return Err(Error::Config(format!(
+                "No query classes specified: {}",
+                condition_str
+            )));
+        }
+
+        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+            if let Some(question) = ctx.request().questions().first() {
+                let qclass = question.qclass().to_u16();
+                qclasses.contains(&qclass)
+            } else {
+                false
+            }
+        }))
+    } else if condition_str.starts_with("rcode ") {
+        // rcode NOERROR NXDOMAIN - response code matching
+        let rcode_str = condition_str.strip_prefix("rcode ").unwrap_or_default();
+        let mut rcodes = Vec::new();
+
+        // Parse space-separated response code names
+        for rcode_part in rcode_str.split_whitespace() {
+            let rcode_val = match rcode_part.to_uppercase().as_str() {
+                "NOERROR" => 0u8,
+                "FORMERR" | "FORMDERR" => 1u8,
+                "SERVFAIL" => 2u8,
+                "NXDOMAIN" | "NXDOM" => 3u8,
+                "NOTIMP" | "NOTIMPL" => 4u8,
+                "REFUSED" | "REFUSE" => 5u8,
+                "YXDOMAIN" | "YXDOM" => 6u8,
+                "YXRRSET" => 7u8,
+                "NXRRSET" => 8u8,
+                "NOTAUTH" | "NOTAUTHZ" => 9u8,
+                "NOTZONE" => 10u8,
+                _ => {
+                    // Try parsing as numeric value
+                    match rcode_part.parse::<u8>() {
+                        Ok(num) => num,
+                        Err(_) => {
+                            return Err(Error::Config(format!(
+                                "Invalid response code '{}': {}",
+                                rcode_part, condition_str
+                            )));
+                        }
+                    }
+                }
+            };
+            rcodes.push(rcode_val);
+        }
+
+        if rcodes.is_empty() {
+            return Err(Error::Config(format!(
+                "No response codes specified: {}",
+                condition_str
+            )));
+        }
+
+        Ok(Arc::new(move |ctx: &crate::plugin::Context| {
+            if let Some(response) = ctx.response() {
+                let rcode = response.response_code().to_u8();
+                rcodes.contains(&rcode)
+            } else {
+                false
+            }
+        }))
+    } else if condition_str == "has_cname" {
+        // has_cname - check if response contains CNAME records
+        Ok(Arc::new(|ctx: &crate::plugin::Context| {
+            if let Some(response) = ctx.response() {
+                response
+                    .answers()
+                    .iter()
+                    .any(|rr| rr.rtype() == crate::dns::types::RecordType::CNAME)
+            } else {
+                false
+            }
+        }))
     } else {
         Err(Error::Config(format!(
             "Unknown condition: {}",
@@ -520,8 +651,9 @@ fn parse_condition(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dns::types::{RecordClass, RecordType};
-    use crate::dns::{Message, Question};
+    use crate::dns::types::{RecordClass, RecordType, ResponseCode};
+    use crate::dns::{Message, Question, RData, ResourceRecord};
+    use crate::plugin::Context;
     use serde_yaml::Mapping;
 
     #[test]
@@ -1379,6 +1511,164 @@ mod tests {
         assert!(parse_condition(&builder, "qtype").is_err());
         assert!(parse_condition(&builder, "qtype abc").is_err());
         assert!(parse_condition(&builder, "qtype 1 abc").is_err());
+    }
+
+    #[test]
+    fn test_parse_condition_qclass() {
+        let builder = PluginBuilder::new();
+
+        // Test qclass with name
+        let condition = parse_condition(&builder, "qclass IN").unwrap();
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let ctx = Context::new(request);
+        assert!(condition(&ctx));
+
+        // Test qclass with different class
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::CH,
+        ));
+        let ctx = Context::new(request);
+        let condition = parse_condition(&builder, "qclass IN").unwrap();
+        assert!(!condition(&ctx));
+
+        // Test qclass with multiple values
+        let condition = parse_condition(&builder, "qclass IN CH").unwrap();
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::CH,
+        ));
+        let ctx = Context::new(request);
+        assert!(condition(&ctx));
+
+        // Test numeric class
+        let condition = parse_condition(&builder, "qclass 1").unwrap();
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let ctx = Context::new(request);
+        assert!(condition(&ctx));
+    }
+
+    #[test]
+    fn test_parse_condition_rcode() {
+        let builder = PluginBuilder::new();
+
+        // Test rcode with NoError
+        let condition = parse_condition(&builder, "rcode NOERROR").unwrap();
+        let mut response = Message::new();
+        response.set_response_code(ResponseCode::NoError);
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(response));
+        assert!(condition(&ctx));
+
+        // Test rcode with NXDomain
+        let condition = parse_condition(&builder, "rcode NXDOMAIN").unwrap();
+        let mut response = Message::new();
+        response.set_response_code(ResponseCode::NXDomain);
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(response));
+        assert!(condition(&ctx));
+
+        // Test rcode with multiple values
+        let condition = parse_condition(&builder, "rcode NOERROR NXDOMAIN").unwrap();
+        let mut response = Message::new();
+        response.set_response_code(ResponseCode::NXDomain);
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(response));
+        assert!(condition(&ctx));
+
+        // Test rcode mismatch
+        let condition = parse_condition(&builder, "rcode NOERROR").unwrap();
+        let mut response = Message::new();
+        response.set_response_code(ResponseCode::ServFail);
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(response));
+        assert!(!condition(&ctx));
+
+        // Test numeric rcode
+        let condition = parse_condition(&builder, "rcode 3").unwrap();
+        let mut response = Message::new();
+        response.set_response_code(ResponseCode::NXDomain);
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(response));
+        assert!(condition(&ctx));
+    }
+
+    #[test]
+    fn test_parse_condition_has_cname() {
+        let builder = PluginBuilder::new();
+
+        // Test with CNAME present
+        let condition = parse_condition(&builder, "has_cname").unwrap();
+        let mut response = Message::new();
+        response.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::CNAME,
+            RecordClass::IN,
+            300,
+            RData::CNAME("target.example.com".to_string()),
+        ));
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(response));
+        assert!(condition(&ctx));
+
+        // Test without CNAME
+        let condition = parse_condition(&builder, "has_cname").unwrap();
+        let mut response = Message::new();
+        response.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            RData::A("192.168.1.1".parse().unwrap()),
+        ));
+        let mut ctx = Context::new(Message::new());
+        ctx.set_response(Some(response));
+        assert!(!condition(&ctx));
+
+        // Test without response
+        let condition = parse_condition(&builder, "has_cname").unwrap();
+        let ctx = Context::new(Message::new());
+        assert!(!condition(&ctx));
+    }
+
+    #[test]
+    fn test_parse_condition_qclass_invalid() {
+        let builder = PluginBuilder::new();
+
+        // Test invalid class name
+        let result = parse_condition(&builder, "qclass INVALID");
+        assert!(result.is_err());
+
+        // Test empty qclass
+        let result = parse_condition(&builder, "qclass");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_condition_rcode_invalid() {
+        let builder = PluginBuilder::new();
+
+        // Test invalid rcode name
+        let result = parse_condition(&builder, "rcode INVALID");
+        assert!(result.is_err());
+
+        // Test empty rcode
+        let result = parse_condition(&builder, "rcode");
+        assert!(result.is_err());
     }
 
     #[test]

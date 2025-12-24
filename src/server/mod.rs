@@ -48,7 +48,7 @@ pub mod doq;
 pub mod dot;
 pub mod handler;
 pub mod launcher;
-#[cfg(feature = "admin")]
+#[cfg(feature = "metrics")]
 pub mod monitoring;
 pub mod tcp;
 #[cfg(any(feature = "doh", feature = "dot"))]
@@ -67,7 +67,7 @@ pub use doq::DoqServer;
 pub use dot::DotServer;
 pub use handler::{DefaultHandler, RequestHandler};
 pub use launcher::ServerLauncher;
-#[cfg(feature = "admin")]
+#[cfg(feature = "metrics")]
 pub use monitoring::MonitoringServer;
 pub use tcp::TcpServer;
 #[cfg(any(feature = "doh", feature = "dot"))]
@@ -110,7 +110,8 @@ mod tests {
 
         // Verify AdminState can be created
         let config = Arc::new(RwLock::new(Config::new()));
-        let state = AdminState::new(config, None);
+        let registry = Arc::new(crate::plugin::Registry::new());
+        let state = AdminState::new(config, Arc::clone(&registry));
         // AdminState doesn't have a version method, just verify it was created
         let _ = state;
     }
@@ -139,7 +140,7 @@ mod tests {
         assert!(std::mem::size_of::<DotServer>() > 0);
         #[cfg(feature = "admin")]
         assert!(std::mem::size_of::<AdminServer>() > 0);
-        #[cfg(feature = "admin")]
+        #[cfg(feature = "metrics")]
         assert!(std::mem::size_of::<MonitoringServer>() > 0);
     }
 }

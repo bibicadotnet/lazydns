@@ -221,8 +221,8 @@ mod tests {
 
         // generate self-signed cert and key files
         let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-        let cert_pem = cert.serialize_pem().unwrap();
-        let key_pem = cert.serialize_private_key_pem();
+        let cert_pem = cert.cert.pem();
+        let key_pem = cert.signing_key.serialize_pem();
 
         let mut cert_file = NamedTempFile::new().unwrap();
         cert_file.write_all(cert_pem.as_bytes()).unwrap();

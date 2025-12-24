@@ -1,21 +1,45 @@
+# lazydns example configuration file
+# This is a work-in-progress configuration format
+# Full configuration documentation will be available as implementation progresses
+
+# NOTE: The legacy `server` configuration section has been removed.
+# Server listeners and runtime server configuration are now managed via
+# the server launcher and runtime settings (see `src/server/*` for details).
+
+# Log configuration
 log:
   level: info
+  format: text
 
+# Plugin execution flow
 plugins:
-  - tag: forward_google
+  # Forward to upstream DNS servers
+  - tag: forward
     type: forward
     args:
+      concurrent: 3
       upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
         - "https://8.8.8.8/dns-query"
 
-  - tag: udp
+  # Simple sequence that forwards all queries
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: accept
+
+  # UDP server listening on :5356
+  - tag: udp_server
     type: udp_server
     args:
-      entry: forward_google
-      listen: "0.0.0.0:5354"
+      entry: main_sequence
+      listen: ":5356"
 
-  - tag: tcp
+  # TCP server listening on :5356
+  - tag: tcp_server
     type: tcp_server
     args:
-      entry: forward_google
-      listen: "0.0.0.0:5354"
+      entry: main_sequence
+      listen: ":5356"

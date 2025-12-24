@@ -61,6 +61,8 @@ use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::Message;
 use crate::error::Error;
+#[cfg(feature = "metrics")]
+use crate::metrics;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -143,11 +145,21 @@ impl CacheStats {
     /// Increment hit counter
     fn record_hit(&self) {
         self.hits.fetch_add(1, Ordering::Relaxed);
+        // Update Prometheus metric
+        #[cfg(feature = "metrics")]
+        {
+            metrics::CACHE_HITS_TOTAL.inc();
+        }
     }
 
     /// Increment miss counter
     fn record_miss(&self) {
         self.misses.fetch_add(1, Ordering::Relaxed);
+        // Update Prometheus metric
+        #[cfg(feature = "metrics")]
+        {
+            metrics::CACHE_MISSES_TOTAL.inc();
+        }
     }
 
     /// Increment eviction counter
@@ -293,6 +305,11 @@ impl CachePlugin {
     /// Clear all entries from the cache
     pub fn clear(&self) {
         self.cache.clear();
+        // Update cache size metric
+        #[cfg(feature = "metrics")]
+        {
+            metrics::CACHE_SIZE.set(0);
+        }
     }
 
     /// Generate a cache key from a DNS query
@@ -354,6 +371,11 @@ impl CachePlugin {
         if let Some(key) = oldest_key {
             self.cache.remove(&key);
             self.stats.record_eviction();
+            // Update cache size metric
+            #[cfg(feature = "metrics")]
+            {
+                metrics::CACHE_SIZE.set(self.size() as i64);
+            }
             debug!("Evicted LRU cache entry: {}", key);
         }
     }
@@ -367,6 +389,11 @@ impl CachePlugin {
         }
 
         self.cache.insert(key, entry);
+        // Update cache size metric
+        #[cfg(feature = "metrics")]
+        {
+            metrics::CACHE_SIZE.set(self.size() as i64);
+        }
     }
 
     /// Get minimum TTL from a DNS message
@@ -451,6 +478,11 @@ impl Plugin for CachePlugin {
                     self.cache.remove(&key);
                     self.stats.record_expiration();
                     self.stats.record_miss();
+                    // Update cache size metric after removal
+                    #[cfg(feature = "metrics")]
+                    {
+                        metrics::CACHE_SIZE.set(self.size() as i64);
+                    }
                     return Ok(());
                 }
 
@@ -517,6 +549,11 @@ impl Plugin for CachePlugin {
 
                         let entry = CacheEntry::new(response.clone(), ttl);
                         self.cache.insert(key.clone(), entry);
+                        // Update cache size metric
+                        #[cfg(feature = "metrics")]
+                        {
+                            metrics::CACHE_SIZE.set(self.size() as i64);
+                        }
                     }
                 }
             }
@@ -582,6 +619,10 @@ impl Plugin for CachePlugin {
         }
 
         Ok(Arc::new(cache))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -723,38 +764,51 @@ mod tests {
         assert_eq!(ttl, 300);
     }
 
+    #[cfg(feature = "metrics")]
     #[tokio::test]
     async fn test_cache_miss() {
         let cache = CachePlugin::new(100);
         let request = create_test_message();
         let mut context = Context::new(request);
 
+        let prev_misses = metrics::CACHE_MISSES_TOTAL.get();
+
         cache.execute(&mut context).await.unwrap();
 
         assert!(context.response().is_none());
         assert_eq!(cache.stats().misses(), 1);
         assert_eq!(cache.stats().hits(), 0);
+        // Global metric incremented
+        assert_eq!(metrics::CACHE_MISSES_TOTAL.get(), prev_misses + 1);
     }
 
+    #[cfg(feature = "metrics")]
     #[tokio::test]
     async fn test_cache_hit() {
         let cache = CachePlugin::new(100);
 
-        // Store an entry in the cache
+        // Store an entry in the cache via store() so metric is updated
         let response = create_test_response();
         let key = "example.com:1:1".to_string();
         let entry = CacheEntry::new(response.clone(), 300);
-        cache.cache.insert(key, entry);
+        cache.store(key.clone(), entry);
+
+        // Cache size metric should be updated
+        assert_eq!(metrics::CACHE_SIZE.get(), cache.size() as i64);
 
         // Try to retrieve it
         let request = create_test_message();
         let mut context = Context::new(request);
+
+        let prev_hits = metrics::CACHE_HITS_TOTAL.get();
 
         cache.execute(&mut context).await.unwrap();
 
         assert!(context.response().is_some());
         assert_eq!(cache.stats().hits(), 1);
         assert_eq!(cache.stats().misses(), 0);
+        // Global metric incremented
+        assert_eq!(metrics::CACHE_HITS_TOTAL.get(), prev_hits + 1);
     }
 
     #[tokio::test]
@@ -782,21 +836,24 @@ mod tests {
         assert!(!cache.cache.contains_key(&key));
     }
 
+    #[cfg(feature = "metrics")]
     #[test]
     fn test_cache_clear() {
         let cache = CachePlugin::new(100);
 
-        // Add some entries
+        // Add some entries via store() so metric is updated
         let response = create_test_response();
-        let entry = CacheEntry::new(response, 300);
-        cache.cache.insert("key1".to_string(), entry.clone());
-        cache.cache.insert("key2".to_string(), entry.clone());
+        let entry = CacheEntry::new(response.clone(), 300);
+        cache.store("key1".to_string(), entry.clone());
+        cache.store("key2".to_string(), entry.clone());
 
         assert_eq!(cache.size(), 2);
+        assert_eq!(metrics::CACHE_SIZE.get(), 2);
 
         cache.clear();
 
         assert_eq!(cache.size(), 0);
+        assert_eq!(metrics::CACHE_SIZE.get(), 0);
     }
 
     #[test]

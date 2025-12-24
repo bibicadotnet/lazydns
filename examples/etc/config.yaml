@@ -1,224 +1,382 @@
-log:
-  # * trace | debug | info |warn | error
-  level: debug
-  # * text (by default) | json
-  # format: text
-  # * optional
-  # file: test.log
-  # * daily | hourly | never (by default)
-  # rotate: daily
-  # * optional; overrides parent dir of `file`
-  # rotate_dir: /var/log/lazydns
+# Downloader Plugin + Cron Scheduling
+#
+# This configuration demonstrates a lightweight, plugin-based approach
+# for automatically downloading and updating DNS rule files.
+#
+# Architecture:
+#   1. CronPlugin triggers on schedule (every 6 hours: 00:00, 06:00, 12:00, 18:00 local time)
+#   2. CronPlugin invokes the Downloader plugin via invoke_plugin action
+#   3. Downloader downloads files and updates them atomically
+#   4. DomainSet/IPSet/Hosts automatically detect changes and reload
+#
+# Logging:
+#   - CronPlugin outputs DEBUG logs for job scheduling and execution
+#   - DownloaderPlugin outputs detailed logs for each file download
+#   - Set log level to debug or trace to see detailed operation logs
+#
+
+# ============================================================================
+# ADMIN API CONFIGURATION
+# ============================================================================
+
+admin:
+  # Enable admin API for runtime management
+  # Admin API provides endpoints for:
+  #   - /api/cache/control - Cache management (clear, stats)
+  #   - /api/config/reload - Config hot-reload
+  #   - /api/server/status - Server status
+  enabled: true
+  # Listen address (default: 127.0.0.1:8080)
+  # Warning: Do NOT expose to untrusted networks!
+  # Use a reverse proxy with authentication in production
+  addr: "127.0.0.1:8080"
+
+metrics:
+  # Enable monitoring server for Prometheus metrics and health checks
+  enabled: true
+  # Listen address (default: 127.0.0.1:9090)
+  addr: "127.0.0.1:9090"
+
+# ============================================================================
+# PLUGINS CONFIGURATION
+# ============================================================================
 
 plugins:
-  # 缓存
+  # ========================================================================
+  # Data Providers - Load DNS rule files
+  # ========================================================================
+
+  # Load domain blocklists (Ad, etc.)
+  - tag: domain_reject_list
+    type: domain_set
+    args:
+      files:
+        - "reject-list.txt"
+      auto_reload: true # Automatically reload when file changes
+
+  # Load domain proxy list
+  - tag: domain_proxy_list
+    type: domain_set
+    args:
+      files:
+        - "proxy-list.txt"
+        - "proxy-ext-list.txt"
+      auto_reload: true
+
+  # Load domain direct list
+  - tag: domain_direct_list
+    type: domain_set
+    args:
+      files:
+        - "direct-list.txt"
+        - "apple-cn.txt"
+        - "my-domain-list.txt"
+      auto_reload: true
+
+  # Load IP direct list
+  - tag: ip_direct_list
+    type: ip_set
+    args:
+      files:
+        - "china-ip-list.txt"
+        - "white-ip-list.txt"
+      auto_reload: true
+
+  # Load hosts files
+  - tag: hosts_files
+    type: hosts
+    args:
+      files:
+        - "hosts.txt"
+        - "hosts-github.txt"
+      auto_reload: true
+
+  # ========================================================================
+  # Cron Scheduler - Triggers downloader on schedule
+  # ========================================================================
+
+  - tag: auto_update_scheduler
+    type: cron
+    args:
+      jobs:
+        - name: auto_update
+          # Cron expression: minute hour day month weekday
+          # Note: cronexpr uses the standard crontab order (minute hour day month weekday)
+          # Examples:
+          #   "5 2 * * *" = every day at 02:05 (local time)
+          #   "0 */6 * * *" = every 6 hours at minute 0 (00:00, 06:00, 12:00, 18:00 local time)
+          #   "0 * * * *" = every hour at minute 0
+          # You may optionally append a TZ name as the last token: e.g. "0 */6 * * * UTC"
+          cron: "32 11  * * *"
+          action:
+            invoke_plugin:
+              type: "downloader"
+              args:
+                files:
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt"
+                    path: "gfw.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt"
+                    path: "reject-list.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"
+                    path: "direct-list.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt"
+                    path: "china-ip-list.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt"
+                    path: "proxy-list.txt"
+                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/apple-cn.txt"
+                    path: "apple-cn.txt"
+                  - url: "https://raw.githubusercontent.com/lazywalker/ghosts/refs/heads/master/hosts.mdns"
+                    path: "hosts-github.txt"
+                timeout_secs: 30
+                concurrent: false
+
+  # ========================================================================
+  # Cache, Redirect Plugins, and ROS Addrlist Updater
+  # ========================================================================
+
+  # cache plugin to speed up lookups
   - tag: cache
     type: cache
     args:
       size: 1024
       negative_cache: true
 
-  # 重定向域名
+  # redirect plugin for specific domains
   - tag: redirect
     type: redirect
     args:
       rules:
         - www.cnbeta.com www.cnbeta.com.cdn.cloudflare.net
 
-  # 转发至国内DNS, 并发查询
-  - tag: forward_local
-    type: forward
-    args:
-      concurrent: 2
-      upstreams:
-        - addr: udp://119.29.29.29
-        - addr: udp://223.5.5.5
-
-  # 转发至国外DNS, 并发查询
-  - tag: forward_remote
-    type: forward
-    args:
-      concurrent: 2
-      upstreams:
-        - addr: tcp://8.8.8.8
-        - addr: tcp://1.1.1.1
-
-  # 自定义hosts
-  - tag: hosts
-    type: hosts
-    args:
-      auto_reload: true
-      files:
-        - "hosts.txt"
-        - "hosts-github.txt"
-
-  # 定义广告域名列表
-  - tag: ad-domain-list
-    type: domain_set
-    args:
-      auto_reload: true
-      files:
-        - reject-list.txt
-
-  # 定义国内域名列表
-  - tag: cn-domain-list
-    type: domain_set
-    args:
-      auto_reload: true
-      files:
-        - direct-list.txt
-        - apple-cn.txt
-        - my-domain-list.txt
-
-  # 定义gfw域名列表
-  - tag: gfw-domain-list
-    type: domain_set
-    args:
-      auto_reload: true
-      files:
-        - proxy-list.txt
-        - proxy-ext-list.txt
-
-  # china ip和自己的vps ip、国内dns ip、内网ip，避免这些ip被加到ipset
-  - tag: local_ip
-    type: ip_set
-    args:
-      auto_reload: true
-      files:
-        - china-ip-list.txt
-        - white-ip-list.txt
-
-  # 转发至ROS地址表的插件
+  # ROS Addrlist updater for gfwlist IPs
   - tag: add_gfwlist
     type: ros_addrlist
     args:
-      addrlist: "mosdns-gfwlist"
+      addrlist: "lazydns-gfwlist"
       server: "http://192.168.88.1:80"
-      user: "mosdns"
-      passwd: "Mosisgood"
+      user: "lazydns"
+      passwd: "Lazyisgood"
       mask4: 24
       mask6: 32
 
-  # fallback的primary服务器, 返回国内ip则accept, 返回非国内ip则drop
-  - tag: local_sequence
+  # ========================================================================
+  # Upstream Servers
+  # ========================================================================
+
+  # forward to domestic DNS, concurrent queries
+  - tag: upstream_direct
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: udp://119.29.29.29 # Tencent Public DNS
+        - addr: udp://223.5.5.5 # AliDNS Public DNS
+      health_checks: true
+      max_attempts: 3
+
+  # forward to proxy DNS, concurrent queries
+  - tag: upstream_proxy
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: tcp://8.8.8.8 # Google Public DNS
+        - addr: tcp://1.1.1.1 # Cloudflare DNS
+      health_checks: true
+      max_attempts: 3
+
+  # blackhole upstream for rejected domains
+  - tag: upstream_reject
+    type: blackhole
+
+  # ========================================================================
+  # Sub sequence and Fallback Logic
+  # ========================================================================
+
+  # direct sub-sequence, accpt domestic IPs, drop others
+  - tag: sequence_direct
     type: sequence
     args:
-      - exec: $forward_local
-      - matches: resp_ip $local_ip
+      - exec: $upstream_direct
+      - matches: resp_ip $ip_direct_list
         exec: drop_resp
       - exec: accept
 
-  # fallback的secondary服务器, 返回非国内ip则添加至ipset, 返回国内ip只接受不会添加ipset
-  - tag: remote_sequence
+  # proxy sub-sequence
+  - tag: sequence_proxy
     type: sequence
     args:
-      - exec: $forward_remote
-      # - matches: "!resp_ip $local_ip"
-      # exec: ipset gfwlist,inet,32
-      # exec: ros_addrlist_gfwlist
+      - exec: $upstream_proxy
+      - exec: accept
+
+  # sub-sequence for gfwlist,
+  # adding IPs to some list(by exec ROS updater) before accepting when not domestic
+  - tag: sequence_gfwlist
+    type: sequence
+    args:
+      - exec: ttl 300-3600
+      - matches: "!resp_ip $ip_direct_list"
+        exec: $add_gfwlist
       - exec: accept
 
   # fallback sequence
   - tag: fallback
     type: fallback
     args:
-      primary: local_sequence
-      secondary: remote_sequence
+      primary: sequence_direct
+      secondary: sequence_proxy
       threshold: 500
       always_standby: true
 
-  # gfwlist解析出的ip添加至ipset，添加前先判断是否为国内ip或内网ip
-  - tag: gfw-list
-    type: sequence
-    args:
-      - exec: ttl 300-3600
-      - matches: "!resp_ip $local_ip"
-        exec: $add_gfwlist
-      - exec: accept
+  # ========================================================================
+  # Main sequence - the core DNS processing logic
+  # ========================================================================
 
-  # 主运行序列
-  - tag: main_sequence
+  # main sequence
+  - tag: sequence_main
     type: sequence
     args:
-      - exec: $hosts
+      # check hosts files first
+      - exec: $hosts_files
       - matches: has_resp
         exec: accept
 
-      # 屏蔽PTR和DNSSEC，解决ios系统的一些问题
+      # reject PTR and DNSSEC to fix some iOS issues
       - matches: qtype 12 65
         exec: reject 0
 
-      # 屏蔽广告
-      - matches: qname $ad-domain-list
+      # block ads
+      - matches: qname $domain_reject_list
+        # demonstration: use inline quick-setup to blackhole
         exec: black_hole 127.0.0.1
+        # or use the upstream_reject defined above
+        # exec: $upstream_reject
 
       - exec: prefer_ipv4
 
       - exec: $redirect
 
-      # 动态域名跳过缓存
+      # skip cache for dynamic domains, others use cache
       - matches: "!qname 00006801.com"
         exec: $cache
       - matches: has_resp
         exec: accept
 
-      # 国内域名
-      - matches: qname $cn-domain-list
-        exec: $forward_local
+      # domestic domains
+      - matches: qname $domain_direct_list
+        exec: $upstream_direct
       - matches: has_resp
         exec: accept
 
-      # 国外域名
-      - matches: qname $gfw-domain-list
-        exec: $forward_remote
+      # foreign domains
+      - matches: qname $domain_proxy_list
+        exec: $upstream_proxy
       - matches: has_resp
-        exec: jump gfw-list
+        exec: jump sequence_gfwlist
 
-      # 其他未知域名
+      # other unknown domains
       - exec: $fallback
 
-  # 启动监听服务
+  # ========================================================================
+  # Server Configurations, listen on multiple protocols and ports
+  # ========================================================================
+
+  # UDP server (built-in)
   - tag: udp_server
     type: udp_server
     args:
-      entry: main_sequence
+      entry: sequence_main
       listen: :5354
 
+  # TCP server (built-in)
   - tag: tcp_server
     type: tcp_server
     args:
-      entry: main_sequence
+      entry: sequence_main
       listen: :5354
 
-  # DNS over HTTPS (DoH) server (requires TLS)
+  # DNS over HTTPS (DoH) server (requires tls and doh features)
   - tag: doh_server
     type: doh_server
     args:
-      entry: main_sequence
+      entry: sequence_main
       # use unprivileged port for examples; change to :443 for production
       listen: :8443
       # Paths to certificate and private key PEM files (relative to this config dir)
       cert_file: certs/cert.pem
       key_file: certs/key.pem
 
-  # DNS over TLS (DoT) server (requires TLS)
+  # DNS over TLS (DoT) server (requires tls and dot features)
   - tag: dot_server
     type: dot_server
     args:
-      entry: main_sequence
+      entry: sequence_main
       # standard DoT port is 853; use 8853 in examples if you need non-root port
       listen: :8853
       # Paths relative to this config directory
       cert_file: certs/cert.pem
       key_file: certs/key.pem
 
-  # DNS over QUIC (DoQ) server (requires TLS)
+  # DNS over QUIC (DoQ) server (requires tls and doq features)
   - tag: doq_server
     type: doq_server
     args:
-      entry: main_sequence
+      entry: sequence_main
       # standard DoQ port is 784; use 8784 in examples if you need non-root port
       listen: :8784
       # Paths relative to this config directory
       cert_file: certs/cert.pem
       key_file: certs/key.pem
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+log:
+  # * trace | debug | info |warn | error
+  level: debug
+
+  # * text (by default) | json
+  # format: text
+
+  # * optional; if not set, logs to stdout
+  # file: test.log
+
+  # * daily | hourly | never (by default)
+  # rotate: daily
+
+  # * optional; overrides parent dir of `file`
+  # rotate_dir: /var/log/lazydns
+# ============================================================================
+# END OF CONFIGURATION
+# ============================================================================
+
+# ============================================================================
+# FILE UPDATER SCHEDULE DETAILS
+# ============================================================================
+#
+# The scheduler will trigger at:
+#   - Time: 02:05 UTC every day
+#   - Action: Download all files in the files list
+#   - Download Mode: Sequential (one at a time) to avoid bandwidth spikes
+#   - Timeout: 30 seconds per file
+#   - Retry: Built-in retry on network errors
+#
+# After files are downloaded:
+#   1. Files are written to temporary locations
+#   2. Atomically renamed to final paths (no partial files)
+#   3. File watches detect the change automatically
+#   4. DomainSet/IPSet/Hosts reload the new content
+#   5. DNS queries immediately use updated rules
+#
+# Performance Notes:
+#   - With 6 files and sequential mode: ~6-12 seconds typical (varies by file size)
+#   - Concurrent mode: ~2-3 seconds but higher bandwidth usage
+#   - File reloads happen in background, no DNS query interruption
+#   - Failed downloads logged but don't prevent DNS operation
+#
+# For production deployments:
+#   - Monitor logs for download failures: grep "download failed" logs/lazydns.log
+#   - Verify file sizes after update: ls -la *.txt
+#   - Consider downloading during off-peak hours (e.g., 03:05 UTC instead of 02:05)
+#   - Set timeout_secs based on file sizes and network speed
