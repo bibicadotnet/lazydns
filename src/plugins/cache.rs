@@ -648,6 +648,14 @@ impl Plugin for CachePlugin {
 
         // Phase 1: Try to read from cache (only if no response yet)
         if context.response().is_none() {
+            // Skip cache logic for background lazy refresh to avoid recursion
+            if context
+                .get_metadata::<bool>("background_lazy_refresh")
+                .is_some()
+            {
+                debug!("Skipping cache logic for background lazy refresh");
+                return Ok(());
+            }
             // Try to get from cache
             if let Some(mut entry_ref) = self.cache.get_mut(&key) {
                 let entry = entry_ref.value_mut();
@@ -680,7 +688,7 @@ impl Plugin for CachePlugin {
                 if remaining_ttl == 0 {
                     if let Some(lazy_ttl) = self.cache_ttl {
                         debug!(
-                            "LazyCache TTL hit (stale entry): {}, cache_remaining: {}s, configured_lazy_ttl: {}s",
+                            "Stale-serving TTL hit (stale entry): {}, cache_remaining: {}s, configured_lazy_ttl: {}s",
                             key,
                             entry.remaining_cache_ttl(),
                             lazy_ttl
@@ -717,14 +725,14 @@ impl Plugin for CachePlugin {
 
                                 tokio::spawn(async move {
                                     debug!(
-                                        "Background lazy TTL refresh: starting fresh query for {}",
+                                        "Background stale-serving TTL refresh: starting fresh query for {}",
                                         key_clone
                                     );
 
                                     match background_handler.handle(request_clone).await {
                                         Ok(response) => {
                                             debug!(
-                                                "Background lazy TTL refresh successful for {}: {}",
+                                                "Background stale-serving TTL refresh successful for {}: {}",
                                                 key_clone,
                                                 if response.response_code()
                                                     == crate::dns::ResponseCode::NoError
@@ -737,7 +745,7 @@ impl Plugin for CachePlugin {
                                         }
                                         Err(e) => {
                                             debug!(
-                                                "Background lazy TTL refresh failed for {}: {}",
+                                                "Background stale-serving TTL refresh failed for {}: {}",
                                                 key_clone, e
                                             );
                                         }
@@ -745,13 +753,13 @@ impl Plugin for CachePlugin {
 
                                     refreshing_keys_clone.remove(&key_clone);
                                     debug!(
-                                        "Background lazy TTL refresh completed for {}",
+                                        "Background stale-serving TTL refresh completed for {}",
                                         key_clone
                                     );
                                 });
                             } else {
                                 debug!(
-                                    "LazyCache TTL: handler metadata missing, falling back to invalidate stale entry"
+                                    "Stale-serving TTL: handler metadata missing, falling back to invalidate stale entry"
                                 );
                                 let cache_clone = Arc::clone(&self.cache);
                                 let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
@@ -765,7 +773,7 @@ impl Plugin for CachePlugin {
                             }
                         } else {
                             debug!(
-                                "LazyCache TTL: {} already being refreshed, skip duplicate background refresh",
+                                "Stale-serving TTL: {} already being refreshed, skip duplicate background refresh",
                                 key
                             );
                         }
