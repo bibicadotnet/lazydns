@@ -62,4 +62,4 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            LAZYDNS_VERSION=${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v0.2.31' }}
+            LAZYDNS_VERSION=${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}

@@ -20,7 +20,7 @@ FROM alpine:3.23 AS downloader
 RUN apk add --no-cache curl tzdata
 
 # Download latest release binary based on architecture
-ARG LAZYDNS_VERSION=v0.2.31
+ARG LAZYDNS_VERSION=latest
 ARG TARGETARCH
 RUN set -ex; \
     case "$TARGETARCH" in \
@@ -34,9 +34,14 @@ RUN set -ex; \
     else \
     BINARY_NAME="lazydns-full-${ARCH}-unknown-linux-musl.tar.gz"; \
     fi; \
-    echo "Downloading ${BINARY_NAME}"; \
-    curl -L -o lazydns-full.tar.gz \
-    https://github.com/lazywalker/lazydns/releases/download/${LAZYDNS_VERSION}/${BINARY_NAME} \
+    BASE_URL="https://github.com/lazywalker/lazydns/releases"; \
+    if [ "${LAZYDNS_VERSION}" != "latest" ]; then \
+    URL="${BASE_URL}/download/${LAZYDNS_VERSION}/${BINARY_NAME}"; \
+    else \
+    URL="${BASE_URL}/latest/download/${BINARY_NAME}"; \
+    fi; \
+    echo "Downloading from ${URL}"; \
+    curl -L -o lazydns-full.tar.gz "${URL}" \
     && tar -xzf lazydns-full.tar.gz \
     && chmod +x lazydns
 
