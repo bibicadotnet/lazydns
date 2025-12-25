@@ -173,7 +173,7 @@ plugins:
       # Set `enable_lazycache` to false to test cache_ttl stale-serving
       # When DNS TTL expires but cache TTL remains, serve stale response with small TTL
       # and refresh in background. Set to desired cache duration (e.g., 600 for 10 minutes)
-      cache_ttl: 600
+      # cache_ttl: 600
 
       # TODO: Prefetch extension can be enabled here in future
       # Optional: Enable prefetch for additional performance

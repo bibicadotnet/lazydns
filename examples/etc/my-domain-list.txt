@@ -1,2 +1,4 @@
 full:main.vscode-cdn.net
 full:vscode.dev
+api.individual.githubcopilot.com
+githubcopilot.com
