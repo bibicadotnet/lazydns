@@ -47,6 +47,7 @@ RUN echo "$TZ" > /etc/timezone
 
 # Prepare application files
 ADD config.yaml /app/config.yaml
+RUN sed -i 's/5354/53/g' /app/config.yaml || true
 
 # Stage 2: Runtime (scratch - minimal)
 FROM scratch
