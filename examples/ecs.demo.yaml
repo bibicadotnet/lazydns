@@ -1,0 +1,87 @@
+# Example configuration for EcsHandler (EDNS Client Subnet)
+# This demonstrates how to use the ecs plugin to manage EDNS0 CLIENT-SUBNET options
+#
+# EDNS Client Subnet (ECS) allows DNS resolvers to inform authoritative servers
+# about the client's subnet, enabling geographically appropriate responses.
+#
+# Usage:
+#   cargo run -- -c examples/config-ecs-demo.yaml
+#
+# ECS Handler exec syntax:
+#   ecs forward=true,send=true,preset=IP,mask4=N,mask6=N
+#
+# Options:
+#   - forward=true: Copy client-provided ECS options to upstream queries
+#   - send=true: Derive ECS from client IP address
+#   - preset=IP: Use fixed IP address for ECS (e.g., preset=192.0.2.1)
+#   - mask4=N: IPv4 subnet mask length (default: 24)
+#   - mask6=N: IPv6 subnet mask length (default: 48)
+#
+# Examples:
+#   ecs forward=true                    # Forward client ECS options
+#   ecs send=true,mask4=24             # Derive from client IP
+#   ecs preset=192.0.2.1,mask4=24      # Use preset address
+#   ecs forward=true,send=true         # Forward or derive
+
+# Log configuration
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # ECS handler in forward mode - copies client ECS options to upstream
+  - tag: ecs_forward
+    type: sequence
+    args:
+      - exec: ecs forward=true
+
+  # ECS handler in send mode - derives ECS from client IP address
+  - tag: ecs_send
+    type: sequence
+    args:
+      - exec: ecs send=true,mask4=24,mask6=48
+      - exec: accept
+
+  # ECS handler with preset address - uses fixed IP for ECS
+  - tag: ecs_preset
+    type: sequence
+    args:
+      - exec: ecs preset=192.0.2.1,mask4=24
+      - exec: accept
+
+  # ECS handler combining forward and send modes
+  - tag: ecs_combined
+    type: sequence
+    args:
+      - exec: ecs forward=true,send=true,mask4=24,mask6=56
+      - exec: accept
+
+  # Forward plugin to send queries with ECS options
+  - tag: forward_with_ecs
+    type: forward
+    args:
+      upstreams:
+        - addr: "8.8.8.8:53"
+
+  # Main sequence - choose one of the ECS configurations above
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $ecs_forward  # Change this to test different ECS modes
+      - exec: $forward_with_ecs
+      - exec: accept
+
+  # UDP server listening on :5354
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: ":5354"
+
+  # TCP server listening on :5354
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: ":5354"
