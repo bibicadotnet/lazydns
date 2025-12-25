@@ -16,12 +16,15 @@
 //! and intended to be fast and dependency-free.
 use crate::Result;
 use crate::dns::RData;
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::Arc;
 use tracing::info;
+
+crate::register_exec_plugin_builder!(IpSetPlugin);
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct IpSetArgs {
@@ -149,6 +152,11 @@ impl Plugin for IpSetPlugin {
         "ipset"
     }
 
+    fn aliases() -> Vec<&'static str> {
+        // allow "ipset" as the canonical name
+        vec!["ipset"]
+    }
+
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         if let Some(resp) = ctx.response() {
             let mut to_add: Vec<(String, String)> = ctx
@@ -208,6 +216,40 @@ impl Plugin for IpSetPlugin {
     }
 }
 
+impl ExecPlugin for IpSetPlugin {
+    /// Parse a quick configuration string for ipset plugin.
+    ///
+    /// The exec_str should be in the format: "<set_name>,inet,<mask>,<set_name6>,inet6,<mask>"
+    /// Examples: "my_set,inet,24,my_set6,inet6,48"
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "ipset" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'ipset'",
+                prefix
+            )));
+        }
+
+        // Convert comma-separated format to space-separated format expected by quick_setup
+        // "a,b,c,d,e,f" -> "a,b,c d,e,f"
+        let parts: Vec<&str> = exec_str.split(',').collect();
+        if !parts.len().is_multiple_of(3) {
+            return Err(crate::Error::Config(format!(
+                "Invalid ipset arguments: expected multiples of 3 comma-separated values, got {}",
+                parts.len()
+            )));
+        }
+
+        let mut space_separated = Vec::new();
+        for chunk in parts.chunks(3) {
+            space_separated.push(chunk.join(","));
+        }
+        let space_separated = space_separated.join(" ");
+
+        let plugin = IpSetPlugin::quick_setup(&space_separated)?;
+        Ok(Arc::new(plugin))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,5 +280,12 @@ mod tests {
             .get_metadata::<Vec<(String, String)>>("ipset_added")
             .unwrap();
         assert_eq!(added.len(), 1);
+    }
+
+    #[test]
+    fn test_ipset_exec_plugin() {
+        // Test ExecPlugin quick_setup
+        let plugin = IpSetPlugin::quick_setup("test_set,inet,24").unwrap();
+        assert_eq!(plugin.name(), "ipset");
     }
 }
