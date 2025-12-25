@@ -62,4 +62,5 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            LAZYDNS_VERSION=${{ github.ref_name }}
+            # LAZYDNS_VERSION=${{ github.ref_name }}
+            LAZYDNS_VERSION=v0.2.31
