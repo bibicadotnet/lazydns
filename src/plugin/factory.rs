@@ -473,6 +473,7 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::executable::debug_print::DEBUG_PRINT_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::drop_resp::DROP_RESP_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::query_summary::QUERY_SUMMARY_PLUGIN_EXEC_FACTORY);
 
         Lazy::force(&crate::plugins::flow::accept::ACCEPT_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::goto::GOTO_PLUGIN_EXEC_FACTORY);

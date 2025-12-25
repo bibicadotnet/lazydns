@@ -1,0 +1,77 @@
+# Example configuration for QuerySummaryPlugin
+# This demonstrates how to use the query_summary plugin to generate and log DNS query summaries
+#
+# Usage:
+#   cargo run -- -c examples/query_summary.demo.yaml
+#
+# The query_summary plugin supports the following exec syntax:
+#   query_summary <metadata_key>
+#
+# Options:
+#   - metadata_key: The key under which the query summary will be stored in metadata
+#                   (default behavior stores under the provided key)
+#
+# Examples:
+#   query_summary summary              # Store summary under "summary" key
+#   query_summary query_info           # Store summary under "query_info" key
+#
+# The plugin generates summaries in the format: "qname qclass qtype"
+# Multiple questions are joined with "; "
+# Example output: "example.com IN A; example.com IN AAAA"
+
+# Log configuration
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Query summary plugin that stores summary under "summary" key
+  - tag: query_summary_default
+    type: sequence
+    args:
+      - exec: query_summary summary
+      - exec: accept
+
+  # Query summary plugin with custom metadata key
+  - tag: query_summary_custom_key
+    type: sequence
+    args:
+      - exec: query_summary query_info
+      - exec: accept
+
+  # Combined sequence: query summary + debug print (to show the metadata)
+  - tag: query_summary_with_debug
+    type: sequence
+    args:
+      - exec: query_summary summary
+      - exec: debug_print queries
+      - exec: accept
+
+  # UDP server listening on :5354
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: query_summary_default
+      listen: ":5354"
+
+  # TCP server listening on :5354
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: query_summary_default
+      listen: ":5354"
+
+  # Alternative server using custom key
+  - tag: udp_server_custom
+    type: udp_server
+    args:
+      entry: query_summary_custom_key
+      listen: ":5355"
+
+  # Server demonstrating combined usage with debug print
+  - tag: udp_server_with_debug
+    type: udp_server
+    args:
+      entry: query_summary_with_debug
+      listen: ":5356"
