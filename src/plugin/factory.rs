@@ -427,6 +427,7 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::forward::FORWARD_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::hosts::HOSTS_PLUGIN_FACTORY);
 
+        Lazy::force(&crate::plugins::executable::arbitrary::ARBITRARY_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::domain_set::DOMAIN_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::ip_set::IP_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::ratelimit::RATE_LIMIT_PLUGIN_FACTORY);

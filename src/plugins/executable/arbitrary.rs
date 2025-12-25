@@ -8,19 +8,44 @@ use std::fmt;
 use std::fs;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
+use std::sync::Arc;
+
+// Auto-register using the register macro for Plugin factory
+crate::register_plugin_builder!(ArbitraryPlugin);
 
 #[derive(Debug, Deserialize, Clone)]
+/// Configuration arguments for the ArbitraryPlugin.
+///
+/// This struct defines the input parameters for creating an ArbitraryPlugin instance.
+/// It allows specifying DNS rules either directly as strings or from files.
 pub struct ArbitraryArgs {
+    /// Optional list of DNS rules as strings, e.g., "example.com A 192.0.2.1"
     pub rules: Option<Vec<String>>,
+    /// Optional list of file paths containing DNS rules
     pub files: Option<Vec<String>>,
 }
 
+/// A plugin that provides arbitrary DNS responses based on predefined rules.
+///
+/// The ArbitraryPlugin allows users to define custom DNS resource records
+/// that will be returned for matching queries. Rules can be provided inline
+/// or loaded from files. It supports A, AAAA, and CNAME record types.
 pub struct ArbitraryPlugin {
     // map qname -> vector of resource records to reply
     map: HashMap<String, Vec<ResourceRecord>>,
 }
 
 impl ArbitraryPlugin {
+    /// Creates a new ArbitraryPlugin instance.
+    ///
+    /// Parses the provided rules and files to build a mapping of domain names
+    /// to resource records.
+    ///
+    /// # Arguments
+    /// * `args` - The configuration arguments containing rules and file paths.
+    ///
+    /// # Returns
+    /// A Result containing the plugin or an error if parsing fails.
     pub fn new(args: ArbitraryArgs) -> Result<Self> {
         let mut m: HashMap<String, Vec<ResourceRecord>> = HashMap::new();
         if let Some(rules) = args.rules {
@@ -60,8 +85,16 @@ impl ArbitraryPlugin {
         Ok(Self { map: m })
     }
 
-    // Very small RR parser: supports formats like
-    // "example.com A 1.2.3.4" or "example.com AAAA 2001:db8::1" or "example.com CNAME target."
+    /// Parses a single line into a ResourceRecord.
+    ///
+    /// Supports simple formats like "example.com A 1.2.3.4", "example.com AAAA 2001:db8::1",
+    /// or "example.com CNAME target.". Ignores lines starting with ';' or '#', and empty lines.
+    ///
+    /// # Arguments
+    /// * `line` - The string to parse.
+    ///
+    /// # Returns
+    /// An Option containing the parsed ResourceRecord or None if parsing fails.
     fn parse_rr_line(line: &str) -> Option<ResourceRecord> {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 3 {
@@ -123,10 +156,31 @@ impl fmt::Debug for ArbitraryPlugin {
 
 #[async_trait]
 impl Plugin for ArbitraryPlugin {
+    /// Returns the name of the plugin.
     fn name(&self) -> &str {
         "arbitrary"
     }
 
+    /// Initialize plugin from configuration.
+    ///
+    /// Parses the `args` field from the plugin configuration into `ArbitraryArgs`.
+    fn init(config: &crate::config::types::PluginConfig) -> Result<Arc<dyn Plugin>> {
+        use serde_yaml;
+        use std::sync::Arc;
+
+        let args: ArbitraryArgs = serde_yaml::from_value(config.args.clone())
+            .map_err(|e| crate::Error::Config(format!("failed to parse arbitrary args: {}", e)))?;
+        Ok(Arc::new(ArbitraryPlugin::new(args)?))
+    }
+
+    /// Executes the plugin logic.
+    ///
+    /// If the request contains a question, it looks up the corresponding records
+    /// and sets a response. If no question is present but rules exist, it uses
+    /// the first rule as a fallback.
+    ///
+    /// # Arguments
+    /// * `ctx` - The plugin context containing the request and response.
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         // If there is a question in the request, use it to select rules.
         // Otherwise, if the plugin has at least one rule, fall back to the
@@ -192,5 +246,131 @@ mod tests {
         } else {
             panic!("expected A");
         }
+    }
+
+    #[tokio::test]
+    async fn test_arbitrary_aaaa() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com AAAA 2001:db8::1".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answer_count(), 1);
+        if let RData::AAAA(ip) = resp.answers()[0].rdata() {
+            assert_eq!(*ip, Ipv6Addr::from_str("2001:db8::1").unwrap());
+        } else {
+            panic!("expected AAAA");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_arbitrary_cname() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com CNAME target.example.com".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::CNAME,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answer_count(), 1);
+        if let RData::CNAME(name) = resp.answers()[0].rdata() {
+            assert_eq!(name, "target.example.com");
+        } else {
+            panic!("expected CNAME");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_arbitrary_files() {
+        let temp_path = "test_arbitrary.tmp";
+        fs::write(
+            temp_path,
+            "example.com A 192.0.2.2\n# comment\n\ntest.com AAAA 2001:db8::2\n",
+        )
+        .unwrap();
+
+        let args = ArbitraryArgs {
+            rules: None,
+            files: Some(vec![temp_path.to_string()]),
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answer_count(), 1);
+        if let RData::A(ip) = resp.answers()[0].rdata() {
+            assert_eq!(*ip, Ipv4Addr::new(192, 0, 2, 2));
+        } else {
+            panic!("expected A");
+        }
+
+        fs::remove_file(temp_path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_invalid_rule() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["invalid rule".to_string()]),
+            files: None,
+        };
+        assert!(ArbitraryPlugin::new(args).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_no_match() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com A 192.0.2.1".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "nomatch.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        assert!(ctx.response().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_fallback_no_question() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com A 192.0.2.1".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let req = Message::new(); // No question
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answer_count(), 1);
     }
 }

@@ -1,0 +1,43 @@
+# Example configuration for ArbitraryPlugin
+# This demonstrates how to use the arbitrary plugin to provide custom DNS responses
+
+# The arbitrary_rules.txt file could contain:
+# example.com A 192.0.2.2
+# ; comment
+# # another comment
+# ipv6.example.com AAAA 2001:db8::2
+
+plugins:
+  - tag: arbitrary_example
+    type: arbitrary
+    args:
+      # Inline rules: domain type value
+      rules:
+        - "example.com A 192.0.2.1"
+        - "test.com AAAA 2001:db8::1"
+        - "alias.com CNAME target.example.com"
+      # files:
+      #   - "arbitrary_rules.txt"  # Load additional rules from this file
+
+
+
+  # Simple sequence that uses arbitrary plugin
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $arbitrary_example
+      - exec: accept
+
+  # UDP server listening on :5354
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: ":5354"
+
+  # TCP server listening on :5354
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: ":5354"
