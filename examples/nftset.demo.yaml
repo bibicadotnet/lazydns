@@ -1,0 +1,144 @@
+# Example configuration for NftSetPlugin
+# This demonstrates how to use the nftset plugin to automatically add IP addresses
+# from DNS responses to nftables sets for firewall rules
+#
+# The nftset plugin supports the following exec syntax:
+#   nftset <family>,<table>,<set>,<addr_type>,<mask>...
+#
+# Options:
+#   - family: nftables table family (inet, ip, ip6)
+#   - table: nftables table name
+#   - set: nftables set name
+#   - addr_type: Address type (ipv4_addr or ipv6_addr)
+#   - mask: CIDR prefix length (e.g., 24 for /24, 32 for /32)
+#
+# Examples:
+#   nftset inet,my_table,my_blocklist,ipv4_addr,24                    # IPv4 only, /24 mask
+#   nftset inet,my_table,my_blocklist,ipv4_addr,24,inet,my_table,my_blocklist6,ipv6_addr,48  # Both IPv4 and IPv6
+#
+# The plugin processes DNS responses and:
+# - Extracts A/AAAA records from answers
+# - Converts IP addresses to CIDR notation using specified masks
+# - On Linux: Executes 'nft add element <family> <table> <set> { <cidr> }' commands
+# - On other platforms: Stores entries in metadata under "nftset_added_v4"/"nftset_added_v6"
+# - Logs all additions with set name and CIDR
+#
+# Prerequisites for Linux:
+#   # Install nftables
+#   sudo apt-get install nftables
+#
+#   # Create the required nftables table and sets
+#   sudo nft add table inet my_table
+#   sudo nft 'add set inet my_table my_blocklist { type ipv4_addr; flags interval; }'
+#   sudo nft 'add set inet my_table my_blocklist6 { type ipv6_addr; flags interval; }'
+#   sudo nft 'add set inet my_table strict_blocklist { type ipv4_addr; }'
+#   sudo nft 'add set inet my_table demo_set { type ipv4_addr; flags interval; }'
+#   sudo nft 'add set inet my_table demo_set6 { type ipv6_addr; flags interval; }'
+#
+# Usage:
+#   cargo build
+#   sudo target/debug/lazydns -c examples/nftset.demo.yaml -vv
+#
+# Test with:
+#   dig @127.0.0.1 -p 5354 cloudflare.com A
+
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Forward plugin to get DNS responses
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
+
+  # NftSet plugin for IPv4 only with /24 mask
+  - tag: nftset_ipv4_only
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: nftset inet,my_table,my_blocklist,ipv4_addr,24
+      - exec: accept
+
+  # NftSet plugin for both IPv4 and IPv6
+  - tag: nftset_dual_stack
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: nftset inet,my_table,my_blocklist,ipv4_addr,24,inet,my_table,my_blocklist6,ipv6_addr,48
+      - exec: accept
+
+  # NftSet plugin with tighter IPv4 mask (/32) for individual IPs
+  - tag: nftset_strict_ipv4
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: nftset inet,my_table,strict_blocklist,ipv4_addr,32
+      - exec: accept
+
+  # Combined sequence: forward + nftset + debug print to show metadata
+  - tag: nftset_with_debug
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: nftset inet,my_table,demo_set,ipv4_addr,24,inet,my_table,demo_set6,ipv6_addr,32
+      - exec: debug_print responses
+      - exec: accept
+
+  # UDP server for IPv4-only nftset demo
+  - tag: udp_server_ipv4
+    type: udp_server
+    args:
+      entry: nftset_ipv4_only
+      listen: ":5354"
+
+  # UDP server for dual-stack nftset demo
+  - tag: udp_server_dual
+    type: udp_server
+    args:
+      entry: nftset_dual_stack
+      listen: ":5355"
+
+  # UDP server for strict IPv4 nftset demo
+  - tag: udp_server_strict
+    type: udp_server
+    args:
+      entry: nftset_strict_ipv4
+      listen: ":5356"
+
+  # UDP server demonstrating combined nftset + debug functionality
+  - tag: udp_server_debug
+    type: udp_server
+    args:
+      entry: nftset_with_debug
+      listen: ":5357"
+
+  # TCP servers (same configurations as UDP)
+  - tag: tcp_server_ipv4
+    type: tcp_server
+    args:
+      entry: nftset_ipv4_only
+      listen: ":5354"
+
+  - tag: tcp_server_dual
+    type: tcp_server
+    args:
+      entry: nftset_dual_stack
+      listen: ":5355"
+
+  - tag: tcp_server_strict
+    type: tcp_server
+    args:
+      entry: nftset_strict_ipv4
+      listen: ":5356"
+
+  - tag: tcp_server_debug
+    type: tcp_server
+    args:
+      entry: nftset_with_debug
+      listen: ":5357"

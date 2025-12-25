@@ -483,6 +483,7 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::flow::prefer_ipv6::PREFER_IPV6_PLUGIN_EXEC_FACTORY);
 
         Lazy::force(&crate::plugins::executable::ipset::IP_SET_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::nftset::NFT_SET_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::ecs::ECS_PLUGIN_EXEC_FACTORY);
 
         // Initialize the exec factory system
@@ -490,7 +491,8 @@ pub fn initialize_all_exec_plugin_factories() {
 
         let count = get_all_exec_plugin_types().len();
         if count > 0 {
-            tracing::debug!("Initialized {} exec plugin factories", count);
+            let types = get_all_exec_plugin_types();
+            tracing::debug!("Initialized {} exec plugin factories: {:?}", count, types);
         }
     });
 }

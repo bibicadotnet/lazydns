@@ -14,12 +14,15 @@
 //! are used when attempting to run `nft` with the configured parameters.
 use crate::Result;
 use crate::dns::RData;
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::Arc;
 use tracing::info;
+
+crate::register_exec_plugin_builder!(NftSetPlugin);
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct NftSetArgs {
@@ -139,6 +142,11 @@ impl Plugin for NftSetPlugin {
         "nftset"
     }
 
+    fn aliases() -> Vec<&'static str> {
+        // allow "nftset" as the canonical name
+        vec!["nftset"]
+    }
+
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         if let Some(resp) = ctx.response() {
             let mut added_v4 = Vec::new();
@@ -239,6 +247,40 @@ impl Plugin for NftSetPlugin {
     }
 }
 
+impl ExecPlugin for NftSetPlugin {
+    /// Parse a quick configuration string for nftset plugin.
+    ///
+    /// The exec_str should be in the format: "<family>,<table>,<set>,<addr_type>,<mask> ..."
+    /// Examples: "inet,my_table,my_set,ipv4_addr,24,inet,my_table,my_set6,ipv6_addr,48"
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "nftset" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'nftset'",
+                prefix
+            )));
+        }
+
+        // Convert comma-separated format to space-separated format expected by quick_setup
+        // "a,b,c,d,e,f,g,h,i,j" -> "a,b,c,d,e f,g,h,i,j"
+        let parts: Vec<&str> = exec_str.split(',').collect();
+        if !parts.len().is_multiple_of(5) {
+            return Err(crate::Error::Config(format!(
+                "Invalid nftset arguments: expected multiples of 5 comma-separated values, got {}",
+                parts.len()
+            )));
+        }
+
+        let mut space_separated = Vec::new();
+        for chunk in parts.chunks(5) {
+            space_separated.push(chunk.join(","));
+        }
+        let space_separated = space_separated.join(" ");
+
+        let plugin = NftSetPlugin::quick_setup(&space_separated)?;
+        Ok(Arc::new(plugin))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +315,12 @@ mod tests {
             .get_metadata::<Vec<(String, String)>>("nftset_added_v4")
             .unwrap();
         assert_eq!(added.len(), 1);
+    }
+
+    #[test]
+    fn test_nftset_exec_plugin() {
+        // Test ExecPlugin quick_setup
+        let plugin = NftSetPlugin::quick_setup("inet,my_table,my_set,ipv4_addr,24").unwrap();
+        assert_eq!(plugin.name(), "nftset");
     }
 }

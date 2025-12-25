@@ -34,7 +34,7 @@
 #
 # Usage:
 #   cargo build
-#   sudo target/debug/lazydns -c examples/ipset.demo.yaml
+#   sudo target/debug/lazydns -c examples/ipset.demo.yaml -vv
 #
 # Test with:
 #   dig @127.0.0.1 -p 5354 cloudflare.com A
