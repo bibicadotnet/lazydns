@@ -219,7 +219,7 @@ impl Plugin for IpSetPlugin {
 impl ExecPlugin for IpSetPlugin {
     /// Parse a quick configuration string for ipset plugin.
     ///
-    /// The exec_str should be in the format: "<set_name>,inet,<mask>,<set_name6>,inet6,<mask>"
+    /// The exec_str should be in the format: "`<set_name>,inet,<mask>,<set_name6>,inet6,<mask>`"
     /// Examples: "my_set,inet,24,my_set6,inet6,48"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
         if prefix != "ipset" {

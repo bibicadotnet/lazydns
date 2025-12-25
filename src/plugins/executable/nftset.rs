@@ -250,7 +250,7 @@ impl Plugin for NftSetPlugin {
 impl ExecPlugin for NftSetPlugin {
     /// Parse a quick configuration string for nftset plugin.
     ///
-    /// The exec_str should be in the format: "<family>,<table>,<set>,<addr_type>,<mask> ..."
+    /// The exec_str should be in the format: "`<family>,<table>,<set>,<addr_type>,<mask> ...`"
     /// Examples: "inet,my_table,my_set,ipv4_addr,24,inet,my_table,my_set6,ipv6_addr,48"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
         if prefix != "nftset" {
