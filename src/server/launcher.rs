@@ -783,9 +783,12 @@ impl ServerLauncher {
     #[cfg(not(feature = "metrics"))]
     pub async fn launch_monitoring_server(
         &self,
-        _config: Arc<RwLock<crate::config::Config>>,
+        config: Arc<RwLock<crate::config::Config>>,
     ) -> Option<tokio::sync::oneshot::Receiver<()>> {
-        warn!("Monitoring server requested but metrics feature is not enabled");
+        if config.read().await.monitoring.enabled {
+            warn!("Monitoring server requested but metrics feature is not enabled");
+        }
+
         None
     }
 
@@ -796,9 +799,12 @@ impl ServerLauncher {
     #[cfg(not(feature = "admin"))]
     pub async fn launch_admin_server(
         &self,
-        _config: Arc<RwLock<crate::config::Config>>,
+        config: Arc<RwLock<crate::config::Config>>,
     ) -> Option<tokio::sync::oneshot::Receiver<()>> {
-        warn!("Admin server requested but admin feature is not enabled");
+        if config.read().await.admin.enabled {
+            warn!("Admin server requested but admin feature is not enabled");
+        }
+
         None
     }
 }
