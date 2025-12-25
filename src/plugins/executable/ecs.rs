@@ -187,17 +187,6 @@ impl EcsPlugin {
     /// - `data` is the binary-encoded ECS option data
     ///
     /// Returns `None` only in impossible cases - callers can rely on `Some(...)` for valid inputs.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use std::net::IpAddr;
-    /// use lazydns::plugins::executable::ecs::EcsPlugin;
-    ///
-    /// let ip: IpAddr = "192.0.2.1".parse().unwrap();
-    /// let (code, data) = EcsPlugin::make_ecs_option(ip, 24, 48).unwrap();
-    /// assert_eq!(code, 8); // ECS option code
-    /// ```
     #[allow(clippy::manual_div_ceil)]
     fn make_ecs_option(ip: IpAddr, mask4: u8, mask6: u8) -> Option<(u16, Vec<u8>)> {
         // EDNS Client Subnet option code = 8
