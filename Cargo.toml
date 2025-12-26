@@ -92,7 +92,7 @@ ipnet = "2.9"
 rand = "0.9"
 
 # Optional TLS-enabled HTTP server for DoH production deployments.
-axum-server = { version = "0.7", optional = true, package = "axum-server", default-features = false, features = [
+axum-server = { version = "0.8", optional = true, package = "axum-server", default-features = false, features = [
     "tls-rustls-no-provider",
 ] }
 
