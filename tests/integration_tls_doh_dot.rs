@@ -62,9 +62,9 @@ async fn integration_doh_tls_post() {
     impl RequestHandler for TestHandler {
         async fn handle(
             &self,
-            mut request: lazydns::dns::Message,
-            _client_addr: Option<std::net::SocketAddr>,
+            ctx: lazydns::server::RequestContext,
         ) -> lazydns::Result<lazydns::dns::Message> {
+            let mut request = ctx.into_message();
             request.set_response(true);
             Ok(request)
         }

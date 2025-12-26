@@ -333,10 +333,16 @@ impl UdpServer {
             peer_addr
         );
 
-        // Handle the request
-        // Call the handler and ensure response ID matches request ID
+        // Create request context
         let req_id = request.id();
-        let mut response = handler.handle(request, Some(peer_addr)).await?;
+        let ctx = crate::server::RequestContext::with_client(
+            request,
+            Some(peer_addr),
+            crate::server::Protocol::Udp,
+        );
+
+        // Handle the request
+        let mut response = handler.handle(ctx).await?;
         response.set_id(req_id);
 
         trace!(

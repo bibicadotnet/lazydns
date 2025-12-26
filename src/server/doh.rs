@@ -226,8 +226,11 @@ async fn handle_get_query(
         }
     };
 
+    // Create request context (DoH doesn't have reliable client IP)
+    let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoH);
+
     // Process query
-    let response = match handler.handle(request, None).await {
+    let response = match handler.handle(ctx).await {
         Ok(resp) => resp,
         Err(e) => {
             return (
@@ -306,8 +309,11 @@ async fn handle_post_query(
         }
     };
 
+    // Create request context
+    let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoH);
+
     // Process query
-    let response = match handler.handle(request, None).await {
+    let response = match handler.handle(ctx).await {
         Ok(resp) => resp,
         Err(e) => {
             return (
@@ -356,7 +362,7 @@ fn serialize_dns_message(message: &Message) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::RequestHandler;
+    use crate::server::{RequestContext, RequestHandler};
     use async_trait::async_trait;
     use axum::body::Bytes as AxumBytes;
     use axum::body::to_bytes;
@@ -368,12 +374,9 @@ mod tests {
 
     #[async_trait]
     impl RequestHandler for TestHandler {
-        async fn handle(
-            &self,
-            mut request: Message,
-            _client_addr: Option<std::net::SocketAddr>,
-        ) -> crate::Result<Message> {
+        async fn handle(&self, ctx: RequestContext) -> crate::Result<Message> {
             // mark as response and return the same message
+            let mut request = ctx.into_message();
             request.set_response(true);
             Ok(request)
         }
@@ -506,11 +509,7 @@ mod tests {
 
     #[async_trait]
     impl RequestHandler for TestHandlerErr {
-        async fn handle(
-            &self,
-            _request: Message,
-            _client_addr: Option<std::net::SocketAddr>,
-        ) -> crate::Result<Message> {
+        async fn handle(&self, _ctx: RequestContext) -> crate::Result<Message> {
             Err(crate::Error::Plugin("handler failure".to_string()))
         }
     }

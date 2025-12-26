@@ -64,7 +64,7 @@ use crate::error::Error;
 #[cfg(feature = "metrics")]
 use crate::metrics;
 use crate::plugin::{Context, Plugin, PluginHandler, RETURN_FLAG};
-use crate::server::RequestHandler;
+use crate::server::{Protocol, RequestContext, RequestHandler};
 use async_trait::async_trait;
 use dashmap::{DashMap, DashSet};
 use std::fmt;
@@ -729,7 +729,8 @@ impl Plugin for CachePlugin {
                                         key_clone
                                     );
 
-                                    match background_handler.handle(request_clone, None).await {
+                                    let ctx = RequestContext::new(request_clone, Protocol::Udp);
+                                    match background_handler.handle(ctx).await {
                                         Ok(response) => {
                                             debug!(
                                                 "Background stale-serving TTL refresh successful for {}: {}",
@@ -890,7 +891,8 @@ impl Plugin for CachePlugin {
                                 );
 
                                 // Execute complete query pipeline in background
-                                match background_handler.handle(request_clone, None).await {
+                                let ctx = RequestContext::new(request_clone, Protocol::Udp);
+                                match background_handler.handle(ctx).await {
                                     Ok(response) => {
                                         debug!(
                                             "Background lazy refresh successful for {}: {}",

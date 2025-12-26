@@ -133,7 +133,8 @@ async fn handle_stream(
 
     // Parse DNS message and handle
     let request = crate::dns::wire::parse_message(&buf)?;
-    let response = handler.handle(request, None).await?;
+    let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoQ);
+    let response = handler.handle(ctx).await?;
     let resp_data = crate::dns::wire::serialize_message(&response)?;
 
     // Write response with length prefix

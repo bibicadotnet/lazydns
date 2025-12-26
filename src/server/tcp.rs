@@ -152,8 +152,15 @@ impl TcpServer {
             request.question_count()
         );
 
+        // Create request context
+        let ctx = crate::server::RequestContext::with_client(
+            request,
+            Some(peer_addr),
+            crate::server::Protocol::Tcp,
+        );
+
         // Handle the request
-        let response = handler.handle(request, Some(peer_addr)).await?;
+        let response = handler.handle(ctx).await?;
 
         trace!(
             "Sending response ID {} with {} answers",
