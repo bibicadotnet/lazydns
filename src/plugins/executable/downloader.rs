@@ -63,15 +63,25 @@ pub struct DownloaderPlugin {
     files: Vec<FileDownloadSpec>,
     timeout_secs: u64,
     concurrent: bool,
+    max_retries: usize,
+    retry_delay_secs: u64,
 }
 
 impl DownloaderPlugin {
     /// Create a new downloader plugin
-    pub(crate) fn new(files: Vec<FileDownloadSpec>, timeout_secs: u64, concurrent: bool) -> Self {
+    pub(crate) fn new(
+        files: Vec<FileDownloadSpec>,
+        timeout_secs: u64,
+        concurrent: bool,
+        max_retries: usize,
+        retry_delay_secs: u64,
+    ) -> Self {
         Self {
             files,
             timeout_secs,
             concurrent,
+            max_retries,
+            retry_delay_secs,
         }
     }
 
@@ -139,15 +149,21 @@ impl DownloaderPlugin {
             count = self.files.len(),
             "Downloader: Starting concurrent downloads"
         );
+        let timeout = self.timeout_secs;
+        let max_retries = self.max_retries;
+        let retry_delay_secs = self.retry_delay_secs;
         let handles: Vec<_> = self
             .files
             .iter()
             .enumerate()
-            .map(|(idx, spec)| {
+            .map(move |(idx, spec)| {
                 let spec_clone = spec.clone();
+                let timeout = timeout;
+                let max_retries = max_retries;
+                let retry_delay_secs = retry_delay_secs;
                 tokio::spawn(async move {
                     debug!(idx = idx, url = %spec_clone.url, "Downloader: Downloading file concurrently");
-                    Self::download_single_static(&spec_clone).await
+                    Self::download_single_with_retries(&spec_clone, timeout, max_retries, retry_delay_secs).await
                 })
             })
             .collect();
@@ -167,79 +183,122 @@ impl DownloaderPlugin {
         Ok(())
     }
 
-    /// Download a single file (static version for concurrent tasks)
-    async fn download_single_static(spec: &FileDownloadSpec) -> Result<()> {
-        let start = std::time::Instant::now();
-        let client = reqwest::Client::new();
+    /// Download a single file with retry support
+    async fn download_single_with_retries(
+        spec: &FileDownloadSpec,
+        timeout_secs: u64,
+        max_retries: usize,
+        retry_delay_secs: u64,
+    ) -> Result<()> {
+        let mut last_err: Option<crate::Error> = None;
 
-        debug!(url = %spec.url, path = %spec.path, "Downloader: Connecting to URL");
+        for attempt in 0..=max_retries {
+            let start = std::time::Instant::now();
+            let client = reqwest::Client::new();
 
-        let resp = client
-            .get(&spec.url)
-            .timeout(std::time::Duration::from_secs(30))
-            .send()
-            .await
-            .map_err(|e| {
-                warn!(url = %spec.url, error = %e, "Downloader: Failed to download file");
-                crate::Error::Config(format!("Failed to download {}: {}", spec.url, e))
-            })?;
+            debug!(url = %spec.url, path = %spec.path, attempt = attempt, "Downloader: Connecting to URL");
 
-        debug!(url = %spec.url, status = %resp.status(), "Downloader: Received response");
+            let resp_res = client
+                .get(&spec.url)
+                .timeout(std::time::Duration::from_secs(timeout_secs))
+                .send()
+                .await;
 
-        if !resp.status().is_success() {
-            warn!(url = %spec.url, status = %resp.status(), "Downloader: HTTP error");
-            return Err(crate::Error::Config(format!(
-                "HTTP {} for {}",
-                resp.status(),
-                spec.url
-            )));
+            match resp_res {
+                Ok(resp) => {
+                    debug!(url = %spec.url, status = %resp.status(), "Downloader: Received response");
+
+                    if !resp.status().is_success() {
+                        warn!(url = %spec.url, status = %resp.status(), "Downloader: HTTP error");
+                        last_err = Some(crate::Error::Config(format!(
+                            "HTTP {} for {}",
+                            resp.status(),
+                            spec.url
+                        )));
+                    } else {
+                        let content_res = resp.text().await;
+                        match content_res {
+                            Ok(content) => {
+                                trace!(url = %spec.url, content_len = content.len(), "Downloader: Response received");
+
+                                if content.is_empty() {
+                                    warn!(url = %spec.url, "Downloader: Downloaded file is empty");
+                                    last_err = Some(crate::Error::Config(
+                                        "Downloaded file is empty".to_string(),
+                                    ));
+                                } else {
+                                    // Write to temporary file first
+                                    let temp_path = format!("{}.tmp", spec.path);
+                                    trace!(path = %spec.path, temp_path = %temp_path, "Downloader: Writing temporary file");
+                                    fs::write(&temp_path, &content).map_err(|e| {
+                                        warn!(temp_path = %temp_path, error = %e, "Downloader: Failed to write temp file");
+                                        crate::Error::Config(format!("Failed to write temp file: {}", e))
+                                    })?;
+
+                                    // Then rename to target (atomic operation)
+                                    trace!(temp_path = %temp_path, final_path = %spec.path, "Downloader: Moving temporary file to final path");
+                                    fs::rename(&temp_path, &spec.path).map_err(|e| {
+                                        let _ = fs::remove_file(&temp_path);
+                                        warn!(temp_path = %temp_path, final_path = %spec.path, error = %e, "Downloader: Failed to move file to final path");
+                                        crate::Error::Config(format!("Failed to move file to {}: {}", spec.path, e))
+                                    })?;
+
+                                    let duration = start.elapsed();
+                                    let size_bytes = content.len();
+
+                                    info!(
+                                        url = %spec.url,
+                                        path = %spec.path,
+                                        size_bytes = size_bytes,
+                                        duration_ms = duration.as_millis(),
+                                        "Downloader: File downloaded successfully"
+                                    );
+
+                                    return Ok(());
+                                }
+                            }
+                            Err(e) => {
+                                warn!(url = %spec.url, error = %e, "Downloader: Failed to read response body");
+                                last_err = Some(crate::Error::Config(format!(
+                                    "Failed to read response body: {}",
+                                    e
+                                )));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(url = %spec.url, error = %e, "Downloader: Failed to download file");
+                    last_err = Some(crate::Error::Config(format!(
+                        "Failed to download {}: {}",
+                        spec.url, e
+                    )));
+                }
+            }
+
+            if attempt == max_retries {
+                break;
+            }
+
+            // Exponential backoff
+            let backoff = retry_delay_secs.saturating_mul(1_u64 << attempt);
+            debug!(url = %spec.url, attempt = attempt, backoff_secs = backoff, "Downloader: Retrying after backoff");
+            tokio::time::sleep(std::time::Duration::from_secs(backoff)).await;
         }
 
-        let content = resp.text().await.map_err(|e| {
-            warn!(url = %spec.url, error = %e, "Downloader: Failed to read response body");
-            crate::Error::Config(format!("Failed to read response body: {}", e))
-        })?;
-
-        trace!(url = %spec.url, content_len = content.len(), "Downloader: Response received");
-
-        if content.is_empty() {
-            warn!(url = %spec.url, "Downloader: Downloaded file is empty");
-            return Err(crate::Error::Config("Downloaded file is empty".to_string()));
-        }
-
-        // Write to temporary file first
-        let temp_path = format!("{}.tmp", spec.path);
-        trace!(path = %spec.path, temp_path = %temp_path, "Downloader: Writing temporary file");
-        fs::write(&temp_path, &content).map_err(|e| {
-            warn!(temp_path = %temp_path, error = %e, "Downloader: Failed to write temp file");
-            crate::Error::Config(format!("Failed to write temp file: {}", e))
-        })?;
-
-        // Then rename to target (atomic operation)
-        trace!(temp_path = %temp_path, final_path = %spec.path, "Downloader: Moving temporary file to final path");
-        fs::rename(&temp_path, &spec.path).map_err(|e| {
-            let _ = fs::remove_file(&temp_path);
-            warn!(temp_path = %temp_path, final_path = %spec.path, error = %e, "Downloader: Failed to move file to final path");
-            crate::Error::Config(format!("Failed to move file to {}: {}", spec.path, e))
-        })?;
-
-        let duration = start.elapsed();
-        let size_bytes = content.len();
-
-        info!(
-            url = %spec.url,
-            path = %spec.path,
-            size_bytes = size_bytes,
-            duration_ms = duration.as_millis(),
-            "Downloader: File downloaded successfully"
-        );
-
-        Ok(())
+        Err(last_err
+            .unwrap_or_else(|| crate::Error::Config(format!("Failed to download {}", spec.url))))
     }
 
     /// Download a single file (instance method)
     async fn download_single(&self, spec: &FileDownloadSpec) -> Result<()> {
-        Self::download_single_static(spec).await
+        Self::download_single_with_retries(
+            spec,
+            self.timeout_secs,
+            self.max_retries,
+            self.retry_delay_secs,
+        )
+        .await
     }
 }
 
@@ -249,6 +308,8 @@ impl Default for DownloaderPlugin {
             files: Vec::new(),
             timeout_secs: 30,
             concurrent: false,
+            max_retries: 3,
+            retry_delay_secs: 2,
         }
     }
 }
@@ -323,10 +384,22 @@ impl Plugin for DownloaderPlugin {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        let max_retries = args
+            .get("max_retries")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(3) as usize;
+
+        let retry_delay_secs = args
+            .get("retry_delay_secs")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(2);
+
         info!(
             file_count = files.len(),
             timeout_secs = timeout_secs,
             concurrent = concurrent,
+            max_retries = max_retries,
+            retry_delay_secs = retry_delay_secs,
             "Downloader plugin initialized"
         );
 
@@ -334,6 +407,8 @@ impl Plugin for DownloaderPlugin {
             files,
             timeout_secs,
             concurrent,
+            max_retries,
+            retry_delay_secs,
         )))
     }
 }
@@ -351,7 +426,7 @@ mod tests {
             url: "https://example.com/test.txt".to_string(),
             path: "test.txt".to_string(),
         };
-        let plugin = DownloaderPlugin::new(vec![spec], 30, false);
+        let plugin = DownloaderPlugin::new(vec![spec], 30, false, 3, 2);
         assert_eq!(plugin.name(), "downloader");
         assert_eq!(plugin.files.len(), 1);
     }
@@ -362,6 +437,8 @@ mod tests {
         assert_eq!(plugin.timeout_secs, 30);
         assert!(!plugin.concurrent);
         assert!(plugin.files.is_empty());
+        assert_eq!(plugin.max_retries, 3);
+        assert_eq!(plugin.retry_delay_secs, 2);
     }
 
     #[tokio::test]
@@ -370,7 +447,7 @@ mod tests {
             url: "https://example.com/test.txt".to_string(),
             path: "test.txt".to_string(),
         };
-        let plugin = DownloaderPlugin::new(vec![spec], 30, false);
+        let plugin = DownloaderPlugin::new(vec![spec], 30, false, 3, 2);
         let mut ctx = Context::new(Message::new());
 
         // This will fail due to network, but the execute method should be callable
@@ -402,6 +479,14 @@ mod tests {
             Value::Number(serde_yaml::Number::from(60u64)),
         );
         args.insert(Value::String("concurrent".to_string()), Value::Bool(true));
+        args.insert(
+            Value::String("max_retries".to_string()),
+            Value::Number(serde_yaml::Number::from(5u64)),
+        );
+        args.insert(
+            Value::String("retry_delay_secs".to_string()),
+            Value::Number(serde_yaml::Number::from(7u64)),
+        );
 
         config.args = Value::Mapping(args);
 
@@ -411,6 +496,13 @@ mod tests {
         if let Ok(plugin) = result {
             let downloader = plugin.as_any().downcast_ref::<DownloaderPlugin>();
             assert!(downloader.is_some());
+
+            if let Some(downloader) = downloader {
+                assert_eq!(downloader.timeout_secs, 60);
+                assert!(downloader.concurrent);
+                assert_eq!(downloader.max_retries, 5);
+                assert_eq!(downloader.retry_delay_secs, 7);
+            }
         }
     }
 
