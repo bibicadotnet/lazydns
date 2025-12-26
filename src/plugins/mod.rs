@@ -34,14 +34,12 @@ pub mod cache;
 #[cfg(feature = "cron")]
 pub mod cron;
 pub mod dataset;
-pub mod domain_matcher;
 pub mod executable;
 pub mod flow;
 pub mod forward;
 pub mod geoip;
 pub mod geosite;
 pub mod hosts;
-pub mod ip_matcher;
 pub mod mark;
 pub mod server;
 // utils module moved to crate-level `src/utils.rs`
@@ -50,7 +48,6 @@ pub mod server;
 pub use acl::{AclAction, QueryAclPlugin};
 pub use cache::CachePlugin;
 pub use dataset::{DomainSetPlugin, IpSetPlugin};
-pub use domain_matcher::DomainMatcherPlugin;
 pub use flow::{
     AcceptPlugin, GotoPlugin, JumpPlugin, PreferIpv4Plugin, PreferIpv6Plugin, RejectPlugin,
     ReturnPlugin,
@@ -59,7 +56,6 @@ pub use forward::{ForwardPlugin, LoadBalanceStrategy};
 pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
 pub use hosts::HostsPlugin;
-pub use ip_matcher::IpMatcherPlugin;
 pub use mark::MarkPlugin;
 
 // Re-export matcher plugins (mostly deprecated, see condition builders)
@@ -102,20 +98,6 @@ mod tests {
         // Verify HostsPlugin can be created
         let plugin = HostsPlugin::new();
         assert_eq!(plugin.name(), "hosts");
-    }
-
-    #[test]
-    fn test_domain_matcher_plugin_accessible() {
-        // Verify DomainMatcherPlugin can be created
-        let plugin = DomainMatcherPlugin::new("match_key");
-        assert_eq!(plugin.name(), "domain_matcher");
-    }
-
-    #[test]
-    fn test_ip_matcher_plugin_accessible() {
-        // Verify IpMatcherPlugin can be created
-        let plugin = IpMatcherPlugin::new("match_key");
-        assert_eq!(plugin.name(), "ip_matcher");
     }
 
     #[test]

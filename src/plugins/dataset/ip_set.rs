@@ -1,5 +1,6 @@
 use crate::Result;
 use crate::config::PluginConfig;
+use crate::dns::RData;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use ipnet::IpNet;
@@ -304,9 +305,14 @@ impl crate::plugin::traits::Matcher for IpSetPlugin {
     fn matches_context(&self, ctx: &crate::plugin::Context) -> bool {
         if let Some(response) = ctx.response() {
             for record in response.answers() {
-                if let Some(ip) =
-                    crate::plugins::ip_matcher::IpMatcherPlugin::extract_ip(record.rdata())
-                    && self.matches(&ip)
+                if let Some(ip) = {
+                    let rdata = record.rdata();
+                    match rdata {
+                        RData::A(ipv4) => Some(IpAddr::V4(*ipv4)),
+                        RData::AAAA(ipv6) => Some(IpAddr::V6(*ipv6)),
+                        _ => None,
+                    }
+                } && self.matches(&ip)
                 {
                     return true;
                 }
