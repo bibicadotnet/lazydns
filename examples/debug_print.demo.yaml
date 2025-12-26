@@ -1,0 +1,78 @@
+# Example configuration for DebugPrintPlugin
+# This demonstrates how to use the debug_print plugin to log DNS queries and responses
+#
+# Usage:
+#   cargo run -- -c examples/config-debug_print-demo.yaml
+#
+# The debug_print plugin supports the following exec syntax:
+#   debug_print queries,responses,prefix=CustomPrefix
+#
+# Options:
+#   - queries: Log DNS queries
+#   - responses: Log DNS responses
+#   - prefix=Name: Custom prefix for log messages (default: "DNS")
+#
+# Examples:
+#   debug_print queries,responses          # Log both queries and responses
+#   debug_print queries                    # Log only queries
+#   debug_print responses                  # Log only responses
+#   debug_print queries,prefix=MyDNS       # Log queries with custom prefix
+
+# Log configuration
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Debug print plugin that logs both queries and responses with default prefix
+  - tag: debug_print_both
+    type: sequence
+    args:
+      - exec: debug_print queries,responses
+      - exec: accept
+
+  # Debug print plugin that only logs queries
+  - tag: debug_print_queries_only
+    type: sequence
+    args:
+      - exec: debug_print queries
+      - exec: accept
+
+  # Debug print plugin that only logs responses
+  - tag: debug_print_responses_only
+    type: sequence
+    args:
+      - exec: debug_print responses
+      - exec: accept
+
+  # Debug print plugin with custom prefix
+  - tag: debug_print_custom_prefix
+    type: sequence
+    args:
+      - exec: debug_print queries,responses,prefix=MyDNS
+      - exec: accept
+
+  # Main sequence that demonstrates different debug_print configurations
+  # You can switch between different debug_print tags above by changing this entry
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $debug_print_both
+      # - exec: $debug_print_queries_only
+      # - exec: $debug_print_responses_only
+      # - exec: $debug_print_custom_prefix
+
+  # UDP server listening on :5354
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: ":5354"
+
+  # TCP server listening on :5354
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: ":5354"

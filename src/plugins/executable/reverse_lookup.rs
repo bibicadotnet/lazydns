@@ -1,8 +1,10 @@
 use crate::Result;
+use crate::config::PluginConfig;
 use crate::dns::{Message, RData, ResourceRecord};
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use dashmap::DashMap;
+use serde_yaml::Value;
 use std::fmt;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -48,6 +50,9 @@ pub struct ReverseLookupPlugin {
     cache: Arc<DashMap<String, Entry>>,
     args: ReverseLookupArgs,
 }
+
+// Auto-register plugin builder for config-based construction
+crate::register_plugin_builder!(ReverseLookupPlugin);
 
 impl ReverseLookupPlugin {
     pub fn new(args: ReverseLookupArgs) -> Self {
@@ -179,6 +184,51 @@ impl Plugin for ReverseLookupPlugin {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn init(config: &PluginConfig) -> crate::Result<std::sync::Arc<dyn crate::plugin::Plugin>> {
+        // Parse args with sensible defaults
+        let args_map = config.effective_args();
+
+        let mut args = ReverseLookupArgs::default();
+
+        if let Some(v) = args_map.get("size") {
+            match v {
+                Value::Number(n) => {
+                    if let Some(u) = n.as_u64() {
+                        args.size = u as usize;
+                    }
+                }
+                Value::String(s) => {
+                    if let Ok(u) = s.parse::<usize>() {
+                        args.size = u;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(Value::Bool(b)) = args_map.get("handle_ptr") {
+            args.handle_ptr = *b;
+        }
+
+        if let Some(v) = args_map.get("ttl") {
+            match v {
+                Value::Number(n) => {
+                    if let Some(u) = n.as_u64() {
+                        args.ttl = u as u32;
+                    }
+                }
+                Value::String(s) => {
+                    if let Ok(u) = s.parse::<u32>() {
+                        args.ttl = u;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(std::sync::Arc::new(ReverseLookupPlugin::new(args)))
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {

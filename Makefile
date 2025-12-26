@@ -24,8 +24,19 @@ lint:
 	cargo clippy --all-targets --no-default-features -- -D warnings
 
 test:
-	cargo test --all-features
-	cargo test --no-default-features
+# 	cargo test --all-features
+# 	cargo test --no-default-features
+
+	cargo test --all-features --lib --bins
+	cargo test --no-default-features --lib --bins
+
+	cargo test --test integration_ratelimit -- --test-threads=1
+	cargo test --test integration_cache -- --test-threads=1
+	cargo test --test integration_doq -- --test-threads=1
+	cargo test --test integration_ipset_nftset -- --test-threads=1
+	cargo test --test integration_save_hook -- --test-threads=1
+	cargo test --test integration_test -- --test-threads=1
+	cargo test --test integration_tls_doh_dot -- --test-threads=1
 
 cov:
 	cargo llvm-cov test -q --all-features
@@ -52,8 +63,9 @@ build-all:
 
 # local build: prebuild binary for the platform then build image
 PLATFORM ?= linux/arm/v7
-EXTRA ?= "--no-default-features --features log,cron#,admin,metrics,doh,dot,doq"
+EXTRA ?= "--no-default-features --features log,cron"
 local: build-for
 	@echo "Building Docker image for $(PLATFORM)"; \
+	@echo "Using EXTRA features: $(EXTRA)"; \
 	docker buildx build --platform $(PLATFORM) --output=type=docker -f docker/Dockerfile.local.scratch -t lazywalker/lazydns:local .; \
 	docker save lazywalker/lazydns:local > lazydns.tar

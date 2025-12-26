@@ -1,0 +1,101 @@
+# dual_selector demo configuration
+#
+# Purpose:
+#   Demonstrates how the `dual_selector` plugin filters DNS responses that include
+#   both A and AAAA records according to a configured preference.
+#
+# Servers:
+#   - IPv4-preferred server (127.0.0.1:5354)
+#       preference = "ipv4_prefer_ipv6_fallback"
+#   - IPv6-preferred server (127.0.0.1:5355)
+#       preference = "ipv6_prefer_ipv4_fallback"
+#
+# Behavior summary:
+#   - The demo uses `arbitrary_both` to produce responses containing both A and AAAA.
+#   - `dual_selector` removes the non-preferred address type from the response when
+#     both are present.
+#   - It does NOT synthesize or convert records; if the response only contains a
+#     single record type, `dual_selector` will not change it.
+#
+# Usage:
+#   1) Start the demo:
+#        cargo run -- --config examples/dual_selector.demo.yaml
+#   2) Quick tests (expected results shown):
+#        # IPv4-preferred server (5354)
+#        dig @127.0.0.1 -p 5354 example.com A    # -> returns A (AAAA removed)
+#        dig @127.0.0.1 -p 5354 example.com AAAA # -> returns AAAA
+#
+#        # IPv6-preferred server (5355)
+#        dig @127.0.0.1 -p 5355 example.com A    # -> returns AAAA (A removed)
+#        dig @127.0.0.1 -p 5355 example.com AAAA # -> returns AAAA
+#
+# IpPreference values:
+#   - "ipv4": Keep only IPv4 (A) records.
+#   - "ipv6": Keep only IPv6 (AAAA) records.
+#   - "ipv4_prefer_ipv6_fallback": Prefer IPv4 (A); if no A exists, return AAAA.
+#   - "ipv6_prefer_ipv4_fallback": Prefer IPv6 (AAAA); if no AAAA exists, return A.
+#   - "both": Keep both A and AAAA records.
+#
+# Examples:
+#   - If a response contains [A, AAAA] and preference is "ipv4_prefer_ipv6_fallback",
+#     the final response will contain only [A].
+#   - If a response contains only [AAAA] and preference is "ipv4_prefer_ipv6_fallback",
+#     A query may receive NOERROR with an empty answer (dual_selector will not synthesize A),
+#     but an AAAA query will return [AAAA].
+#
+# Notes:
+#   - The demo is useful for observing how the plugin filters multi-type responses.
+#   - To test with your own records, modify `arbitrary_both` rules or replace the
+#     response source with another plugin that returns both A and AAAA.
+
+log:
+  level: trace
+
+plugins:
+  # Local arbitrary provider (contains both A and AAAA for example.com)
+  - tag: arbitrary_both
+    type: arbitrary
+    args:
+      rules:
+        - "example.com A 93.184.216.34"
+        - "example.com AAAA 2001:db8::1"
+
+  # Dual selector: prefer IPv4 but fall back to IPv6 if no A records
+  - tag: dual_selector_demo
+    type: dual_selector
+    args:
+      preference: "ipv4_prefer_ipv6_fallback"
+
+  # Main sequence: demonstrate arbitrary->dual_selector filtering
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $arbitrary_both
+      - exec: $dual_selector_demo
+
+  # IPv6-prefer demo: prefer IPv6 but fall back to IPv4 when no AAAA
+  - tag: dual_selector_demo_ipv6
+    type: dual_selector
+    args:
+      preference: "ipv6_prefer_ipv4_fallback"
+
+  - tag: main_sequence_ipv6_pref
+    type: sequence
+    args:
+      - exec: $arbitrary_both
+      - exec: $dual_selector_demo_ipv6
+
+  # Start a UDP server bound to localhost:5354 using the main_sequence
+  - tag: udp_server_demo
+    type: udp_server
+    args:
+      listen: "127.0.0.1:5354"
+      entry: main_sequence
+
+  # Start another UDP server bound to localhost:5355 using the ipv6-pref sequence
+  - tag: udp_server_demo_ipv6
+    type: udp_server
+    args:
+      listen: "127.0.0.1:5355"
+      entry: main_sequence_ipv6_pref
+

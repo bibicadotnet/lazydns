@@ -1,0 +1,128 @@
+# Example configuration for RateLimitPlugin
+# This demonstrates how to use the rate_limit plugin to prevent DoS attacks
+#
+# Usage:
+#   cargo run -- -c examples/ratelimit.demo.yaml -vv
+#
+# The rate_limit plugin limits the number of DNS queries from a single IP
+# address within a configurable time window. When the limit is exceeded,
+# queries are refused with a REFUSED response code.
+#
+# Configuration options:
+#   - max_queries: Maximum number of queries allowed per IP per time window (integer)
+#   - window_secs: Time window length in seconds (integer)
+#
+# Examples:
+#   - 100 queries per 60 seconds (default)
+#   - 50 queries per 30 seconds (more restrictive)
+#   - 1000 queries per 300 seconds (more lenient)
+
+# Log configuration
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Rate limiter with default settings (50 queries per 60 seconds)
+  - tag: rate_limiter_default
+    type: rate_limit
+    args:
+      max_queries: 50
+      window_secs: 60
+
+  # Rate limiter with strict settings (5 queries per 30 seconds)
+  - tag: rate_limiter_strict
+    type: rate_limit
+    args:
+      max_queries: 5
+      window_secs: 30
+
+  # Rate limiter with lenient settings (500 queries per 300 seconds)
+  - tag: rate_limiter_lenient
+    type: rate_limit
+    args:
+      max_queries: 500
+      window_secs: 300
+
+  # Forward to upstream DNS servers
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
+
+  # Arbitrary response plugin for testing
+  - tag: test_response
+    type: arbitrary
+    args:
+      rules:
+        - "example.com A 192.0.2.1"
+
+  # Main sequence with rate limiting
+  - tag: main_sequence_with_rate_limit
+    type: sequence
+    args:
+      - exec: $rate_limiter_default
+      - exec: $test_response
+      - exec: accept
+
+  # Strict rate limiting sequence
+  - tag: strict_sequence
+    type: sequence
+    args:
+      - exec: $rate_limiter_strict
+      - exec: $test_response
+      - exec: accept
+
+  # Lenient rate limiting sequence
+  - tag: lenient_sequence
+    type: sequence
+    args:
+      - exec: $rate_limiter_lenient
+      - exec: $test_response
+      - exec: accept
+
+  # UDP server with default rate limiting
+  - tag: udp_server_default
+    type: udp_server
+    args:
+      entry: main_sequence_with_rate_limit
+      listen: ":5354"
+
+  # UDP server with strict rate limiting
+  - tag: udp_server_strict
+    type: udp_server
+    args:
+      entry: strict_sequence
+      listen: ":5355"
+
+  # UDP server with lenient rate limiting
+  - tag: udp_server_lenient
+    type: udp_server
+    args:
+      entry: lenient_sequence
+      listen: ":5356"
+
+  # TCP server with default rate limiting
+  - tag: tcp_server_default
+    type: tcp_server
+    args:
+      entry: main_sequence_with_rate_limit
+      listen: ":5354"
+
+  # TCP server with strict rate limiting
+  - tag: tcp_server_strict
+    type: tcp_server
+    args:
+      entry: strict_sequence
+      listen: ":5355"
+
+  # TCP server with lenient rate limiting
+  - tag: tcp_server_lenient
+    type: tcp_server
+    args:
+      entry: lenient_sequence
+      listen: ":5356"

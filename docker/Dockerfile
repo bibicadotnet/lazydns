@@ -1,40 +1,75 @@
 # lazydns Dockerfile
-# Multi-stage build for optimal image size
+# Multi-stage build: download binary in first stage, use scratch in second stage
+# How to run:
+#
+# Need to map config volume and ports
+# 
+# docker run -d \
+#   --name lazydns \
+#   -p 53:53/udp -p 53:53/tcp \
+#   -p 853:853/tcp -p 443:443/tcp \
+#   -p 784:784/tcp -p 8080:8080/tcp -p 9090:9090/tcp \
+#   -e TZ=Asia/Shanghai \
+#   -v /path/to/config:/etc/lazydns \
+#   lazywalker/lazydns:latest
 
-# Stage 1: Builder
-FROM rust:1.92-slim AS builder
+# Stage 1: Downloader and Preparer
+FROM alpine:3.23 AS downloader
 
-WORKDIR /app
+# Install curl and other tools for downloading and preparing
+RUN apk add --no-cache curl tzdata
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Download latest release binary based on architecture
+ARG LAZYDNS_VERSION=latest
+ARG TARGETARCH
+RUN set -ex; \
+    case "$TARGETARCH" in \
+    amd64) ARCH="x86_64" ;; \
+    arm64) ARCH="aarch64" ;; \
+    arm) ARCH="arm" ;; \
+    *) echo "Unsupported architecture: $TARGETARCH" && exit 1 ;; \
+    esac; \
+    if [ "$TARGETARCH" = "arm" ]; then \
+    BINARY_NAME="lazydns-full-${ARCH}-unknown-linux-musleabihf.tar.gz"; \
+    else \
+    BINARY_NAME="lazydns-full-${ARCH}-unknown-linux-musl.tar.gz"; \
+    fi; \
+    BASE_URL="https://github.com/lazywalker/lazydns/releases"; \
+    if [ "${LAZYDNS_VERSION}" != "latest" ]; then \
+    URL="${BASE_URL}/download/${LAZYDNS_VERSION}/${BINARY_NAME}"; \
+    else \
+    URL="${BASE_URL}/latest/download/${BINARY_NAME}"; \
+    fi; \
+    echo "Downloading from ${URL}"; \
+    curl -L -o lazydns-full.tar.gz "${URL}" \
+    && tar -xzf lazydns-full.tar.gz \
+    && chmod +x lazydns
 
-# Copy dependency files
-COPY Cargo.toml Cargo.lock ./
 
-# Copy source code
-COPY src ./src
+# Set timezone (can be overridden at runtime)
+ARG TZ=Asia/Shanghai
+RUN echo "$TZ" > /etc/timezone
 
-# Build release binary
-RUN cargo build --release
+# Prepare application files
+ADD config.yaml /app/config.yaml
+RUN sed -i 's/5354/53/g' /app/config.yaml || true
+RUN sed -i 's/8443/443/g' /app/config.yaml || true
+RUN sed -i 's/8853/853/g' /app/config.yaml || true
+RUN sed -i 's/8784/784/g' /app/config.yaml || true
 
-# Stage 2: Runtime
-FROM debian:trixie-slim
+# Stage 2: Runtime (scratch - minimal)
+FROM scratch
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    dnsutils \
-    && rm -rf /var/lib/apt/lists/*
+# Copy timezone and zoneinfo from the downloader stage
+COPY --from=downloader /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=downloader /etc/timezone /etc/timezone
+COPY --from=downloader /app /app
 
-# Copy binary from builder
-COPY --from=builder /app/target/release/lazydns /usr/local/bin/lazydns
+# Copy the binary
+COPY --from=downloader /lazydns /lazydns
 
-# Create configuration directory
-RUN mkdir -p /etc/lazydns
+# Set environment variables
+ENV TZ=Asia/Shanghai
 
 # Expose DNS ports
 EXPOSE 53/udp 53/tcp
@@ -45,13 +80,20 @@ EXPOSE 853/tcp
 # Expose DoH port
 EXPOSE 443/tcp
 
+# Expose DoQ port
+EXPOSE 784/tcp
+
+# Expose HTTP management ports
+EXPOSE 8080/tcp
+# Expose Prometheus metrics port
+EXPOSE 9090/tcp
+
+WORKDIR /app
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD dig @127.0.0.1 -p 53 health.check || exit 1
-
-# Run as non-root user
-RUN useradd -r -s /bin/false lazydns
-USER lazydns
+    CMD ["/lazydns", "--version"] || exit 1
 
 # Default command
-CMD ["lazydns", "--config", "/etc/lazydns/config.yaml"]
+CMD ["/lazydns", "start", "-d", "/app"]
+

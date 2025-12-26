@@ -22,10 +22,22 @@ plugins:
         - addr: "8.8.8.8:53"
         - addr: "1.1.1.1:53"
 
-  # Simple sequence that forwards all queries
+  # Add EDNS0 options before forwarding (demo)
+  - tag: edns0_options
+    type: edns0_opt
+    args:
+      options:
+        - code: 8  # EDNS Client Subnet (ECS)
+          data: [0, 1, 24, 0, 192, 168, 1, 0]  # Example ECS data for 192.168.1.0/24
+        - code: 10  # DNS Cookie
+          data: [1, 2, 3, 4, 5, 6, 7, 8]  # Example cookie data
+      preserve_existing: true
+
+  # Simple sequence that adds EDNS0 options and forwards all queries
   - tag: main_sequence
     type: sequence
     args:
+      - exec: $edns0_options
       - exec: $forward
       - exec: accept
 
@@ -34,11 +46,11 @@ plugins:
     type: udp_server
     args:
       entry: main_sequence
-      listen: ":5356"
+      listen: ":5354"
 
   # TCP server listening on :5356
   - tag: tcp_server
     type: tcp_server
     args:
       entry: main_sequence
-      listen: ":5356"
+      listen: ":5354"

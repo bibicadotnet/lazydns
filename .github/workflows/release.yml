@@ -200,7 +200,7 @@ jobs:
           files: |
             artifacts/**/*.{zip,tar.gz,deb}
           generate_release_notes: true
-          draft: true
+          draft: false
 
   publish-crate:
     name: Publish to crates.io
@@ -217,3 +217,15 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_API_TOKEN }}
         run: cargo publish
+
+  # Trigger Docker build/push workflow (reusable workflow)
+  docker:
+    name: Trigger Docker Build and Push
+    needs: publish
+    uses: ./.github/workflows/docker.yml
+    with:
+      LAZYDNS_VERSION: ${{ github.ref_name }}
+    secrets:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      

@@ -35,11 +35,11 @@ plugins:
     type: udp_server
     args:
       entry: main_sequence
-      listen: ":5356"
+      listen: ":5354"
 
   # TCP server listening on :5356
   - tag: tcp_server
     type: tcp_server
     args:
       entry: main_sequence
-      listen: ":5356"
+      listen: ":5354"

@@ -1,0 +1,141 @@
+# Example configuration for IpSetPlugin
+# This demonstrates how to use the ipset plugin to automatically add IP addresses
+# from DNS responses to ipset sets for firewall rules
+#
+# The ipset plugin supports the following exec syntax:
+#   ipset <set_name>,inet,<mask>,<set_name6>,inet6,<mask>
+#
+# Options:
+#   - set_name: Name of the ipset set to add entries to
+#   - inet/inet6: Address family (inet for IPv4, inet6 for IPv6)
+#   - mask: CIDR prefix length (e.g., 24 for /24, 32 for /32)
+#
+# Examples:
+#   ipset my_blocklist,inet,24                    # IPv4 only, /24 mask
+#   ipset my_blocklist,inet,24,my_blocklist6,inet6,48  # Both IPv4 and IPv6
+#
+# The plugin processes DNS responses and:
+# - Extracts A/AAAA records from answers
+# - Converts IP addresses to CIDR notation using specified masks
+# - On Linux: Executes 'ipset add <set> <cidr> -exist' commands
+# - On other platforms: Stores entries in metadata under "ipset_added"
+# - Logs all additions with set name and CIDR
+#
+# Prerequisites for Linux:
+#   # Install ipset tools
+#   sudo apt-get install ipset
+#
+#   # Create the required ipset sets
+#   sudo ipset create my_blocklist hash:net family inet
+#   sudo ipset create my_blocklist6 hash:net family inet6
+#   sudo ipset create strict_blocklist hash:net family inet
+#   sudo ipset create demo_set hash:net family inet
+#   sudo ipset create demo_set6 hash:net family inet6
+#
+# Usage:
+#   cargo build
+#   sudo target/debug/lazydns -c examples/ipset.demo.yaml -vv
+#
+# Test with:
+#   dig @127.0.0.1 -p 5354 cloudflare.com A
+
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Forward plugin to get DNS responses
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
+
+  # IpSet plugin for IPv4 only with /24 mask
+  - tag: ipset_ipv4_only
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: ipset my_blocklist,inet,24
+      - exec: accept
+
+  # IpSet plugin for both IPv4 and IPv6
+  - tag: ipset_dual_stack
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: ipset my_blocklist,inet,24,my_blocklist6,inet6,48
+      - exec: accept
+
+  # IpSet plugin with tighter IPv4 mask (/32) for individual IPs
+  - tag: ipset_strict_ipv4
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: ipset strict_blocklist,inet,32
+      - exec: accept
+
+  # Combined sequence: forward + ipset + debug print to show metadata
+  - tag: ipset_with_debug
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: ipset demo_set,inet,24,demo_set6,inet6,32
+      - exec: debug_print responses
+      - exec: accept
+
+  # UDP server for IPv4-only ipset demo
+  - tag: udp_server_ipv4
+    type: udp_server
+    args:
+      entry: ipset_ipv4_only
+      listen: ":5354"
+
+  # UDP server for dual-stack ipset demo
+  - tag: udp_server_dual
+    type: udp_server
+    args:
+      entry: ipset_dual_stack
+      listen: ":5355"
+
+  # UDP server for strict IPv4 ipset demo
+  - tag: udp_server_strict
+    type: udp_server
+    args:
+      entry: ipset_strict_ipv4
+      listen: ":5356"
+
+  # UDP server demonstrating combined ipset + debug functionality
+  - tag: udp_server_debug
+    type: udp_server
+    args:
+      entry: ipset_with_debug
+      listen: ":5357"
+
+  # TCP servers (same configurations as UDP)
+  - tag: tcp_server_ipv4
+    type: tcp_server
+    args:
+      entry: ipset_ipv4_only
+      listen: ":5354"
+
+  - tag: tcp_server_dual
+    type: tcp_server
+    args:
+      entry: ipset_dual_stack
+      listen: ":5355"
+
+  - tag: tcp_server_strict
+    type: tcp_server
+    args:
+      entry: ipset_strict_ipv4
+      listen: ":5356"
+
+  - tag: tcp_server_debug
+    type: tcp_server
+    args:
+      entry: ipset_with_debug
+      listen: ":5357"

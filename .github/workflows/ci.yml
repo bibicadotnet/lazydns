@@ -86,17 +86,14 @@ jobs:
           cargo clippy --all-targets --all-features -- -D warnings
           cargo clippy --all-targets --no-default-features -- -D warnings
 
+      - name: Run tests
+        run: make test
+
       - name: Build (all-features)
         run: cargo build --verbose --all-features
 
-      - name: Run tests (all-features)
-        run: cargo test --verbose --all-features
-
       - name: Build (no-default-features)
         run: cargo build --verbose --no-default-features
-
-      - name: Run tests (no-default-features)
-        run: cargo test --verbose --no-default-features
 
   coverage:
     name: Code Coverage
@@ -115,7 +112,7 @@ jobs:
       - name: Install system packages for coverage (ipset/nftables)
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y ipset nftables iproute2 iptables pkg-config libpcap-dev libnftnl11 libnftables1
+          sudo apt-get install -y ipset nftables
 
       - name: Generate coverage report (llvm-cov)
         run: |
@@ -125,7 +122,7 @@ jobs:
           # --codecov: output in Codecov JSON format
           # cargo-llvm-cov uses LLVM's native coverage instrumentation which accurately
           # tracks coverage across subprocesses, unlike tarpaulin
-          cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+          cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json -- --test-threads=1
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

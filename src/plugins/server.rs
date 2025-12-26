@@ -5,7 +5,7 @@
 use crate::Result;
 use crate::dns::Message;
 use crate::plugin::{Context, Plugin, Registry};
-use crate::server::{RequestHandler, ServerConfig, TcpServer, UdpServer};
+use crate::server::{RequestContext, RequestHandler, ServerConfig, TcpServer, UdpServer};
 use async_trait::async_trait;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -252,7 +252,8 @@ struct PluginRequestHandler {
 
 #[async_trait]
 impl RequestHandler for PluginRequestHandler {
-    async fn handle(&self, request: Message) -> Result<Message> {
+    async fn handle(&self, ctx: RequestContext) -> Result<Message> {
+        let request = ctx.into_message();
         // Save request ID for response
         let request_id = request.id();
         error!("Request ID in handler: {}", request_id);

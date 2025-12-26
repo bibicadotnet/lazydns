@@ -60,7 +60,7 @@ pub use traits::{ExecPlugin, Plugin};
 
 use crate::Result;
 use crate::dns::Message;
-use crate::server::RequestHandler;
+use crate::server::{RequestContext, RequestHandler};
 use std::sync::Arc;
 use tracing::{debug, warn};
 
@@ -72,13 +72,23 @@ pub struct PluginHandler {
 
 #[async_trait::async_trait]
 impl RequestHandler for PluginHandler {
-    async fn handle(&self, request: Message) -> Result<Message> {
+    async fn handle(&self, req_ctx: RequestContext) -> Result<Message> {
         use crate::plugin::Context;
 
-        let mut ctx = Context::new(request.clone());
+        let mut ctx = Context::new(req_ctx.message.clone());
+
+        // Set client IP metadata if available from request context
+        if let Some(client_info) = req_ctx.client_info {
+            ctx.set_metadata("client_ip", client_info.ip);
+            ctx.set_metadata("client_addr", client_info.addr);
+            ctx.set_metadata("client_port", client_info.port);
+        }
+
+        // Set protocol metadata
+        ctx.set_metadata("protocol", req_ctx.protocol);
 
         // Check if this is a background lazy refresh (marked by special ID)
-        if request.id() == 0xFFFF {
+        if req_ctx.message.id() == 0xFFFF {
             ctx.set_metadata("background_lazy_refresh", true);
         }
 

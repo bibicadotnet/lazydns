@@ -122,8 +122,8 @@ impl Plugin for RateLimitPlugin {
         let client_ip: IpAddr = match ctx.get_metadata::<IpAddr>("client_ip") {
             Some(ip) => *ip,
             None => {
-                // Default to localhost if no IP available
-                "127.0.0.1".parse().unwrap()
+                // Skip rate limiting if no client IP available
+                return Ok(());
             }
         };
 

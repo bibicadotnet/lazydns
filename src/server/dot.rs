@@ -146,8 +146,11 @@ impl DotServer {
             // Parse request from wire-format bytes
             let request = Self::parse_request(&buf)?;
 
+            // Create request context (DoT doesn't provide client address reliably)
+            let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoT);
+
             // Handle request
-            let response = handler.handle(request).await?;
+            let response = handler.handle(ctx).await?;
 
             // Serialize response to wire-format bytes
             let response_data = Self::serialize_response(&response)?;
@@ -237,7 +240,11 @@ mod tests {
         struct DummyHandler;
         #[async_trait::async_trait]
         impl crate::server::RequestHandler for DummyHandler {
-            async fn handle(&self, req: crate::dns::Message) -> crate::Result<crate::dns::Message> {
+            async fn handle(
+                &self,
+                ctx: crate::server::RequestContext,
+            ) -> crate::Result<crate::dns::Message> {
+                let req = ctx.into_message();
                 Ok(req)
             }
         }

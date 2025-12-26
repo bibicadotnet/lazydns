@@ -10,6 +10,7 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
+use tracing::debug;
 
 /// Plugin factory trait for self-registering plugins
 ///
@@ -427,6 +428,7 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::forward::FORWARD_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::hosts::HOSTS_PLUGIN_FACTORY);
 
+        Lazy::force(&crate::plugins::executable::arbitrary::ARBITRARY_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::domain_set::DOMAIN_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::ip_set::IP_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::ratelimit::RATE_LIMIT_PLUGIN_FACTORY);
@@ -434,6 +436,9 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::executable::black_hole::BLACKHOLE_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::redirect::REDIRECT_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::executable::edns0opt::EDNS0_OPT_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::executable::reverse_lookup::REVERSE_LOOKUP_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::executable::dual_selector::DUAL_SELECTOR_PLUGIN_FACTORY);
 
         Lazy::force(&crate::plugins::server::UDP_SERVER_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::server::TCP_SERVER_PLUGIN_FACTORY);
@@ -450,7 +455,8 @@ pub fn initialize_all_plugin_factories() {
 
         let count = get_all_plugin_types().len();
         if count > 0 {
-            tracing::debug!("Initialized {} plugin factories", count);
+            let types = get_all_plugin_types();
+            debug!("Initialized {} plugin factories: {:?}", count, types);
         }
     });
 }
@@ -472,6 +478,7 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::executable::debug_print::DEBUG_PRINT_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::drop_resp::DROP_RESP_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::query_summary::QUERY_SUMMARY_PLUGIN_EXEC_FACTORY);
 
         Lazy::force(&crate::plugins::flow::accept::ACCEPT_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::goto::GOTO_PLUGIN_EXEC_FACTORY);
@@ -480,12 +487,22 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::flow::prefer_ipv4::PREFER_IPV4_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::prefer_ipv6::PREFER_IPV6_PLUGIN_EXEC_FACTORY);
 
+        Lazy::force(&crate::plugins::executable::ipset::IP_SET_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::nftset::NFT_SET_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::ecs::ECS_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::collector::METRICS_COLLECTOR_PLUGIN_EXEC_FACTORY);
+        #[cfg(feature = "metrics")]
+        Lazy::force(
+            &crate::plugins::executable::collector::PROM_METRICS_COLLECTOR_PLUGIN_EXEC_FACTORY,
+        );
+
         // Initialize the exec factory system
         initialize_exec_plugin_factories();
 
         let count = get_all_exec_plugin_types().len();
         if count > 0 {
-            tracing::debug!("Initialized {} exec plugin factories", count);
+            let types = get_all_exec_plugin_types();
+            debug!("Initialized {} exec plugin factories: {:?}", count, types);
         }
     });
 }

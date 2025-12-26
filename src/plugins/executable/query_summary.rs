@@ -1,7 +1,10 @@
 use crate::Result;
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use async_trait::async_trait;
+use std::sync::Arc;
 use tracing::info;
+
+crate::register_exec_plugin_builder!(QuerySummaryPlugin);
 
 /// Query summary plugin that records a concise summary of the request
 /// questions into the request `Context` metadata and emits a short
@@ -81,6 +84,31 @@ impl Plugin for QuerySummaryPlugin {
         ctx.set_metadata(self.metadata_key.clone(), joined.clone());
         info!(key = %self.metadata_key, summary = %joined, "query summary");
         Ok(())
+    }
+}
+
+impl ExecPlugin for QuerySummaryPlugin {
+    /// Parse a quick configuration string for query_summary plugin.
+    ///
+    /// The exec_str should be the metadata key to use for storing the summary.
+    /// Example: "summary" or "query_info"
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "query_summary" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'query_summary'",
+                prefix
+            )));
+        }
+
+        let metadata_key = exec_str.trim();
+        if metadata_key.is_empty() {
+            return Err(crate::Error::Config(
+                "query_summary requires a metadata key (e.g., 'query_summary summary')".to_string(),
+            ));
+        }
+
+        let plugin = QuerySummaryPlugin::new(metadata_key);
+        Ok(Arc::new(plugin))
     }
 }
 
