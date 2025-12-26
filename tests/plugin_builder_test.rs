@@ -129,3 +129,59 @@ fn test_exec_return_plugin() {
         .expect("exec plugin creation should succeed");
     assert_eq!(plugin.name(), "return");
 }
+
+#[test]
+fn test_acl_plugin_from_builder() {
+    init();
+
+    let mut config_map = HashMap::new();
+    config_map.insert(
+        "default".to_string(),
+        serde_yaml::Value::String("deny".to_string()),
+    );
+
+    let rules = vec![
+        serde_yaml::Value::Mapping({
+            let mut rule = serde_yaml::Mapping::new();
+            rule.insert(
+                serde_yaml::Value::String("network".to_string()),
+                serde_yaml::Value::String("192.168.0.0/16".to_string()),
+            );
+            rule.insert(
+                serde_yaml::Value::String("action".to_string()),
+                serde_yaml::Value::String("allow".to_string()),
+            );
+            rule
+        }),
+        serde_yaml::Value::Mapping({
+            let mut rule = serde_yaml::Mapping::new();
+            rule.insert(
+                serde_yaml::Value::String("network".to_string()),
+                serde_yaml::Value::String("10.0.0.0/8".to_string()),
+            );
+            rule.insert(
+                serde_yaml::Value::String("action".to_string()),
+                serde_yaml::Value::String("allow".to_string()),
+            );
+            rule
+        }),
+    ];
+    config_map.insert("rules".to_string(), serde_yaml::Value::Sequence(rules));
+
+    let config = PluginConfig {
+        tag: Some("test_acl".to_string()),
+        plugin_type: "query_acl".to_string(),
+        args: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+        name: Some("test_acl".to_string()),
+        priority: 100,
+        config: config_map,
+    };
+
+    let builder_obj =
+        factory::get_plugin_factory("query_acl").expect("query_acl builder should be registered");
+    let plugin = builder_obj
+        .create(&config)
+        .expect("plugin creation should succeed");
+
+    assert_eq!(plugin.name(), "query_acl");
+}

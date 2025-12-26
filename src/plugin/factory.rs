@@ -427,6 +427,7 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::cache::CACHE_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::forward::FORWARD_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::hosts::HOSTS_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::acl::QUERY_ACL_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::mark::MARK_PLUGIN_FACTORY);
 
         Lazy::force(&crate::plugins::executable::arbitrary::ARBITRARY_PLUGIN_FACTORY);

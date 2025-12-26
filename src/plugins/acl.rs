@@ -178,7 +178,101 @@ impl Plugin for QueryAclPlugin {
         // Should run very early, before rate limiting
         2000
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn init(config: &crate::config::PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
+        let args = config.effective_args();
+        use serde_yaml::Value;
+
+        // Parse default_action parameter (optional, defaults to "deny")
+        let default_action = match args.get("default") {
+            Some(Value::String(action_str)) => match action_str.to_lowercase().as_str() {
+                "allow" => AclAction::Allow,
+                "deny" => AclAction::Deny,
+                _ => {
+                    return Err(crate::Error::Config(format!(
+                        "Invalid default action '{}', expected 'allow' or 'deny'",
+                        action_str
+                    )));
+                }
+            },
+            Some(_) => {
+                return Err(crate::Error::Config(
+                    "default action must be a string".to_string(),
+                ));
+            }
+            None => AclAction::Deny, // Default to deny
+        };
+
+        let mut acl = QueryAclPlugin::new(default_action);
+
+        // Parse rules parameter (optional)
+        if let Some(Value::Sequence(rules)) = args.get("rules") {
+            for rule_value in rules {
+                if let Value::Mapping(rule_map) = rule_value {
+                    // Parse network
+                    let network_str = match rule_map.get(Value::String("network".to_string())) {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(_) => {
+                            return Err(crate::Error::Config(
+                                "rule network must be a string".to_string(),
+                            ));
+                        }
+                        None => {
+                            return Err(crate::Error::Config(
+                                "rule must have a network field".to_string(),
+                            ));
+                        }
+                    };
+
+                    let network: IpNet = network_str.parse().map_err(|e| {
+                        crate::Error::Config(format!("Invalid network '{}': {}", network_str, e))
+                    })?;
+
+                    // Parse action
+                    let action_str = match rule_map.get(Value::String("action".to_string())) {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(_) => {
+                            return Err(crate::Error::Config(
+                                "rule action must be a string".to_string(),
+                            ));
+                        }
+                        None => {
+                            return Err(crate::Error::Config(
+                                "rule must have an action field".to_string(),
+                            ));
+                        }
+                    };
+
+                    let action = match action_str.to_lowercase().as_str() {
+                        "allow" => AclAction::Allow,
+                        "deny" => AclAction::Deny,
+                        _ => {
+                            return Err(crate::Error::Config(format!(
+                                "Invalid rule action '{}', expected 'allow' or 'deny'",
+                                action_str
+                            )));
+                        }
+                    };
+
+                    acl.add_rule(network, action);
+                } else {
+                    return Err(crate::Error::Config(
+                        "each rule must be a mapping".to_string(),
+                    ));
+                }
+            }
+        }
+
+        Ok(std::sync::Arc::new(acl))
+    }
 }
+
+// Auto-register using the register macro
+crate::register_plugin_builder!(QueryAclPlugin);
 
 #[cfg(test)]
 mod tests {
@@ -280,5 +374,111 @@ mod tests {
             ctx.response().unwrap().response_code(),
             ResponseCode::Refused
         );
+    }
+
+    #[test]
+    fn test_acl_plugin_init_allow_list() {
+        use crate::config::types::PluginConfig;
+        use serde_yaml::{Mapping, Value};
+
+        let mut args = Mapping::new();
+        args.insert(
+            Value::String("default".to_string()),
+            Value::String("deny".to_string()),
+        );
+
+        let mut rules = Vec::new();
+        let mut rule1 = Mapping::new();
+        rule1.insert(
+            Value::String("network".to_string()),
+            Value::String("192.168.0.0/16".to_string()),
+        );
+        rule1.insert(
+            Value::String("action".to_string()),
+            Value::String("allow".to_string()),
+        );
+        rules.push(Value::Mapping(rule1));
+
+        let mut rule2 = Mapping::new();
+        rule2.insert(
+            Value::String("network".to_string()),
+            Value::String("10.0.0.0/8".to_string()),
+        );
+        rule2.insert(
+            Value::String("action".to_string()),
+            Value::String("allow".to_string()),
+        );
+        rules.push(Value::Mapping(rule2));
+
+        args.insert(Value::String("rules".to_string()), Value::Sequence(rules));
+
+        let config = PluginConfig {
+            tag: Some("test_acl".to_string()),
+            plugin_type: "query_acl".to_string(),
+            args: Value::Mapping(args),
+            name: Some("test_acl".to_string()),
+            priority: 100,
+            config: std::collections::HashMap::new(),
+        };
+
+        let plugin = QueryAclPlugin::init(&config).unwrap();
+        let acl = plugin.as_any().downcast_ref::<QueryAclPlugin>().unwrap();
+
+        // Test that rules were loaded correctly
+        assert_eq!(
+            acl.evaluate(&"192.168.1.1".parse().unwrap()),
+            AclAction::Allow
+        );
+        assert_eq!(acl.evaluate(&"10.0.0.1".parse().unwrap()), AclAction::Allow);
+        assert_eq!(acl.evaluate(&"1.2.3.4".parse().unwrap()), AclAction::Deny);
+    }
+
+    #[test]
+    fn test_acl_plugin_init_deny_list() {
+        use crate::config::types::PluginConfig;
+        use serde_yaml::{Mapping, Value};
+
+        let mut args = Mapping::new();
+        args.insert(
+            Value::String("default".to_string()),
+            Value::String("allow".to_string()),
+        );
+
+        let mut rules = Vec::new();
+        let mut rule = Mapping::new();
+        rule.insert(
+            Value::String("network".to_string()),
+            Value::String("192.168.100.0/24".to_string()),
+        );
+        rule.insert(
+            Value::String("action".to_string()),
+            Value::String("deny".to_string()),
+        );
+        rules.push(Value::Mapping(rule));
+
+        args.insert(Value::String("rules".to_string()), Value::Sequence(rules));
+
+        let config = PluginConfig {
+            tag: Some("test_acl".to_string()),
+            plugin_type: "query_acl".to_string(),
+            args: Value::Mapping(args),
+            name: Some("test_acl".to_string()),
+            priority: 100,
+            config: std::collections::HashMap::new(),
+        };
+
+        let plugin = QueryAclPlugin::init(&config).unwrap();
+        let acl = plugin.as_any().downcast_ref::<QueryAclPlugin>().unwrap();
+
+        // Test that rules were loaded correctly
+        assert_eq!(
+            acl.evaluate(&"192.168.100.50".parse().unwrap()),
+            AclAction::Deny
+        );
+        assert_eq!(
+            acl.evaluate(&"192.168.1.1".parse().unwrap()),
+            AclAction::Allow
+        );
+        assert_eq!(acl.evaluate(&"1.2.3.4".parse().unwrap()), AclAction::Allow);
     }
 }
