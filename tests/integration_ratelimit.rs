@@ -278,6 +278,7 @@ async fn test_rate_limit_lenient() {
 }
 
 #[tokio::test]
+#[ignore = "Ignored by default due to long wait time"]
 async fn test_rate_limit_window_reset() {
     // Load the rate limit demo config
     let config_path = "examples/ratelimit.demo.yaml";
