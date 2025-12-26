@@ -277,7 +277,7 @@ mod tests {
         // Preserve and remove RUST_LOG to ensure the default is used.
         let prev = std::env::var("RUST_LOG").ok();
         unsafe {
-            std::env::set_var("RUST_LOG", "");
+            std::env::remove_var("RUST_LOG");
         }
         let cfg = LogConfig {
             level: "warn".to_string(),
@@ -295,9 +295,8 @@ mod tests {
 
         // Restore previous value
         unsafe {
-            match prev {
-                Some(v) => std::env::set_var("RUST_LOG", v),
-                None => std::env::remove_var("RUST_LOG"),
+            if let Some(v) = prev {
+                std::env::set_var("RUST_LOG", v);
             }
         }
     }

@@ -47,6 +47,9 @@ fmt:
 check: lint fmt
 	@echo "\033[33mcargo lint and fmt done\033[0m"
 
+doc:
+	cargo doc --no-deps --package lazydns
+
 # Mapping helper target(s)
 .PHONY: build-for build-all
 

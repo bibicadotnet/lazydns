@@ -126,7 +126,7 @@ crate::register_plugin_builder!(MarkPlugin);
 
 #[async_trait]
 impl ExecPlugin for MarkPlugin {
-    /// Parse exec string for mark plugin: "mark key [value]"
+    /// Parse exec string for mark plugin: "mark key \[value\]"
     ///
     /// Examples:
     /// - "mark priority high" - sets priority to "high"
