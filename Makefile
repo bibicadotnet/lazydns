@@ -24,8 +24,19 @@ lint:
 	cargo clippy --all-targets --no-default-features -- -D warnings
 
 test:
-	cargo test --all-features
-	cargo test --no-default-features
+# 	cargo test --all-features
+# 	cargo test --no-default-features
+
+	cargo test --all-features --lib --bins
+	cargo test --no-default-features --lib --bins
+
+	cargo test --test integration_ratelimit -- --test-threads=1
+	cargo test --test integration_cache -- --test-threads=1
+	cargo test --test integration_doq -- --test-threads=1
+	cargo test --test integration_ipset_nftset -- --test-threads=1
+	cargo test --test integration_save_hook -- --test-threads=1
+	cargo test --test integration_test -- --test-threads=1
+	cargo test --test integration_tls_doh_dot -- --test-threads=1
 
 cov:
 	cargo llvm-cov test -q --all-features

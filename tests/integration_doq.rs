@@ -20,8 +20,9 @@ async fn integration_doq_request_response() {
     impl RequestHandler for TestHandler {
         async fn handle(
             &self,
-            mut request: lazydns::dns::Message,
+            ctx: lazydns::server::RequestContext,
         ) -> lazydns::Result<lazydns::dns::Message> {
+            let mut request = ctx.into_message();
             request.set_response(true);
             Ok(request)
         }
@@ -175,8 +176,9 @@ async fn integration_doq_server_start_stop() {
     impl RequestHandler for TestHandler {
         async fn handle(
             &self,
-            mut request: lazydns::dns::Message,
+            ctx: lazydns::server::RequestContext,
         ) -> lazydns::Result<lazydns::dns::Message> {
+            let mut request = ctx.into_message();
             request.set_response(true);
             Ok(request)
         }

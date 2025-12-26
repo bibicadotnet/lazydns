@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use lazydns::Result;
 use lazydns::dns::{Message, RData, RecordClass, RecordType, ResourceRecord};
-use lazydns::server::{RequestHandler, ServerConfig, UdpServer};
+use lazydns::server::{RequestContext, RequestHandler, ServerConfig, UdpServer};
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
@@ -15,7 +15,8 @@ struct SimpleHandler;
 
 #[async_trait]
 impl RequestHandler for SimpleHandler {
-    async fn handle(&self, mut request: Message) -> Result<Message> {
+    async fn handle(&self, ctx: RequestContext) -> Result<Message> {
+        let mut request = ctx.into_message();
         println!("Received query:");
         println!("  ID: {}", request.id());
         println!("  Questions: {}", request.question_count());

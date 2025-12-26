@@ -65,7 +65,7 @@ pub use doh::DohServer;
 pub use doq::DoqServer;
 #[cfg(feature = "dot")]
 pub use dot::DotServer;
-pub use handler::{DefaultHandler, RequestHandler};
+pub use handler::{ClientInfo, DefaultHandler, Protocol, RequestContext, RequestHandler};
 pub use launcher::ServerLauncher;
 #[cfg(feature = "metrics")]
 pub use monitoring::MonitoringServer;

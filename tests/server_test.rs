@@ -18,7 +18,8 @@ struct TestHandler;
 
 #[async_trait]
 impl RequestHandler for TestHandler {
-    async fn handle(&self, mut request: Message) -> Result<Message> {
+    async fn handle(&self, ctx: lazydns::server::RequestContext) -> Result<Message> {
+        let mut request = ctx.into_message();
         // Convert query to response
         request.set_response(true);
         request.set_recursion_available(true);
