@@ -485,6 +485,11 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::executable::ipset::IP_SET_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::nftset::NFT_SET_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::ecs::ECS_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::collector::METRICS_COLLECTOR_PLUGIN_EXEC_FACTORY);
+        #[cfg(feature = "metrics")]
+        Lazy::force(
+            &crate::plugins::executable::collector::PROM_METRICS_COLLECTOR_PLUGIN_EXEC_FACTORY,
+        );
 
         // Initialize the exec factory system
         initialize_exec_plugin_factories();

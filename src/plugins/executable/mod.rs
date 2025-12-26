@@ -26,6 +26,8 @@ pub mod ttl;
 pub use arbitrary::ArbitraryPlugin;
 pub use black_hole::BlackholePlugin;
 pub use collector::MetricsCollectorPlugin;
+#[cfg(feature = "metrics")]
+pub use collector::PromMetricsCollectorPlugin;
 pub use debug_print::DebugPrintPlugin;
 pub use downloader::DownloaderPlugin;
 pub use drop_resp::DropRespPlugin;

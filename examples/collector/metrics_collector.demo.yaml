@@ -1,0 +1,65 @@
+# Example configuration for MetricsCollectorPlugin
+# This demonstrates how to use the metrics collector plugin to track
+# DNS query statistics and performance metrics.
+#
+# The metrics collector plugin supports the following exec syntax:
+#   metrics_collector
+#
+# The plugin collects the following metrics:
+# - Query count: Total number of DNS queries processed
+# - Average latency: Average response time in milliseconds (when available)
+# - Queries per second: Rate of queries since last reset
+#
+# The plugin stores metrics in memory and provides methods to access them:
+# - count(): Get total query count
+# - average_latency_ms(): Get average latency
+# - queries_per_second(): Get queries per second rate
+# - reset(): Reset all counters
+#
+# Usage:
+#   cargo run -- -c examples/collector/metrics_collector.demo.yaml -vv
+#
+# Test with:
+#   dig @127.0.0.1 -p 5354 cloudflare.com A
+#   dig @127.0.0.1 -p 5354 google.com A
+#
+# The metrics can be accessed programmatically by getting a reference
+# to the plugin instance from the registry.
+# See examples/collector/metrics_collector_access.demo.rs for details.
+
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Forward plugin to get DNS responses
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
+
+  # Metrics collector plugin to track query statistics
+  - tag: metrics_collector
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: metrics_collector
+      - exec: accept
+
+  # UDP server listening on :5354
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: metrics_collector
+      listen: ":5354"
+
+  # TCP server listening on :5354
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: metrics_collector
+      listen: ":5354"

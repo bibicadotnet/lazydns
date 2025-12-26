@@ -1,0 +1,72 @@
+# Example configuration for PrometheusMetricsCollectorPlugin
+# This demonstrates how to use the Prometheus metrics collector plugin
+# to track DNS query statistics and expose them via Prometheus.
+#
+# The Prometheus metrics collector plugin supports the following exec syntax:
+#   prometheus_metrics_collector name=<metric_name>
+#
+# Options:
+#   - name: The name label to use for all Prometheus metrics (default: "default")
+#
+# The plugin exposes the following Prometheus metrics:
+# - query_total{name="<name>"}: Counter for total DNS queries processed
+# - err_total{name="<name>"}: Counter for failed DNS queries
+# - thread{name="<name>"}: Gauge for active processing threads
+# - response_latency_millisecond{name="<name>"}: Histogram for response latency
+#
+# Prerequisites:
+#   Build with metrics feature: cargo build --features metrics
+#
+# Usage:
+#   cargo run --features metrics -- -c examples/collector/prometheus_metrics_collector.demo.yaml -vv
+#
+# Test with:
+#   dig @127.0.0.1 -p 5354 cloudflare.com A
+#   dig @127.0.0.1 -p 5354 google.com A
+#
+# View metrics:
+#   curl http://localhost:9090/metrics (if Prometheus is running)
+#   or access via the admin interface if configured
+#
+# Note: This demo uses an in-memory registry. For production use,
+# integrate with a shared Prometheus registry.
+
+
+metrics:
+  # Enable monitoring server for Prometheus metrics and health checks
+  enabled: true
+  # Listen address (default: 127.0.0.1:9090)
+  addr: ":9091"
+
+# Plugin execution flow
+plugins:
+  # Forward plugin to get DNS responses
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
+
+  # Prometheus metrics collector plugin
+  - tag: prometheus_metrics
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: prom_metrics_collector name=demo_dns_server
+      - exec: accept
+
+  # UDP server listening on :5354
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: prometheus_metrics
+      listen: ":5354"
+
+  # TCP server listening on :5354
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: prometheus_metrics
+      listen: ":5354"
