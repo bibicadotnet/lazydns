@@ -3,9 +3,11 @@
 //! Generic marking/tagging plugin for labeling queries and responses
 
 use crate::Result;
+use crate::config::PluginConfig;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::fmt;
+use std::sync::Arc;
 use tracing::debug;
 
 /// Plugin that adds marks/tags to the context
@@ -82,7 +84,45 @@ impl Plugin for MarkPlugin {
 
         Ok(())
     }
+
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+        use serde_yaml::Value;
+
+        // Parse mark_name parameter (required)
+        let mark_name = match args.get("name") {
+            Some(Value::String(name)) => name.clone(),
+            Some(_) => {
+                return Err(crate::Error::Config(
+                    "mark name must be a string".to_string(),
+                ));
+            }
+            None => return Err(crate::Error::Config("mark name is required".to_string())),
+        };
+
+        // Parse value parameter (optional)
+        let mark_value = match args.get("value") {
+            Some(Value::String(val)) => Some(val.clone()),
+            Some(_) => {
+                return Err(crate::Error::Config(
+                    "mark value must be a string".to_string(),
+                ));
+            }
+            None => None,
+        };
+
+        let plugin = if let Some(value) = mark_value {
+            MarkPlugin::with_value(mark_name, value)
+        } else {
+            MarkPlugin::new(mark_name)
+        };
+
+        Ok(Arc::new(plugin))
+    }
 }
+
+// Auto-register using the register macro
+crate::register_plugin_builder!(MarkPlugin);
 
 #[cfg(test)]
 mod tests {
