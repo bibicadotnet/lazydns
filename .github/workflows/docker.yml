@@ -1,12 +1,24 @@
 name: Build and Push Docker Image
 
+# NOTE: This workflow is intended to be run manually (via workflow_dispatch)
+# or called by other workflows (via workflow_call). It no longer triggers
+# automatically on push or tag events — use the `release.yml` workflow to
+# invoke this workflow as part of the release pipeline.
+
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      LAZYDNS_VERSION:
+        required: false
+        type: string
+    secrets:
+      DOCKERHUB_TOKEN:
+        required: true
+      DOCKERHUB_USERNAME:
+        required: true
+      GITHUB_TOKEN:
+        required: true
 
 jobs:
   docker:
@@ -62,4 +74,4 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            LAZYDNS_VERSION=${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
+            LAZYDNS_VERSION=${{ inputs.LAZYDNS_VERSION || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'latest' }}
