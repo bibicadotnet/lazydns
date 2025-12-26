@@ -440,6 +440,9 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::executable::reverse_lookup::REVERSE_LOOKUP_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::dual_selector::DUAL_SELECTOR_PLUGIN_FACTORY);
 
+        Lazy::force(&crate::plugins::geoip::GEO_IP_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::geosite::GEO_SITE_PLUGIN_FACTORY);
+
         Lazy::force(&crate::plugins::server::UDP_SERVER_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::server::TCP_SERVER_PLUGIN_FACTORY);
 

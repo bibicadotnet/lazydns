@@ -37,7 +37,11 @@ use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::path::PathBuf;
 use tracing::debug;
+
+// Auto-register the GeoSite plugin so it is available as type `geo_site` in configs
+crate::register_plugin_builder!(GeoSitePlugin);
 
 /// GeoSite plugin for geographic domain matching
 ///
@@ -278,12 +282,55 @@ impl Plugin for GeoSitePlugin {
     }
 
     fn name(&self) -> &str {
-        "geosite"
+        "geo_site"
     }
 
     fn priority(&self) -> i32 {
         // Run early to tag requests
         70
+    }
+
+    fn init(
+        config: &crate::config::types::PluginConfig,
+    ) -> Result<std::sync::Arc<dyn Plugin>, Error> {
+        use serde_yaml::Value;
+
+        let args = config.effective_args();
+
+        let metadata_key = match args.get("metadata_key") {
+            Some(Value::String(s)) => s.clone(),
+            _ => "category".to_string(),
+        };
+
+        let mut geosite = GeoSitePlugin::new(metadata_key);
+
+        // Load from files
+        if let Some(Value::Sequence(seq)) = args.get("files") {
+            for file_val in seq {
+                if let Some(file_str) = file_val.as_str() {
+                    let file = PathBuf::from(file_str);
+                    let content = std::fs::read_to_string(&file).map_err(|e| {
+                        Error::Config(format!(
+                            "Failed to read GeoSite file '{}': {}",
+                            file.display(),
+                            e
+                        ))
+                    })?;
+                    geosite.load_from_string(&content)?;
+                }
+            }
+        }
+
+        // Load inline data
+        if let Some(Value::Sequence(seq)) = args.get("data") {
+            for entry_val in seq {
+                if let Some(entry) = entry_val.as_str() {
+                    geosite.load_from_string(entry)?;
+                }
+            }
+        }
+
+        Ok(std::sync::Arc::new(geosite))
     }
 }
 

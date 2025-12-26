@@ -1,0 +1,57 @@
+# GeoSite demo configuration
+#
+# Purpose: Demonstrate how the `geo_site` plugin tags requests with a category
+# based on domain names, useful for geographic routing decisions.
+#
+# How to use:
+# 1. Start lazydns with this config:
+#      RUST_LOG=debug cargo run -- --config examples/geo/geosite.demo.yaml
+# 2. Query the demo server and watch the logs for GeoSite debug output:
+#      dig @127.0.0.1 -p 5357 cn.example A
+#      dig @127.0.0.1 -p 5357 us.example A
+#
+# You should see debug logs like:
+#    GeoSite: Domain cn.example belongs to category cn
+#
+# Note: This demo uses forward plugin to resolve queries, and geosite plugin
+# sets metadata that could be used for routing decisions.
+
+plugins:
+  # GeoSite database loader
+  - tag: geosite_db
+    type: geo_site
+    args:
+      # metadata key to set on match (defaults to "category")
+      metadata_key: category
+      # Load categories from a small local file included with the demo
+      files:
+        - "examples/geo/geosite.txt"
+
+  # Forward plugin to resolve queries
+  - tag: forwarder
+    type: forward
+    args:
+      upstreams:
+        - "8.8.8.8:53"
+
+  # Sequence: tag request with geosite, then forward
+  - tag: geosite_sequence
+    type: sequence
+    args:
+      - exec: $geosite_db
+      - exec: $forwarder
+      - exec: accept
+
+  # UDP server that runs the geosite demo on :5357
+  - tag: udp_geosite
+    type: udp_server
+    args:
+      entry: geosite_sequence
+      listen: ":5357"
+
+  # TCP server for the same demo (optional)
+  - tag: tcp_geosite
+    type: tcp_server
+    args:
+      entry: geosite_sequence
+      listen: ":5357"
