@@ -17,7 +17,7 @@
 # 3. Query the PTR record for the IP (port 5358):
 #
 #    dig @127.0.0.1 -p 5358 -x 192.0.2.1 +short
-#    # Should return: example.com
+#    # Should return: example.com.
 #
 # The `reverse_lookup` plugin will parse the PTR name, map it to an IP, and return the cached FQDN if it hasn't expired.
 #
@@ -27,43 +27,45 @@
 # - `size` (int): Approximate capacity; kept for parity with other implementations (unused otherwise)
 
 # Simple arbitrary plugin that returns an A record for example.com -> 192.0.2.1
-- tag: test_response
-  type: arbitrary
-  args:
-    rules:
-      - "example.com A 192.0.2.1"
 
-# Reverse lookup plugin (keeps IP -> fqdn cache)
-- tag: reverse_lookup
-  type: reverse_lookup
-  args:
-    handle_ptr: true
-    ttl: 7200
+plugins:
+  - tag: test_response
+    type: arbitrary
+    args:
+      rules:
+        - "example.com A 192.0.2.1"
 
-# Sequence that produces an A record and thus populates the reverse cache
-- tag: populate_sequence
-  type: sequence
-  args:
-    - exec: $test_response
-    - exec: accept
+  # Reverse lookup plugin (keeps IP -> fqdn cache)
+  - tag: reverse_lookup
+    type: reverse_lookup
+    args:
+      handle_ptr: true
+      ttl: 7200
 
-# Sequence that answers PTR (reverse) queries using reverse_lookup plugin
-- tag: reverse_sequence
-  type: sequence
-  args:
-    - exec: $reverse_lookup
-    - exec: accept
+  # Sequence that produces an A record and thus populates the reverse cache
+  - tag: populate_sequence
+    type: sequence
+    args:
+      - exec: $test_response
+      - exec: accept
 
-# UDP server to populate cache (query A) - listens on port 5357
-- tag: udp_populate
-  type: udp_server
-  args:
-    entry: populate_sequence
-    listen: ":5357"
+  # Sequence that answers PTR (reverse) queries using reverse_lookup plugin
+  - tag: reverse_sequence
+    type: sequence
+    args:
+      - exec: $reverse_lookup
+      - exec: accept
 
-# UDP server that answers PTR queries using reverse_lookup plugin - listens on port 5358
-- tag: udp_reverse
-  type: udp_server
-  args:
-    entry: reverse_sequence
-    listen: ":5358"
+  # UDP server to populate cache (query A) - listens on port 5357
+  - tag: udp_populate
+    type: udp_server
+    args:
+      entry: populate_sequence
+      listen: ":5357"
+
+  # UDP server that answers PTR queries using reverse_lookup plugin - listens on port 5358
+  - tag: udp_reverse
+    type: udp_server
+    args:
+      entry: reverse_sequence
+      listen: ":5358"
