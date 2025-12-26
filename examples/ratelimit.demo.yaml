@@ -24,18 +24,18 @@ log:
 
 # Plugin execution flow
 plugins:
-  # Rate limiter with default settings (100 queries per 60 seconds)
+  # Rate limiter with default settings (50 queries per 60 seconds)
   - tag: rate_limiter_default
     type: rate_limit
     args:
-      max_queries: 100
+      max_queries: 50
       window_secs: 60
 
-  # Rate limiter with strict settings (10 queries per 30 seconds)
+  # Rate limiter with strict settings (5 queries per 30 seconds)
   - tag: rate_limiter_strict
     type: rate_limit
     args:
-      max_queries: 10
+      max_queries: 5
       window_secs: 30
 
   # Rate limiter with lenient settings (500 queries per 300 seconds)
@@ -54,12 +54,19 @@ plugins:
         - addr: "8.8.8.8:53"
         - addr: "1.1.1.1:53"
 
+  # Arbitrary response plugin for testing
+  - tag: test_response
+    type: arbitrary
+    args:
+      rules:
+        - "example.com A 192.0.2.1"
+
   # Main sequence with rate limiting
   - tag: main_sequence_with_rate_limit
     type: sequence
     args:
       - exec: $rate_limiter_default
-      - exec: $forward
+      - exec: $test_response
       - exec: accept
 
   # Strict rate limiting sequence
@@ -67,7 +74,7 @@ plugins:
     type: sequence
     args:
       - exec: $rate_limiter_strict
-      - exec: $forward
+      - exec: $test_response
       - exec: accept
 
   # Lenient rate limiting sequence
@@ -75,7 +82,7 @@ plugins:
     type: sequence
     args:
       - exec: $rate_limiter_lenient
-      - exec: $forward
+      - exec: $test_response
       - exec: accept
 
   # UDP server with default rate limiting
