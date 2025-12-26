@@ -7,7 +7,11 @@ use crate::dns::types::RecordType;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use std::fmt;
+use std::sync::Arc;
 use tracing::debug;
+
+// Auto-register using the register macro
+crate::register_plugin_builder!(DualSelectorPlugin);
 
 /// IP version preference for dual selector
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +79,36 @@ impl fmt::Debug for DualSelectorPlugin {
 impl Plugin for DualSelectorPlugin {
     fn name(&self) -> &str {
         "dual_selector"
+    }
+
+    fn init(config: &crate::config::types::PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
+        let args = config.effective_args();
+        let pref_str = args
+            .get("preference")
+            .and_then(|v| v.as_str())
+            .unwrap_or("both")
+            .to_lowercase()
+            .replace('-', "_");
+
+        let preference = match pref_str.as_str() {
+            "ipv4" => IpPreference::IPv4,
+            "ipv6" => IpPreference::IPv6,
+            "ipv4_prefer_ipv6_fallback" | "ipv4_prefer_ipv6" => {
+                IpPreference::IPv4PreferIPv6Fallback
+            }
+            "ipv6_prefer_ipv4_fallback" | "ipv6_prefer_ipv4" => {
+                IpPreference::IPv6PreferIPv4Fallback
+            }
+            "both" => IpPreference::Both,
+            other => {
+                return Err(crate::Error::Config(format!(
+                    "dual_selector: unknown preference '{}'",
+                    other
+                )));
+            }
+        };
+
+        Ok(Arc::new(DualSelectorPlugin::new(preference)))
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
