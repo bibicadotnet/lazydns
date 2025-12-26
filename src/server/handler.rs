@@ -5,6 +5,7 @@
 use crate::Result;
 use crate::dns::Message;
 use async_trait::async_trait;
+use std::net::SocketAddr;
 
 /// DNS request handler trait
 ///
@@ -18,12 +19,13 @@ use async_trait::async_trait;
 /// use lazydns::dns::Message;
 /// use lazydns::Result;
 /// use async_trait::async_trait;
+/// use std::net::SocketAddr;
 ///
 /// struct MyHandler;
 ///
 /// #[async_trait]
 /// impl RequestHandler for MyHandler {
-///     async fn handle(&self, request: Message) -> Result<Message> {
+///     async fn handle(&self, request: Message, client_addr: Option<SocketAddr>) -> Result<Message> {
 ///         // Process request and return response
 ///         Ok(request)
 ///     }
@@ -36,11 +38,12 @@ pub trait RequestHandler: Send + Sync {
     /// # Arguments
     ///
     /// * `request` - The DNS query message to handle
+    /// * `client_addr` - The client's socket address (if available)
     ///
     /// # Returns
     ///
     /// A DNS response message or an error
-    async fn handle(&self, request: Message) -> Result<Message>;
+    async fn handle(&self, request: Message, client_addr: Option<SocketAddr>) -> Result<Message>;
 }
 
 /// Default request handler that echoes queries back
@@ -53,7 +56,11 @@ pub struct DefaultHandler;
 
 #[async_trait]
 impl RequestHandler for DefaultHandler {
-    async fn handle(&self, mut request: Message) -> Result<Message> {
+    async fn handle(
+        &self,
+        mut request: Message,
+        _client_addr: Option<SocketAddr>,
+    ) -> Result<Message> {
         // Convert query to response
         request.set_response(true);
         request.set_recursion_available(false);
@@ -88,7 +95,7 @@ mod tests {
             RecordClass::IN,
         ));
 
-        let response = handler.handle(request).await.unwrap();
+        let response = handler.handle(request, None).await.unwrap();
 
         assert!(response.is_response());
         assert_eq!(response.id(), 1234);
@@ -106,7 +113,7 @@ mod tests {
             RecordClass::IN,
         ));
 
-        let response = handler.handle(request).await.unwrap();
+        let response = handler.handle(request, None).await.unwrap();
 
         assert_eq!(response.questions()[0].qname(), "test.com");
         assert_eq!(response.questions()[0].qtype(), RecordType::AAAA);

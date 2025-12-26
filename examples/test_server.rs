@@ -15,7 +15,11 @@ struct SimpleHandler;
 
 #[async_trait]
 impl RequestHandler for SimpleHandler {
-    async fn handle(&self, mut request: Message) -> Result<Message> {
+    async fn handle(
+        &self,
+        mut request: Message,
+        _client_addr: Option<std::net::SocketAddr>,
+    ) -> Result<Message> {
         println!("Received query:");
         println!("  ID: {}", request.id());
         println!("  Questions: {}", request.question_count());

@@ -18,7 +18,11 @@ struct TestHandler;
 
 #[async_trait]
 impl RequestHandler for TestHandler {
-    async fn handle(&self, mut request: Message) -> Result<Message> {
+    async fn handle(
+        &self,
+        mut request: Message,
+        _client_addr: Option<std::net::SocketAddr>,
+    ) -> Result<Message> {
         // Convert query to response
         request.set_response(true);
         request.set_recursion_available(true);

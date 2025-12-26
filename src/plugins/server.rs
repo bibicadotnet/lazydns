@@ -252,7 +252,11 @@ struct PluginRequestHandler {
 
 #[async_trait]
 impl RequestHandler for PluginRequestHandler {
-    async fn handle(&self, request: Message) -> Result<Message> {
+    async fn handle(
+        &self,
+        request: Message,
+        _client_addr: Option<std::net::SocketAddr>,
+    ) -> Result<Message> {
         // Save request ID for response
         let request_id = request.id();
         error!("Request ID in handler: {}", request_id);

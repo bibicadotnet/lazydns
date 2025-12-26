@@ -92,7 +92,9 @@ impl TcpServer {
 
                     // Spawn a task to handle this connection
                     tokio::spawn(async move {
-                        if let Err(e) = Self::handle_connection(stream, handler, max_size).await {
+                        if let Err(e) =
+                            Self::handle_connection(stream, peer_addr, handler, max_size).await
+                        {
                             error!("Error handling connection from {}: {}", peer_addr, e);
                         }
                     });
@@ -117,6 +119,7 @@ impl TcpServer {
     /// accept loop.
     async fn handle_connection(
         mut stream: TcpStream,
+        peer_addr: std::net::SocketAddr,
         handler: Arc<dyn RequestHandler>,
         max_size: usize,
     ) -> Result<()> {
@@ -150,7 +153,7 @@ impl TcpServer {
         );
 
         // Handle the request
-        let response = handler.handle(request).await?;
+        let response = handler.handle(request, Some(peer_addr)).await?;
 
         trace!(
             "Sending response ID {} with {} answers",
@@ -248,7 +251,13 @@ mod tests {
             if let Ok((stream, _peer)) = listener.accept().await {
                 let handler = Arc::new(DefaultHandler);
                 // allow reasonably large messages
-                let _ = TcpServer::handle_connection(stream, handler, 64 * 1024).await;
+                let _ = TcpServer::handle_connection(
+                    stream,
+                    "127.0.0.1:12345".parse().unwrap(),
+                    handler,
+                    64 * 1024,
+                )
+                .await;
             }
         });
 

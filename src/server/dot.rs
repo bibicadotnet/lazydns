@@ -147,7 +147,7 @@ impl DotServer {
             let request = Self::parse_request(&buf)?;
 
             // Handle request
-            let response = handler.handle(request).await?;
+            let response = handler.handle(request, None).await?;
 
             // Serialize response to wire-format bytes
             let response_data = Self::serialize_response(&response)?;
@@ -237,7 +237,11 @@ mod tests {
         struct DummyHandler;
         #[async_trait::async_trait]
         impl crate::server::RequestHandler for DummyHandler {
-            async fn handle(&self, req: crate::dns::Message) -> crate::Result<crate::dns::Message> {
+            async fn handle(
+                &self,
+                req: crate::dns::Message,
+                _client_addr: Option<std::net::SocketAddr>,
+            ) -> crate::Result<crate::dns::Message> {
                 Ok(req)
             }
         }

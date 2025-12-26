@@ -336,7 +336,7 @@ impl UdpServer {
         // Handle the request
         // Call the handler and ensure response ID matches request ID
         let req_id = request.id();
-        let mut response = handler.handle(request).await?;
+        let mut response = handler.handle(request, Some(peer_addr)).await?;
         response.set_id(req_id);
 
         trace!(

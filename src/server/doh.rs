@@ -227,7 +227,7 @@ async fn handle_get_query(
     };
 
     // Process query
-    let response = match handler.handle(request).await {
+    let response = match handler.handle(request, None).await {
         Ok(resp) => resp,
         Err(e) => {
             return (
@@ -307,7 +307,7 @@ async fn handle_post_query(
     };
 
     // Process query
-    let response = match handler.handle(request).await {
+    let response = match handler.handle(request, None).await {
         Ok(resp) => resp,
         Err(e) => {
             return (
@@ -368,7 +368,11 @@ mod tests {
 
     #[async_trait]
     impl RequestHandler for TestHandler {
-        async fn handle(&self, mut request: Message) -> crate::Result<Message> {
+        async fn handle(
+            &self,
+            mut request: Message,
+            _client_addr: Option<std::net::SocketAddr>,
+        ) -> crate::Result<Message> {
             // mark as response and return the same message
             request.set_response(true);
             Ok(request)
@@ -502,7 +506,11 @@ mod tests {
 
     #[async_trait]
     impl RequestHandler for TestHandlerErr {
-        async fn handle(&self, _request: Message) -> crate::Result<Message> {
+        async fn handle(
+            &self,
+            _request: Message,
+            _client_addr: Option<std::net::SocketAddr>,
+        ) -> crate::Result<Message> {
             Err(crate::Error::Plugin("handler failure".to_string()))
         }
     }

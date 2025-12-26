@@ -729,7 +729,7 @@ impl Plugin for CachePlugin {
                                         key_clone
                                     );
 
-                                    match background_handler.handle(request_clone).await {
+                                    match background_handler.handle(request_clone, None).await {
                                         Ok(response) => {
                                             debug!(
                                                 "Background stale-serving TTL refresh successful for {}: {}",
@@ -890,7 +890,7 @@ impl Plugin for CachePlugin {
                                 );
 
                                 // Execute complete query pipeline in background
-                                match background_handler.handle(request_clone).await {
+                                match background_handler.handle(request_clone, None).await {
                                     Ok(response) => {
                                         debug!(
                                             "Background lazy refresh successful for {}: {}",

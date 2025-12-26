@@ -21,6 +21,7 @@ async fn integration_doq_request_response() {
         async fn handle(
             &self,
             mut request: lazydns::dns::Message,
+            _client_addr: Option<std::net::SocketAddr>,
         ) -> lazydns::Result<lazydns::dns::Message> {
             request.set_response(true);
             Ok(request)
@@ -176,6 +177,7 @@ async fn integration_doq_server_start_stop() {
         async fn handle(
             &self,
             mut request: lazydns::dns::Message,
+            _client_addr: Option<std::net::SocketAddr>,
         ) -> lazydns::Result<lazydns::dns::Message> {
             request.set_response(true);
             Ok(request)
