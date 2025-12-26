@@ -79,7 +79,7 @@ base64 = "0.21"
 prometheus = { version = "0.13", optional = true }
 
 # File watching for hot reload
-notify = "6.1"
+notify = "8.2"
 
 # CLI
 pico-args = "0.5"
@@ -92,7 +92,7 @@ ipnet = "2.9"
 rand = "0.9"
 
 # Optional TLS-enabled HTTP server for DoH production deployments.
-axum-server = { version = "0.7", optional = true, package = "axum-server", default-features = false, features = [
+axum-server = { version = "0.8", optional = true, package = "axum-server", default-features = false, features = [
     "tls-rustls-no-provider",
 ] }
 
