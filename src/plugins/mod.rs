@@ -41,7 +41,6 @@ pub mod geoip;
 pub mod geosite;
 pub mod hosts;
 pub mod mark;
-pub mod server;
 // utils module moved to crate-level `src/utils.rs`
 
 // Re-export plugins
@@ -70,7 +69,6 @@ pub use executable::{
 
 #[cfg(feature = "cron")]
 pub use cron::CronPlugin;
-pub use server::{TcpServerPlugin, UdpServerPlugin};
 
 // Re-add tests module at file end to satisfy lints
 #[cfg(test)]

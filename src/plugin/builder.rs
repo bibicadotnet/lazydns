@@ -49,7 +49,7 @@ impl PluginBuilder {
 
         // Try to get builder from registry first
         if let Some(builder) = crate::plugin::factory::get_plugin_factory(&plugin_type) {
-            debug!(
+            trace!(
                 name = %config.effective_name(),
                 plugin_type = %plugin_type,
                 "Creating plugin using registered builder"
@@ -120,12 +120,12 @@ impl PluginBuilder {
                 }
             }
 
-            // Accept doh/dot/doq server plugin types at build time so configuration
+            // Accept tcp/udp/doh/dot/doq server plugin types at build time so configuration
             // parsing succeeds. The actual servers are started by the application
-            // runtime (main.rs) when TLS and certs are available. Here we return
+            // runtime (launcher.rs). Here we return
             // a benign plugin instance (AcceptPlugin) so the name is registered
             // and can be referenced by other plugins.
-            "doh_server" | "dot_server" | "doq_server" => {
+            "tcp_server" | "udp_server" | "doh_server" | "dot_server" | "doq_server" => {
                 let tag = config.effective_name().to_string();
                 self.server_plugin_tags.push(tag.clone());
                 Arc::new(crate::plugins::AcceptPlugin::new())
