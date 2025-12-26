@@ -24,7 +24,7 @@
 
 use crate::dns::Message;
 use crate::error::{Error, Result};
-use crate::server::{RequestHandler, TlsConfig};
+use crate::server::{RequestHandler, Server, ServerConfig, TlsConfig};
 use axum::{
     Router,
     body::Bytes,
@@ -163,6 +163,34 @@ impl DohServer {
         }
 
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl Server for DohServer {
+    async fn from_config(config: ServerConfig) -> crate::Result<Self> {
+        let addr = config
+            .tcp_addr
+            .ok_or_else(|| Error::Config("TCP address not configured for DoH".to_string()))?
+            .to_string();
+
+        let tls_config = config
+            .tls_config
+            .ok_or_else(|| Error::Config("TLS config not configured for DoH".to_string()))?;
+
+        let handler = config
+            .handler
+            .ok_or_else(|| Error::Config("Handler not configured".to_string()))?;
+
+        let mut server = Self::new(addr, tls_config, handler);
+        if let Some(path) = config.doh_path {
+            server = server.with_path(path);
+        }
+        Ok(server)
+    }
+
+    async fn run(self) -> crate::Result<()> {
+        DohServer::run(self).await
     }
 }
 

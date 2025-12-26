@@ -16,8 +16,13 @@
 //! let cfg = ServerConfig::default().with_udp_addr(FromStr::from_str("192.0.2.1:53").unwrap());
 //! ```
 
+use crate::server::RequestHandler;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
+
+#[cfg(any(feature = "doh", feature = "dot"))]
+use crate::server::TlsConfig;
 
 /// DNS server configuration
 ///
@@ -28,7 +33,7 @@ use std::time::Duration;
 ///
 /// Use the builder-style methods (e.g. `with_udp_addr`) to customize a
 /// configuration built from `ServerConfig::default()`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ServerConfig {
     /// UDP listen address
     pub udp_addr: Option<SocketAddr>,
@@ -47,6 +52,39 @@ pub struct ServerConfig {
 
     /// Maximum TCP message size
     pub max_tcp_size: usize,
+
+    /// Request handler for processing DNS queries
+    pub handler: Option<Arc<dyn RequestHandler>>,
+
+    /// TLS configuration for DoH/DoT servers
+    #[cfg(any(feature = "doh", feature = "dot"))]
+    pub tls_config: Option<TlsConfig>,
+
+    /// Certificate path for DoQ server
+    pub cert_path: Option<String>,
+
+    /// Key path for DoQ server
+    pub key_path: Option<String>,
+
+    /// DoH query path (default: /dns-query)
+    pub doh_path: Option<String>,
+}
+
+impl std::fmt::Debug for ServerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerConfig")
+            .field("udp_addr", &self.udp_addr)
+            .field("tcp_addr", &self.tcp_addr)
+            .field("max_connections", &self.max_connections)
+            .field("timeout", &self.timeout)
+            .field("max_udp_size", &self.max_udp_size)
+            .field("max_tcp_size", &self.max_tcp_size)
+            .field("handler", &self.handler.as_ref().map(|_| "<handler>"))
+            .field("cert_path", &self.cert_path)
+            .field("key_path", &self.key_path)
+            .field("doh_path", &self.doh_path)
+            .finish()
+    }
 }
 
 impl Default for ServerConfig {
@@ -67,6 +105,12 @@ impl Default for ServerConfig {
             timeout: Duration::from_secs(5),
             max_udp_size: 512,
             max_tcp_size: 65535,
+            handler: None,
+            #[cfg(any(feature = "doh", feature = "dot"))]
+            tls_config: None,
+            cert_path: None,
+            key_path: None,
+            doh_path: None,
         }
     }
 }
@@ -154,6 +198,32 @@ impl ServerConfig {
     /// may be rejected or truncated based on this setting.
     pub fn with_max_tcp_size(mut self, size: usize) -> Self {
         self.max_tcp_size = size;
+        self
+    }
+
+    /// Set the request handler.
+    pub fn with_handler(mut self, handler: Arc<dyn RequestHandler>) -> Self {
+        self.handler = Some(handler);
+        self
+    }
+
+    /// Set the TLS configuration for DoH/DoT.
+    #[cfg(any(feature = "doh", feature = "dot"))]
+    pub fn with_tls_config(mut self, tls_config: TlsConfig) -> Self {
+        self.tls_config = Some(tls_config);
+        self
+    }
+
+    /// Set certificate and key paths for DoQ.
+    pub fn with_cert_paths(mut self, cert_path: String, key_path: String) -> Self {
+        self.cert_path = Some(cert_path);
+        self.key_path = Some(key_path);
+        self
+    }
+
+    /// Set the DoH query path.
+    pub fn with_doh_path(mut self, path: String) -> Self {
+        self.doh_path = Some(path);
         self
     }
 }

@@ -59,7 +59,7 @@
 //! ```
 
 use crate::dns::Message;
-use crate::server::{RequestHandler, ServerConfig};
+use crate::server::{RequestHandler, Server, ServerConfig};
 use crate::{Error, Result};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
@@ -463,6 +463,21 @@ impl UdpServer {
     /// ```
     fn serialize_response(message: &Message) -> Result<Vec<u8>> {
         crate::dns::wire::serialize_message(message)
+    }
+}
+
+#[async_trait::async_trait]
+impl Server for UdpServer {
+    async fn from_config(config: ServerConfig) -> Result<Self> {
+        let handler = config
+            .handler
+            .clone()
+            .ok_or_else(|| Error::Config("Handler not configured".to_string()))?;
+        Self::new(config, handler).await
+    }
+
+    async fn run(self) -> Result<()> {
+        UdpServer::run(&self).await
     }
 }
 

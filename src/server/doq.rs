@@ -21,8 +21,8 @@
 //! installation. Tests and binaries should ensure a provider is installed
 //! (see `rustls::crypto::ring::default_provider().install_default()`).
 
-use crate::Result;
 use crate::server::RequestHandler;
+use crate::{Result, server::Server};
 use quinn::{Endpoint, ServerConfig};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -109,6 +109,34 @@ impl DoqServer {
         }
 
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl Server for DoqServer {
+    async fn from_config(config: crate::server::ServerConfig) -> crate::Result<Self> {
+        let addr = config
+            .tcp_addr
+            .ok_or_else(|| crate::Error::Config("Address not configured for DoQ".to_string()))?
+            .to_string();
+
+        let cert_path = config
+            .cert_path
+            .ok_or_else(|| crate::Error::Config("Cert path not configured for DoQ".to_string()))?;
+
+        let key_path = config
+            .key_path
+            .ok_or_else(|| crate::Error::Config("Key path not configured for DoQ".to_string()))?;
+
+        let handler = config
+            .handler
+            .ok_or_else(|| crate::Error::Config("Handler not configured".to_string()))?;
+
+        Ok(Self::new(addr, cert_path, key_path, handler))
+    }
+
+    async fn run(self) -> crate::Result<()> {
+        DoqServer::run(self).await
     }
 }
 

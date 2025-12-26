@@ -16,7 +16,7 @@
 //! limits.
 
 use crate::error::{Error, Result};
-use crate::server::{RequestHandler, TlsConfig};
+use crate::server::{RequestHandler, Server, ServerConfig, TlsConfig};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -186,6 +186,30 @@ impl DotServer {
     /// Serializes to binary DNS wire format according to RFC 1035 using hickory-proto.
     fn serialize_response(message: &crate::dns::Message) -> Result<Vec<u8>> {
         crate::dns::wire::serialize_message(message)
+    }
+}
+
+#[async_trait::async_trait]
+impl Server for DotServer {
+    async fn from_config(config: ServerConfig) -> Result<Self> {
+        let addr = config
+            .tcp_addr
+            .ok_or_else(|| Error::Config("TCP address not configured for DoT".to_string()))?
+            .to_string();
+
+        let tls_config = config
+            .tls_config
+            .ok_or_else(|| Error::Config("TLS config not configured for DoT".to_string()))?;
+
+        let handler = config
+            .handler
+            .ok_or_else(|| Error::Config("Handler not configured".to_string()))?;
+
+        Ok(Self::new(addr, tls_config, handler))
+    }
+
+    async fn run(self) -> Result<()> {
+        DotServer::run(self).await
     }
 }
 

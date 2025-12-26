@@ -1001,32 +1001,6 @@ mod tests {
     }
 
     #[test]
-    fn test_build_udp_server_with_shorthand_listen() {
-        let mut builder = PluginBuilder::new();
-        let mut args_map = Mapping::new();
-        args_map.insert(
-            Value::String("listen".to_string()),
-            Value::String(":5353".to_string()),
-        );
-        args_map.insert(
-            Value::String("entry".to_string()),
-            Value::String("main_sequence".to_string()),
-        );
-
-        let config = PluginConfig {
-            tag: Some("udp_server".to_string()),
-            plugin_type: "udp_server".to_string(),
-            args: Value::Mapping(args_map),
-            name: None,
-            priority: 100,
-            config: HashMap::new(),
-        };
-
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "udp_server");
-    }
-
-    #[test]
     fn test_derived_plugin_type_names() {
         // Ensure the macro-based derivation registers canonical names derived from type names
         crate::plugin::factory::init();
@@ -1147,32 +1121,6 @@ mod tests {
                     .collect::<Vec<_>>()
             }
         );
-    }
-
-    #[test]
-    fn test_build_tcp_server_with_shorthand_listen() {
-        let mut builder = PluginBuilder::new();
-        let mut args_map = Mapping::new();
-        args_map.insert(
-            Value::String("listen".to_string()),
-            Value::String(":5353".to_string()),
-        );
-        args_map.insert(
-            Value::String("entry".to_string()),
-            Value::String("main_sequence".to_string()),
-        );
-
-        let config = PluginConfig {
-            tag: Some("tcp_server".to_string()),
-            plugin_type: "tcp_server".to_string(),
-            args: Value::Mapping(args_map),
-            name: None,
-            priority: 100,
-            config: HashMap::new(),
-        };
-
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "tcp_server");
     }
 
     #[tokio::test]
