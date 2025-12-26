@@ -374,6 +374,7 @@ pub struct DomainRulesStats {
 ///
 /// ```rust
 /// use lazydns::plugins::DomainSetPlugin;
+/// use lazydns::plugins::dataset::MatchType;
 ///
 /// let plugin = DomainSetPlugin::new("cn-domains")
 ///     .with_files(vec!["direct-list.txt".to_string()])
