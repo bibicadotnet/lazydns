@@ -89,3 +89,29 @@ fn test_builder_thread_safety() {
         handle.join().unwrap();
     }
 }
+
+#[test]
+fn test_exec_mark_plugin() {
+    init();
+
+    let exec_factory =
+        factory::get_exec_plugin_factory("mark").expect("mark exec factory should be registered");
+
+    // Test boolean mark
+    let plugin = exec_factory
+        .create("mark", "vip_customer")
+        .expect("exec plugin creation should succeed");
+    assert_eq!(plugin.name(), "mark");
+
+    // Test mark with value
+    let plugin = exec_factory
+        .create("mark", "priority high")
+        .expect("exec plugin creation should succeed");
+    assert_eq!(plugin.name(), "mark");
+
+    // Test mark with multi-word value
+    let plugin = exec_factory
+        .create("mark", "status very important")
+        .expect("exec plugin creation should succeed");
+    assert_eq!(plugin.name(), "mark");
+}

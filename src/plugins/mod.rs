@@ -40,7 +40,6 @@ pub mod forward;
 pub mod geoip;
 pub mod geosite;
 pub mod hosts;
-pub mod mark;
 // utils module moved to crate-level `src/utils.rs`
 
 // Re-export plugins
@@ -55,16 +54,15 @@ pub use forward::{ForwardPlugin, LoadBalanceStrategy};
 pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
 pub use hosts::HostsPlugin;
-pub use mark::MarkPlugin;
 
 // Re-export matcher plugins (mostly deprecated, see condition builders)
 
 // Re-export executable plugins
 pub use executable::{
     ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin,
-    Edns0OptPlugin, Edns0Option, FallbackPlugin, IpPreference, NftSetPlugin, QuerySummaryPlugin,
-    RateLimitPlugin, RedirectPlugin, ReverseLookupPlugin, RosAddrlistPlugin, SequencePlugin,
-    SequenceStep, SleepPlugin, TtlPlugin,
+    Edns0OptPlugin, Edns0Option, FallbackPlugin, IpPreference, MarkPlugin, NftSetPlugin,
+    QuerySummaryPlugin, RateLimitPlugin, RedirectPlugin, ReverseLookupPlugin, RosAddrlistPlugin,
+    SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 #[cfg(feature = "cron")]

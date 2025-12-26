@@ -23,6 +23,11 @@
 #       name: "priority"
 #       value: "high"
 #
+# Exec syntax (inline):
+#   - exec: mark priority high        # Set priority to "high"
+#   - exec: mark vip_customer         # Set vip_customer to true
+#   - exec: mark status "very important"  # Multi-word values with quotes
+#
 # The plugin processes DNS queries and:
 # - Adds metadata to the query context using the specified name and value
 # - Stores marks in a thread-safe manner for access by other plugins
@@ -79,9 +84,25 @@ plugins:
       - exec: $forward
       - exec: accept
 
-  # UDP server listening on port 5353
+  # Alternative sequence using inline exec syntax
+  - tag: exec_sequence
+    type: sequence
+    args:
+      - exec: mark priority high
+      - exec: mark vip_customer
+      - exec: $forward
+      - exec: accept
+
+  # UDP server listening on port 5353 (using main_sequence)
   - tag: udp_server
     type: udp_server
     args:
       entry: main_sequence
       listen: ":5353"
+
+  # Alternative UDP server using exec syntax (port 5354)
+  - tag: udp_server_exec
+    type: udp_server
+    args:
+      entry: exec_sequence
+      listen: ":5354"

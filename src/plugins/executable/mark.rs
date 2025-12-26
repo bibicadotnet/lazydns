@@ -4,7 +4,7 @@
 
 use crate::Result;
 use crate::config::PluginConfig;
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, ExecPlugin, Plugin};
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
@@ -124,6 +124,49 @@ impl Plugin for MarkPlugin {
 // Auto-register using the register macro
 crate::register_plugin_builder!(MarkPlugin);
 
+#[async_trait]
+impl ExecPlugin for MarkPlugin {
+    /// Parse exec string for mark plugin: "mark key [value]"
+    ///
+    /// Examples:
+    /// - "mark priority high" - sets priority to "high"
+    /// - "mark vip_customer" - sets vip_customer to true
+    fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
+        if prefix != "mark" {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'mark'",
+                prefix
+            )));
+        }
+
+        // Parse the exec string: "key [value]"
+        let parts: Vec<&str> = exec_str.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err(crate::Error::Config(
+                "mark exec requires at least a key name".to_string(),
+            ));
+        }
+
+        let mark_name = parts[0].to_string();
+        let mark_value = if parts.len() > 1 {
+            Some(parts[1..].join(" ")) // Join remaining parts as value
+        } else {
+            None
+        };
+
+        let plugin = if let Some(value) = mark_value {
+            MarkPlugin::with_value(mark_name, value)
+        } else {
+            MarkPlugin::new(mark_name)
+        };
+
+        Ok(Arc::new(plugin))
+    }
+}
+
+// Auto-register exec plugin
+crate::register_exec_plugin_builder!(MarkPlugin);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +223,50 @@ mod tests {
         assert!(ctx.get_metadata::<bool>("mark1").is_some());
         assert!(ctx.get_metadata::<bool>("mark2").is_some());
         assert!(ctx.get_metadata::<String>("mark3").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_exec_plugin_boolean_mark() {
+        let plugin = MarkPlugin::quick_setup("mark", "vip_customer").unwrap();
+        let mut ctx = Context::new(Message::new());
+
+        plugin.execute(&mut ctx).await.unwrap();
+
+        let mark = ctx.get_metadata::<bool>("vip_customer").unwrap();
+        assert!(*mark);
+    }
+
+    #[tokio::test]
+    async fn test_exec_plugin_value_mark() {
+        let plugin = MarkPlugin::quick_setup("mark", "priority high").unwrap();
+        let mut ctx = Context::new(Message::new());
+
+        plugin.execute(&mut ctx).await.unwrap();
+
+        let value = ctx.get_metadata::<String>("priority").unwrap();
+        assert_eq!(value.as_str(), "high");
+    }
+
+    #[tokio::test]
+    async fn test_exec_plugin_multi_word_value() {
+        let plugin = MarkPlugin::quick_setup("mark", "status very important").unwrap();
+        let mut ctx = Context::new(Message::new());
+
+        plugin.execute(&mut ctx).await.unwrap();
+
+        let value = ctx.get_metadata::<String>("status").unwrap();
+        assert_eq!(value.as_str(), "very important");
+    }
+
+    #[tokio::test]
+    async fn test_exec_plugin_invalid_prefix() {
+        let result = MarkPlugin::quick_setup("invalid", "test");
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_exec_plugin_missing_key() {
+        let result = MarkPlugin::quick_setup("mark", "");
+        assert!(result.is_err());
     }
 }

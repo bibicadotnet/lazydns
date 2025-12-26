@@ -427,7 +427,7 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::cache::CACHE_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::forward::FORWARD_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::hosts::HOSTS_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::mark::MARK_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::executable::mark::MARK_PLUGIN_FACTORY);
 
         Lazy::force(&crate::plugins::executable::arbitrary::ARBITRARY_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::domain_set::DOMAIN_SET_PLUGIN_FACTORY);
@@ -492,6 +492,7 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::executable::nftset::NFT_SET_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::ecs::ECS_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::collector::METRICS_COLLECTOR_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::mark::MARK_PLUGIN_EXEC_FACTORY);
         #[cfg(feature = "metrics")]
         Lazy::force(
             &crate::plugins::executable::collector::PROM_METRICS_COLLECTOR_PLUGIN_EXEC_FACTORY,
