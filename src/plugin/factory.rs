@@ -487,6 +487,7 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::flow::reject::REJECT_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::prefer_ipv4::PREFER_IPV4_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::prefer_ipv6::PREFER_IPV6_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::flow::return_plugin::RETURN_PLUGIN_EXEC_FACTORY);
 
         Lazy::force(&crate::plugins::executable::ipset::IP_SET_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::nftset::NFT_SET_PLUGIN_EXEC_FACTORY);

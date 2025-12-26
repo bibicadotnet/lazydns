@@ -115,3 +115,17 @@ fn test_exec_mark_plugin() {
         .expect("exec plugin creation should succeed");
     assert_eq!(plugin.name(), "mark");
 }
+
+#[test]
+fn test_exec_return_plugin() {
+    init();
+
+    let exec_factory = factory::get_exec_plugin_factory("return")
+        .expect("return exec factory should be registered");
+
+    // Test return plugin (no arguments)
+    let plugin = exec_factory
+        .create("return", "")
+        .expect("exec plugin creation should succeed");
+    assert_eq!(plugin.name(), "return");
+}

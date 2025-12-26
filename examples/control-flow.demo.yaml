@@ -1,0 +1,155 @@
+# Example configuration for Control Flow Plugins
+# This demonstrates how to use control flow plugins to manage DNS query processing
+#
+# Control flow plugins provide essential building blocks for implementing complex
+# DNS processing logic, including conditional execution, response filtering,
+# and flow control operations.
+#
+# Available control flow plugins:
+# - accept: Accept the current response and stop execution
+# - reject: Reject queries with specified response codes (NXDOMAIN, REFUSED, SERVFAIL)
+# - return: Stop execution of the current sequence
+# - goto: Jump to a labeled sequence
+# - jump: Jump to a named target sequence
+# - prefer_ipv4: Filter out AAAA records, keep only IPv4
+# - prefer_ipv6: Filter out A records, keep only IPv6
+#
+# Exec syntax examples:
+#   - exec: accept           # Accept response and stop
+#   - exec: reject nxdomain  # Return NXDOMAIN
+#   - exec: reject refused   # Return REFUSED
+#   - exec: return           # Stop current sequence
+#   - exec: goto label_name  # Jump to labeled sequence
+#   - exec: jump target_name # Jump to named sequence
+#   - exec: prefer_ipv4      # Keep only IPv4 records
+#   - exec: prefer_ipv6      # Keep only IPv6 records
+#
+# Traditional configuration examples:
+#   - tag: accept_response
+#     type: accept
+#
+#   - tag: reject_nxdomain
+#     type: reject
+#     args:
+#       code: 3  # NXDOMAIN
+#
+# Use cases:
+# - Response filtering: Remove unwanted record types
+# - Access control: Reject unauthorized queries
+# - Flow control: Implement conditional processing
+# - Protocol preferences: Force IPv4/IPv6 only responses
+#
+# Usage:
+#   cargo run -- -c examples/control-flow.demo.yaml -vv
+#
+# Test commands:
+#   # Accept behavior (port 5353)
+#   dig @127.0.0.1 -p 5353 example.com A
+#
+#   # Reject behavior (port 5354)
+#   dig @127.0.0.1 -p 5354 nonexistent.example.com A
+#
+#   # Return behavior (port 5355)
+#   dig @127.0.0.1 -p 5355 example.com A
+#
+#   # IPv4 preference (port 5356)
+#   dig @127.0.0.1 -p 5356 google.com AAAA
+#
+#   # IPv6 preference (port 5357)
+#   dig @127.0.0.1 -p 5357 google.com A
+
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Forward plugin to get DNS responses
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
+
+  # Mark plugin for demonstration
+  - tag: test_mark
+    type: mark
+    args:
+      name: "test"
+      value: "demo"
+
+  # Sequence demonstrating accept behavior
+  - tag: accept_sequence
+    type: sequence
+    args:
+      - exec: $test_mark
+      - exec: $forward
+      - exec: accept
+
+  # Sequence demonstrating reject behavior (NXDOMAIN)
+  - tag: reject_sequence
+    type: sequence
+    args:
+      - exec: reject nxdomain
+
+  # Sequence demonstrating return behavior
+  - tag: return_sequence
+    type: sequence
+    args:
+      - exec: $test_mark
+      - exec: return              # Stops here, forward won't execute
+      - exec: $forward
+      - exec: accept
+
+  # Sequence demonstrating IPv4 preference
+  - tag: ipv4_only_sequence
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: prefer_ipv4
+      - exec: accept
+
+  # Sequence demonstrating IPv6 preference
+  - tag: ipv6_only_sequence
+    type: sequence
+    args:
+      - exec: $forward
+      - exec: prefer_ipv6
+      - exec: accept
+
+  # UDP server for accept sequence (port 5353)
+  - tag: udp_server_accept
+    type: udp_server
+    args:
+      entry: accept_sequence
+      listen: ":5353"
+
+  # UDP server for reject sequence (port 5354)
+  - tag: udp_server_reject
+    type: udp_server
+    args:
+      entry: reject_sequence
+      listen: ":5354"
+
+  # UDP server for return sequence (port 5355)
+  - tag: udp_server_return
+    type: udp_server
+    args:
+      entry: return_sequence
+      listen: ":5355"
+
+  # UDP server for IPv4 preference (port 5356)
+  - tag: udp_server_ipv4
+    type: udp_server
+    args:
+      entry: ipv4_only_sequence
+      listen: ":5356"
+
+  # UDP server for IPv6 preference (port 5357)
+  - tag: udp_server_ipv6
+    type: udp_server
+    args:
+      entry: ipv6_only_sequence
+      listen: ":5357"
