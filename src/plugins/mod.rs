@@ -67,9 +67,9 @@ pub use mark::MarkPlugin;
 // Re-export executable plugins
 pub use executable::{
     ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin,
-    Edns0Option, FallbackPlugin, ForwardEdns0OptPlugin, IpPreference, NftSetPlugin,
-    QuerySummaryPlugin, RateLimitPlugin, RedirectPlugin, ReverseLookupPlugin, RosAddrlistPlugin,
-    SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
+    Edns0OptPlugin, Edns0Option, FallbackPlugin, IpPreference, NftSetPlugin, QuerySummaryPlugin,
+    RateLimitPlugin, RedirectPlugin, ReverseLookupPlugin, RosAddrlistPlugin, SequencePlugin,
+    SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 #[cfg(feature = "cron")]

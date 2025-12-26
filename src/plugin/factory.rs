@@ -10,6 +10,7 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
+use tracing::debug;
 
 /// Plugin factory trait for self-registering plugins
 ///
@@ -435,6 +436,7 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::executable::black_hole::BLACKHOLE_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::fallback::FALLBACK_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::redirect::REDIRECT_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::executable::edns0opt::EDNS0_OPT_PLUGIN_FACTORY);
 
         Lazy::force(&crate::plugins::server::UDP_SERVER_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::server::TCP_SERVER_PLUGIN_FACTORY);
@@ -451,7 +453,8 @@ pub fn initialize_all_plugin_factories() {
 
         let count = get_all_plugin_types().len();
         if count > 0 {
-            tracing::debug!("Initialized {} plugin factories", count);
+            let types = get_all_plugin_types();
+            debug!("Initialized {} plugin factories: {:?}", count, types);
         }
     });
 }
@@ -497,7 +500,7 @@ pub fn initialize_all_exec_plugin_factories() {
         let count = get_all_exec_plugin_types().len();
         if count > 0 {
             let types = get_all_exec_plugin_types();
-            tracing::debug!("Initialized {} exec plugin factories: {:?}", count, types);
+            debug!("Initialized {} exec plugin factories: {:?}", count, types);
         }
     });
 }

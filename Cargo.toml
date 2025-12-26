@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.2.40"
+version = "0.2.41"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A DNS server implementation in Rust, inspired by mosdns"
@@ -101,7 +101,7 @@ tempfile = "3.24"
 rcgen = "0.14"
 
 [features]
-default = ["log-ansi", "metrics"]
+default = ["log-ansi"]
 # Enable cron expression parsing for cron plugin
 cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
 # Enable structured  JSON logging output with time stamps
