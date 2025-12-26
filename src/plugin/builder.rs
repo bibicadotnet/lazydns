@@ -332,34 +332,7 @@ fn parse_exec_action(builder: &PluginBuilder, exec_value: &Value) -> Result<Arc<
                         plugin_name
                     )))
                 }
-            }
-            // else if exec_str == "accept" {
-            //     Ok(Arc::new(crate::plugins::AcceptPlugin::new()))
-            // } else if exec_str == "drop_resp" {
-            //     Ok(Arc::new(crate::plugins::DropRespPlugin::new()))
-            // } else if exec_str.starts_with("reject") {
-            //     // reject [rcode] - default to 3 (NXDOMAIN)
-            //     let rcode = if let Some(rest) = exec_str.strip_prefix("reject") {
-            //         rest.trim().parse::<u8>().unwrap_or(3)
-            //     } else {
-            //         3
-            //     };
-            //     Ok(Arc::new(crate::plugins::RejectPlugin::new(rcode)))
-            // } else if exec_str.starts_with("black_hole") {
-            //     Ok(Arc::new(
-            //         crate::plugins::BlackholePlugin::new_from_strs(Vec::<&str>::new()).unwrap(),
-            //     ))
-            // } else if let Some(target) = exec_str.strip_prefix("jump ") {
-            //     // jump target_name
-            //     let target = target.trim();
-            //     Ok(Arc::new(crate::plugins::JumpPlugin::new(target)))
-            // }
-            // else if exec_str == "prefer_ipv4" {
-            //     Ok(Arc::new(crate::plugins::PreferIpv4Plugin::new()))
-            // } else if exec_str == "prefer_ipv6" {
-            //     Ok(Arc::new(crate::plugins::PreferIpv6Plugin::new()))
-            // }
-            else {
+            } else {
                 Err(Error::Config(format!("Unknown exec action: {}", exec_str)))
             }
         }
@@ -380,18 +353,20 @@ fn parse_condition(
     if let Some(condition_builder) = registry.get_builder(condition_str) {
         condition_builder.build(condition_str, builder)
     } else {
-        // Fallback to legacy hardcoded implementation for backward compatibility
-        // (This can be removed once all conditions are migrated to builders)
-        tracing::debug!(
-            "No condition builder found for: {}, using legacy parser",
+        // Unsupported condition
+        Err(Error::Config(format!(
+            "Unknown condition: {}",
             condition_str
-        );
-        legacy_parse_condition(builder, condition_str)
+        )))
     }
 }
 
 /// Legacy hardcoded condition parsing (fallback for backward compatibility)
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, dead_code)]
+#[deprecated(
+    since = "0.2.43",
+    note = "Legacy condition parsing is deprecated. Please use the new condition builder framework."
+)]
 fn legacy_parse_condition(
     builder: &PluginBuilder,
     condition_str: &str,
