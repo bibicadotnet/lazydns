@@ -29,11 +29,11 @@ The Admin API is a separate HTTP server that runs alongside your main DNS server
 
 ### Features
 
-- ✅ Real-time cache statistics (size, hit rate, evictions)
-- ✅ Cache control operations (clear)
-- ✅ Configuration hot-reload
-- ✅ Server status and version information
-- ✅ Separate HTTP server (non-blocking)
+- Real-time cache statistics (size, hit rate, evictions)
+- Cache control operations (clear)
+- Configuration hot-reload
+- Server status and version information
+- Separate HTTP server (non-blocking)
 
 ### Limitations
 
@@ -105,7 +105,7 @@ admin:
 
 ## Security Considerations
 
-⚠️ **Important**: The Admin API has **no built-in authentication**. Anyone who can connect to the configured address can:
+**Important**: The Admin API has **no built-in authentication**. Anyone who can connect to the configured address can:
 
 - Clear the cache (affecting performance)
 - Reload configuration (potentially with malicious config)
@@ -304,7 +304,7 @@ curl -X POST http://127.0.0.1:8080/api/cache/control \
 - Emergency cache clearing
 - Performance testing
 
-#### ⚠️ Important Notes
+#### Important Notes
 
 - Cache clear is **immediate** and affects all domains
 - All cached DNS records will be re-fetched
@@ -401,7 +401,7 @@ curl -X POST http://127.0.0.1:8080/api/config/reload \
 - Update allow/blocklists
 - Modify timeouts
 
-#### ⚠️ Important Notes
+#### Important Notes
 
 - Configuration changes are **best-effort**
 - Some changes (like server listen addresses) require a full restart

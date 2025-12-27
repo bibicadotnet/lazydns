@@ -118,7 +118,7 @@ example.com             → equivalent to domain:example.com (if default is doma
 - Performance: **O(n)** - linear traversal
 - Evaluation order: Import order (first match wins)
 - Use case: Catch variations and domain names containing keywords, less precise
-- ⚠️ Warning: Can produce false positives (e.g., `keyword:ad` matches `add.com`, `advertisement.com`, `badword.com`)
+- Warning: Can produce false positives (e.g., `keyword:ad` matches `add.com`, `advertisement.com`, `badword.com`)
 
 #### Examples
 
@@ -156,7 +156,7 @@ regexp:(qq\|wechat)             → matches qq.com, wechat.com
 regexp:.*cdn.*                  → matches any domain containing "cdn"
 ```
 
-#### ⚠️ Performance Warning
+#### Performance Warning
 
 Regexp matching is CPU-intensive, especially with:
 - Complex backtracking patterns
@@ -458,10 +458,10 @@ domain:*.example.com
 
 ### 2. Performance Optimization
 
-- ✅ Use Full/Domain matches for known domains (O(1))
-- ✅ Place frequently matched rules early in Regexp/Keyword sections
-- ❌ Avoid excessive Regexp rules with complex backtracking
-- ❌ Don't use Keyword matches for everything (use Domain instead)
+- Use Full/Domain matches for known domains (O(1))
+- Place frequently matched rules early in Regexp/Keyword sections
+- Avoid excessive Regexp rules with complex backtracking
+- Don't use Keyword matches for everything (use Domain instead)
 
 ### 3. Accuracy vs Coverage
 
