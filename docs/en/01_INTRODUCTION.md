@@ -44,19 +44,9 @@ Client(s)
  Response -> Client(s)
 ```
 
-This pipeline is intentionally simple: listeners hand requests to a single handler which executes an ordered set of plugins. Plugins may short-circuit the pipeline by producing a response (e.g., `hosts` or `cache`) or let the request continue to upstreams.
-
-## Key concepts
-- Plugin types:
-  - **Query** plugins operate on request/response path and may return a DNS response.
-  - **Flow** plugins control execution (e.g., jump/goto/return semantics).
-  - **Exec** plugins perform side-effecting actions (e.g., update ipset, download files).
-- **Plugin factory / builder**: registration mechanism that allows plugins to be discovered and built from configuration.
-- **Datasets**: text-based domain and IP lists used by dataset plugins; support for auto-reload and merging of files/inline expressions.
-
 ## Quick links
-- [Quickstart](02_QUICKSTART.MD)
-- [Core configuration](04_CONFIGURATION.MD)
-- [Plugin guide](05_PLUGINS_USER_GUIDE.MD)
+- [Quickstart](02_QUICKSTART.md)
+- [Core configuration](04_CONFIGURATION.md)
+- [Plugin guide](05_PLUGINS_USER_GUIDE.md)
 
 

@@ -6,8 +6,15 @@ Explain plugin execution flow, priorities, and common plugin types:
 - `exec` plugins (side-effecting tasks)
 - `flow` plugins (control flow)
 
+## Key concepts
+- Plugin types:
+  - **Query** plugins operate on request/response path and may return a DNS response.
+  - **Exec** plugins perform side-effecting actions (e.g., update ipset, download files).
+  - **Flow** plugins control execution (e.g., jump/goto/return semantics).
+- **Plugin factory / builder**: registration mechanism that allows plugins to be discovered and built from configuration.
+- **Datasets**: text-based domain and IP lists used by dataset plugins; support for auto-reload and merging of files/inline expressions.
 
-### Example plugin sequence (ASCII)
+## Example plugin sequence (ASCII)
 This sequence shows a typical plugin chain where `hosts` provides immediate answers, `cache` handles cached responses, and `forward` sends queries to upstream resolvers when needed.
 
 ```
@@ -37,6 +44,8 @@ Client
   v
  Response -> Client
 ```
+This pipeline is intentionally simple: listeners hand requests to a single handler which executes an ordered set of plugins. Plugins may short-circuit the pipeline by producing a response (e.g., `hosts` or `cache`) or let the request continue to upstreams.
+
 
 
 ## Built-in Plugins
