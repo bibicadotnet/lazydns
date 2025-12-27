@@ -14,6 +14,10 @@
   * DataSet Plugins
     - [Domain Set](05_07_01_PLUGIN_DOMAIN_SET.md)
     - [IpSet](05_07_02_PLUGIN_IP_SET.md)
+  * Executable Plugins
+    - [Arbitrary](05_08_01_PLUGIN_ARBITRARY.md)
+    - [Black Hole](05_08_02_PLUGIN_BLACK_HOLE.md)
+    - [Collector](05_08_03_PLUGIN_COLLECTOR.md)
 * [Writing Plugins (Developer)](06_WRITING_PLUGINS.md)
 * [Datasets & Formats](07_DATASETS.md)
 * [Runtime & Operations](08_RUNTIME_OPERATIONS.md)

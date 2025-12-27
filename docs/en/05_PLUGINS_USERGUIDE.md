@@ -61,6 +61,9 @@ Short pages or subsections for major plugins with purpose & example config:
   * [`domain_set`](05_07_01_PLUGIN_DOMAIN_SET.md) — domain matching dataset (full/domain/regexp/keyword)
   * [`ipset`](05_07_02_PLUGIN_IP_SET.md) — extract A/AAAA addresses and materialize ipset entries
 - `executable.*` — exec-style plugins (downloader, ipset, nftset)
+  * [`arbitrary`](05_08_01_PLUGIN_ARBITRARY.md) — return predefined DNS records for matching queries
+  * [`blackhole`](05_08_02_PLUGIN_BLACK_HOLE.md) — return configured A/AAAA answers (sinkhole aliases)
+  * [`collector`](05_08_03_PLUGIN_COLLECTOR.md) — simple in-process query counter; optional Prometheus collector when built with `metrics` feature
 
 
 
