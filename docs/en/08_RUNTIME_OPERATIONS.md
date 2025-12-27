@@ -1,5 +1,7 @@
 # Runtime & Operations
 
+PLACEHOLDER: This section covers runtime operations, logging, metrics, config reloading, and health monitoring.
+
 ## Starting & Stopping
 - CLI flags and `--config`
 - Signal handling and graceful shutdown

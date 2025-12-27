@@ -1,5 +1,7 @@
 # Reference
 
+PLACEHOLDER: This section provides detailed reference material for users and developers.
+
 ## CLI reference
 Flags and descriptions (e.g., `--config`, `--dir`, `-v` verbosity).
 

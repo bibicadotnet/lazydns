@@ -5,15 +5,15 @@
 * [Installation & Updates](03_INSTALLATION.md)
 * [Configuration (Core)](04_CONFIGURATION.md)
 * [Plugins Guide (User)](05_PLUGINS_USERGUIDE.md)
-  * [Hosts](05_01_PLUGIN_HOSTS.md)
   * [Forward](05_02_PLUGIN_FORWARD.md)
   * [Cache](05_03_PLUGIN_CACHE.md)
   * [ACL](05_04_PLUGIN_ACL.md)
-  * [GeoIP & GeoSite](05_05_PLUGIN_GEOIP_GEOSITE.md)
   * [Cron](05_06_PLUGIN_CRON.md)
   * DataSet Plugins
+    - [Hosts](05_01_PLUGIN_HOSTS.md)
     - [Domain Set](05_07_01_PLUGIN_DOMAIN_SET.md)
     - [Ip Set](05_07_02_PLUGIN_IP_SET.md)
+    - [GeoIP & GeoSite](05_05_PLUGIN_GEOIP_GEOSITE.md)
   * Executable Plugins
     - [`Sequence`](05_00_PLUGIN_SEQUENCE.md)
     - [Arbitrary](05_08_01_PLUGIN_ARBITRARY.md)
