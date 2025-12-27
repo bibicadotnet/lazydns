@@ -6,6 +6,39 @@ Explain plugin execution flow, priorities, and common plugin types:
 - `exec` plugins (side-effecting tasks)
 - `flow` plugins (control flow)
 
+
+### Example plugin sequence (ASCII)
+This sequence shows a typical plugin chain where `hosts` provides immediate answers, `cache` handles cached responses, and `forward` sends queries to upstream resolvers when needed.
+
+```
+Client
+  |
+  v
+ [Listener]
+  |
+  v
+[Request Handler]
+  |
+  v
++--------------------------+
+| Plugin: hosts            |  => If match -> Respond (short-circuit)
++--------------------------+
+  |
+  v
++--------------------------+
+| Plugin: cache            |  => If cached -> Respond
++--------------------------+
+  |
+  v
++--------------------------+
+| Plugin: forward          |  => Query upstream and return response
++--------------------------+
+  |
+  v
+ Response -> Client
+```
+
+
 ## Built-in Plugins
 Short pages or subsections for major plugins with purpose & example config:
 - `forward` — forward queries to upstreams
