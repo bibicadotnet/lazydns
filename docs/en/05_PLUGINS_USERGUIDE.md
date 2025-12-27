@@ -66,6 +66,11 @@ Short pages or subsections for major plugins with purpose & example config:
   * [`collector`](05_08_03_PLUGIN_COLLECTOR.md) — simple in-process query counter; optional Prometheus collector when built with `metrics` feature
   * [`debug_print`](05_08_04_PLUGIN_DEBUG_PRINT.md) — log queries/responses for debugging
   * [`downloader`](05_08_05_PLUGIN_DOWNLOADER.md) — download remote files and atomically update local files
+  * [`drop_resp`](05_08_06_PLUGIN_DROP_RESP.md) — clear any existing response in the execution context
+  * [`dual_selector`](05_08_07_PLUGIN_DUAL_SELECTOR.md) — filter answers by IPv4/IPv6 preference
+  * [`ecs`](05_08_08_PLUGIN_ECS.md) — prepare EDNS0 Client Subnet options (ECS)
+  * [`edns0opt`](05_08_09_PLUGIN_EDNS0OPT.md) — add arbitrary EDNS0 options for upstream queries
+  * [`fallback`](05_08_10_PLUGIN_FALLBACK.md) — try child plugins in order with automatic failover
 
 
 
