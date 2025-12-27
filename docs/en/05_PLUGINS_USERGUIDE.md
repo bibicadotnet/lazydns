@@ -64,6 +64,8 @@ Short pages or subsections for major plugins with purpose & example config:
   * [`arbitrary`](05_08_01_PLUGIN_ARBITRARY.md) — return predefined DNS records for matching queries
   * [`blackhole`](05_08_02_PLUGIN_BLACK_HOLE.md) — return configured A/AAAA answers (sinkhole aliases)
   * [`collector`](05_08_03_PLUGIN_COLLECTOR.md) — simple in-process query counter; optional Prometheus collector when built with `metrics` feature
+  * [`debug_print`](05_08_04_PLUGIN_DEBUG_PRINT.md) — log queries/responses for debugging
+  * [`downloader`](05_08_05_PLUGIN_DOWNLOADER.md) — download remote files and atomically update local files
 
 
 
