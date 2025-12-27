@@ -36,7 +36,7 @@ async fn integration_ipset_sequence() {
     ));
 
     // Construct rule-based ArbitraryPlugin from the response's answers
-    use lazydns::plugins::executable::arbitrary::ArbitraryArgs;
+    use lazydns::plugins::dataset::arbitrary::ArbitraryArgs;
     let mut rules = Vec::new();
     for rr in resp.answers() {
         match rr.rdata() {
@@ -107,7 +107,7 @@ async fn integration_nftset_sequence() {
         RData::A("198.51.100.9".parse().unwrap()),
     ));
 
-    use lazydns::plugins::executable::arbitrary::ArbitraryArgs;
+    use lazydns::plugins::dataset::arbitrary::ArbitraryArgs;
     let mut rules = Vec::new();
     for rr in resp.answers() {
         match rr.rdata() {

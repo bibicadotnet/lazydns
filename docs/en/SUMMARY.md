@@ -14,9 +14,9 @@
     - [Domain Set](05_07_01_PLUGIN_DOMAIN_SET.md)
     - [Ip Set](05_07_02_PLUGIN_IP_SET.md)
     - [GeoIP & GeoSite](05_05_PLUGIN_GEOIP_GEOSITE.md)
+    - [Arbitrary](05_08_01_PLUGIN_ARBITRARY.md)
   * Executable Plugins
     - [`Sequence`](05_00_PLUGIN_SEQUENCE.md)
-    - [Arbitrary](05_08_01_PLUGIN_ARBITRARY.md)
     - [Black Hole](05_08_02_PLUGIN_BLACK_HOLE.md)
     - [Collector](05_08_03_PLUGIN_COLLECTOR.md)
     - [Debug Print](05_08_04_PLUGIN_DEBUG_PRINT.md)

@@ -6,8 +6,6 @@ Start with the Quickstart to run lazydns locally, or browse the sidebar/SUMMARY 
 
 ---
 
-If you maintain released documentation elsewhere (e.g., a hosted site), keep this folder as the canonical repository of source docs (markdown) used to publish that site.
-
 ## Quick Navigation
 
 Use the site sidebar (`en/SUMMARY.md`) or the quick links below to jump to common pages:
@@ -26,9 +24,9 @@ Use the site sidebar (`en/SUMMARY.md`) or the quick links below to jump to commo
     - [Domain Set](en/05_07_01_PLUGIN_DOMAIN_SET.md)
     - [Ip Set](en/05_07_02_PLUGIN_IP_SET.md)
     - [GeoIP & GeoSite](en/05_05_PLUGIN_GEOIP_GEOSITE.md)
+    - [Arbitrary](en/05_08_01_PLUGIN_ARBITRARY.md)
   * Executable Plugins
     - [`Sequence`](en/05_00_PLUGIN_SEQUENCE.md)
-    - [Arbitrary](en/05_08_01_PLUGIN_ARBITRARY.md)
     - [Black Hole](en/05_08_02_PLUGIN_BLACK_HOLE.md)
     - [Collector](en/05_08_03_PLUGIN_COLLECTOR.md)
     - [Debug Print](en/05_08_04_PLUGIN_DEBUG_PRINT.md)
@@ -51,7 +49,6 @@ Use the site sidebar (`en/SUMMARY.md`) or the quick links below to jump to commo
 * [Writing Plugins (Developer)](en/06_WRITING_PLUGINS.md)
 * [Datasets & Formats](en/07_DATASETS.md)
 * [Changelog](en/16_CHANGELOG.md)
-* [Appendix](en/17_APPENDIX.md)
 
 ## Notes for developers / maintainers
 
@@ -67,5 +64,3 @@ These files live at the `docs/` root (non-recursive) and cover targeted topics u
 - [PLUGIN_DOWNLOADER](PLUGIN_DOWNLOADER.md) — How the plugin downloader works and how to use it.
 - [UPSTREAM_FEATURES](UPSTREAM_FEATURES.md) — List of upstream (`mosdns`) features and differences.
 - [BREAKING_CHANGE_REQUESTCONTEXT](BREAKING_CHANGE_REQUESTCONTEXT.md) — Migration notes for RequestContext breaking changes.
-
-If you publish docs elsewhere, keep this repository as the canonical source and update the hosted site from these files.

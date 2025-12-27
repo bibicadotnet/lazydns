@@ -1,7 +1,6 @@
 //! Executable plugins for DNS query processing
 //!
 //! This module contains plugins that perform actions on DNS queries and responses.
-
 pub mod arbitrary;
 pub mod black_hole;
 pub mod collector;
@@ -24,7 +23,6 @@ pub mod sequence;
 pub mod sleep;
 pub mod ttl;
 
-pub use arbitrary::ArbitraryPlugin;
 pub use black_hole::BlackholePlugin;
 pub use collector::MetricsCollectorPlugin;
 #[cfg(feature = "metrics")]

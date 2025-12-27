@@ -39,13 +39,12 @@ pub mod flow;
 pub mod forward;
 pub mod geoip;
 pub mod geosite;
-pub mod hosts;
 // utils module moved to crate-level `src/utils.rs`
 
 // Re-export plugins
 pub use acl::{AclAction, QueryAclPlugin};
 pub use cache::CachePlugin;
-pub use dataset::{DomainSetPlugin, IpSetPlugin};
+pub use dataset::{ArbitraryPlugin, DomainSetPlugin, HostsPlugin, IpSetPlugin};
 pub use flow::{
     AcceptPlugin, GotoPlugin, JumpPlugin, PreferIpv4Plugin, PreferIpv6Plugin, RejectPlugin,
     ReturnPlugin,
@@ -53,16 +52,16 @@ pub use flow::{
 pub use forward::{ForwardPlugin, LoadBalanceStrategy};
 pub use geoip::GeoIpPlugin;
 pub use geosite::GeoSitePlugin;
-pub use hosts::HostsPlugin;
+// Hosts and Arbitrary moved to `plugins::dataset`
 
 // Re-export matcher plugins (mostly deprecated, see condition builders)
 
 // Re-export executable plugins
 pub use executable::{
-    ArbitraryPlugin, BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin,
-    Edns0OptPlugin, Edns0Option, FallbackPlugin, IpPreference, MarkPlugin, NftSetPlugin,
-    QuerySummaryPlugin, RateLimitPlugin, RedirectPlugin, ReverseLookupPlugin, RosAddrlistPlugin,
-    SequencePlugin, SequenceStep, SleepPlugin, TtlPlugin,
+    BlackholePlugin, DebugPrintPlugin, DropRespPlugin, DualSelectorPlugin, Edns0OptPlugin,
+    Edns0Option, FallbackPlugin, IpPreference, MarkPlugin, NftSetPlugin, QuerySummaryPlugin,
+    RateLimitPlugin, RedirectPlugin, ReverseLookupPlugin, RosAddrlistPlugin, SequencePlugin,
+    SequenceStep, SleepPlugin, TtlPlugin,
 };
 
 #[cfg(feature = "cron")]
