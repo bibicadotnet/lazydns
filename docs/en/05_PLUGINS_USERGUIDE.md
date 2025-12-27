@@ -59,7 +59,8 @@ Short pages or subsections for major plugins with purpose & example config:
 - [`cron`](05_06_PLUGIN_CRON.md) — scheduled background jobs (HTTP, command, invoke-plugin)
 - `dataset.*` — domain/ip sets
   * [`domain_set`](05_07_01_PLUGIN_DOMAIN_SET.md) — domain matching dataset (full/domain/regexp/keyword)
-  * [`ipset`](05_07_02_PLUGIN_IP_SET.md) — extract A/AAAA addresses and materialize ipset entries
+  * [`ip_set`](05_07_02_PLUGIN_IP_SET.md) — extract A/AAAA addresses and materialize ipset entries
+- `sequence` — [`Sequence plugin`](05_00_PLUGIN_SEQUENCE.md) — rule-based executor to compose plugins into chains
 - `executable.*` — exec-style plugins (downloader, ipset, nftset)
   * [`arbitrary`](05_08_01_PLUGIN_ARBITRARY.md) — return predefined DNS records for matching queries
   * [`blackhole`](05_08_02_PLUGIN_BLACK_HOLE.md) — return configured A/AAAA answers (sinkhole aliases)
@@ -71,6 +72,16 @@ Short pages or subsections for major plugins with purpose & example config:
   * [`ecs`](05_08_08_PLUGIN_ECS.md) — prepare EDNS0 Client Subnet options (ECS)
   * [`edns0opt`](05_08_09_PLUGIN_EDNS0OPT.md) — add arbitrary EDNS0 options for upstream queries
   * [`fallback`](05_08_10_PLUGIN_FALLBACK.md) — try child plugins in order with automatic failover
+  * [`ipset` (exec)](05_08_11_PLUGIN_IPSET_EXEC.md) — materialize A/AAAA answers into ipset entries
+  * [`mark`](05_08_12_PLUGIN_MARK.md) — set lightweight metadata marks on the request
+  * [`nftset`](05_08_13_PLUGIN_NFTSET.md) — materialize A/AAAA answers into nftables sets
+  * [`query_summary`](05_08_14_PLUGIN_QUERY_SUMMARY.md) — build and store a concise request summary
+  * [`rate_limit`](05_08_15_PLUGIN_RATE_LIMIT.md) — per-client rate limiting
+  * [`redirect`](05_08_16_PLUGIN_REDIRECT.md) — rewrite query names (supports wildcards)
+  * [`reverse_lookup`](05_08_17_PLUGIN_REVERSE_LOOKUP.md) — cache A/AAAA -> name mappings and answer PTR
+  * [`ros_addrlist`](05_08_18_PLUGIN_ROS_ADDRLIST.md) — RouterOS address list helper and notifier
+  * [`sleep`](05_08_19_PLUGIN_SLEEP.md) — pause execution for a duration
+  * [`ttl`](05_08_20_PLUGIN_TTL.md) — fix or clamp TTL values on responses
 
 
 
