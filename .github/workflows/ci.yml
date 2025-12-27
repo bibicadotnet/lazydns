@@ -97,6 +97,7 @@ jobs:
       
       # detect unused dependencies
       - name: Machete
+        if: runner.os == 'Linux'
         uses: bnjbvr/cargo-machete@main
 
   coverage:
