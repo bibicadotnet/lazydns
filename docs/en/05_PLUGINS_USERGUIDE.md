@@ -58,7 +58,10 @@ Short pages or subsections for major plugins with purpose & example config:
 - [`geosite`](05_05_PLUGIN_GEOIP_GEOSITE.md) — domain category tagging (GeoSite)
 - [`cron`](05_06_PLUGIN_CRON.md) — scheduled background jobs (HTTP, command, invoke-plugin)
 - `dataset.*` — domain/ip sets
+  * [`domain_set`](05_07_01_PLUGIN_DOMAIN_SET.md) — domain matching dataset (full/domain/regexp/keyword)
+  * [`ipset`](05_07_02_PLUGIN_IP_SET.md) — extract A/AAAA addresses and materialize ipset entries
 - `executable.*` — exec-style plugins (downloader, ipset, nftset)
+
 
 
 ## Example plugin configuration

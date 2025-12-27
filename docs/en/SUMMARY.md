@@ -11,6 +11,9 @@
   * [ACL](05_04_PLUGIN_ACL.md)
   * [GeoIP & GeoSite](05_05_PLUGIN_GEOIP_GEOSITE.md)
   * [Cron](05_06_PLUGIN_CRON.md)
+  * DataSet Plugins
+    - [Domain Set](05_07_01_PLUGIN_DOMAIN_SET.md)
+    - [IpSet](05_07_02_PLUGIN_IP_SET.md)
 * [Writing Plugins (Developer)](06_WRITING_PLUGINS.md)
 * [Datasets & Formats](07_DATASETS.md)
 * [Runtime & Operations](08_RUNTIME_OPERATIONS.md)

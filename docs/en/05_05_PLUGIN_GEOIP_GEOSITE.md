@@ -39,7 +39,7 @@ Both plugins are useful for routing and policy decisions (e.g., sending China-ho
 ```yaml
 plugins:
   - tag: geoip
-    type: geoip
+    type: geo_ip
     config:
       metadata_key: country
       files:
