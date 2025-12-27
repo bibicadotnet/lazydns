@@ -56,6 +56,7 @@ Short pages or subsections for major plugins with purpose & example config:
 - [`acl`](05_04_PLUGIN_ACL.md) — allow/deny by client IP
 - [`geoip`](05_05_PLUGIN_GEOIP_GEOSITE.md) — IP-based country tagging (GeoIP)
 - [`geosite`](05_05_PLUGIN_GEOIP_GEOSITE.md) — domain category tagging (GeoSite)
+- [`cron`](05_06_PLUGIN_CRON.md) — scheduled background jobs (HTTP, command, invoke-plugin)
 - `dataset.*` — domain/ip sets
 - `executable.*` — exec-style plugins (downloader, ipset, nftset)
 
