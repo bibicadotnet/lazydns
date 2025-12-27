@@ -1,0 +1,33 @@
+# Plugins Guide (User)
+
+## Plugin System Overview
+Explain plugin execution flow, priorities, and common plugin types:
+- `query` plugins (manipulate DNS queries/responses)
+- `exec` plugins (side-effecting tasks)
+- `flow` plugins (control flow)
+
+## Built-in Plugins
+Short pages or subsections for major plugins with purpose & example config:
+- `forward` — forward queries to upstreams
+- `cache` — hierarchical cache with TTL handling
+- `hosts` — static hosts mapping
+- `acl` — allow/deny by client IP
+- `geoip` / `geosite` — geo-based rules
+- `dataset.*` — domain/ip sets
+- `executable.*` — exec-style plugins (downloader, ipset, nftset)
+
+## Example plugin configuration
+```yaml
+plugins:
+  - tag: cache
+    type: cache
+    config:
+      min_ttl: 30
+```
+
+## Ordering & Priority
+How priorities and plugin lists affect execution.
+
+---
+
+TODO: Link each built-in plugin to deeper docs pages.

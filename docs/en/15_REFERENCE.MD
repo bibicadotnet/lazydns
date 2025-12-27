@@ -1,0 +1,17 @@
+# Reference
+
+## CLI reference
+Flags and descriptions (e.g., `--config`, `--dir`, `-v` verbosity).
+
+## Configuration schema
+Field reference with types and defaults (link to `config` module docs where possible).
+
+## Plugin registry
+List of registered plugin types and short descriptions.
+
+## API docs
+Link to `cargo doc` generated HTML for developers.
+
+---
+
+TODO: Generate a machine-readable config schema if useful.
