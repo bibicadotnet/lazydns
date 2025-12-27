@@ -22,6 +22,7 @@ Implement a Rust version of mosdns with **100% feature parity or better**, featu
 
 ## 📚 Documentation
 
+- **[Docs Home](docs/README.md)** - Main documentation index
 - **[Implementation](docs/IMPLEMENTATION.md)** - Phased implementation roadmap
 - **[Environment Overrides](docs/ENV_OVERRIDE.md)** - Configuration via environment variables
 - **[Cache Configuration](docs/CACHE_CONFIG_GUIDE.md)** - Advanced caching setup

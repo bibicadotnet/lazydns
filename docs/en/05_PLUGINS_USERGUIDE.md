@@ -50,13 +50,15 @@ This pipeline is intentionally simple: listeners hand requests to a single handl
 
 ## Built-in Plugins
 Short pages or subsections for major plugins with purpose & example config:
-- `forward` — forward queries to upstreams
-- `cache` — hierarchical cache with TTL handling
-- `hosts` — static hosts mapping
-- `acl` — allow/deny by client IP
-- `geoip` / `geosite` — geo-based rules
+- [`forward`](05_02_PLUGIN_FORWARD.md) — forward queries to upstreams
+- [`cache`](05_03_PLUGIN_CACHE.md) — hierarchical cache with TTL handling and LazyCache
+- [`hosts`](05_01_PLUGIN_HOSTS.md) — static hosts mapping
+- [`acl`](05_04_PLUGIN_ACL.md) — allow/deny by client IP
+- [`geoip`](05_05_PLUGIN_GEOIP_GEOSITE.md) — IP-based country tagging (GeoIP)
+- [`geosite`](05_05_PLUGIN_GEOIP_GEOSITE.md) — domain category tagging (GeoSite)
 - `dataset.*` — domain/ip sets
 - `executable.*` — exec-style plugins (downloader, ipset, nftset)
+
 
 ## Example plugin configuration
 ```yaml
