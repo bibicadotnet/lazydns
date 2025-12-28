@@ -4,13 +4,13 @@
 
 You can install lazydns using a number of methods depending on your platform and preferences.
 
-### Install via `cargo install`
+### 1. Install via `cargo install`, the rusty way
 Installs the latest published crate to your Cargo bin directory:
 ```bash
 cargo install lazydns
 ```
 
-### Debian / Ubuntu (.deb via APT repo)
+### 2.1 Debian / Ubuntu (.deb via APT repo)
 Add the repository key and source, then install with `apt`:
 ```bash
 sudo curl -fsSL https://raw.githubusercontent.com/lazywalker/apt/refs/heads/master/debian/key.asc -o /etc/apt/trusted.gpg.d/lazywalker.asc
@@ -21,7 +21,7 @@ sudo apt update
 sudo apt install lazydns
 ```
 
-### Raspberry Pi OS (Trixie, arm64)
+### 2.2 Raspberry Pi OS (Trixie, arm64)
 Use the same repo but restrict to `arm64` architecture in the sources.list entry:
 ```bash
 sudo curl -fsSL https://raw.githubusercontent.com/lazywalker/apt/refs/heads/master/debian/key.asc -o /etc/apt/trusted.gpg.d/lazywalker.asc
@@ -31,15 +31,33 @@ echo "deb [arch=arm64] https://raw.githubusercontent.com/lazywalker/apt/refs/hea
 sudo apt update
 sudo apt install lazydns
 ```
+### 3. Systemd Service Setup (via apt & systemd Linux)
+after installation, modify the config file at `/etc/lazydns/lazydns.toml` as needed, then start the service:
+```bash
+sudo systemctl start lazydns
+```
+the service will auto-start on boot. Check status with:
+```bash
+sudo systemctl status lazydns
+```
+check logs with:
+```bash
+sudo journalctl -u lazydns -f
+```
+or view the log file at `/var/log/lazydns/lazydns.log.*`.
 
-### Homebrew (macOS / Linuxbrew)
+### 4. Homebrew (macOS / Linuxbrew)
 Tap the Homebrew repository and install via `brew`:
 ```bash
 brew tap lazywalker/lazydns
 brew install lazydns
+
+# make modifications to config file if needed
+# then start the service
+brew services start lazydns
 ```
 
-### Docker
+### 5. Docker
 Run lazydns from the official Docker image. Example command (adjust volumes, ports and environment as needed):
 ```bash
 docker run -d \
