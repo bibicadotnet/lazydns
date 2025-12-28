@@ -15,9 +15,9 @@
 ## Documentation
 
 - **[Docs Home](docs/README.md)** - Main documentation index
+- **[Installation Guide](docs/en/03_INSTALLATION.md)** - Installation methods
+- **[Configuration Guide](docs/en/04_CONFIGURATION.md)** - Configuration file reference
 - **[Implementation](docs/IMPLEMENTATION.md)** - Phased implementation roadmap
-- **[Environment Overrides](docs/ENV_OVERRIDE.md)** - Configuration via environment variables
-- **[Cache Configuration](docs/CACHE_CONFIG_GUIDE.md)** - Advanced caching setup
 
 ## Current Status:
 
@@ -32,34 +32,6 @@
 - [x] Multi-profile builds (minimal/full) with UPX compression
 - [x] Documentation and Docker packaging
 
-## Key Features (v0.2.43)
-
-### Intelligent Cache System
-
-- **LazyCache with Stale-Serving**: Background refresh cache with `cache_ttl` support for serving expired results during upstream failures
-- **Performance**: Significantly improved DNS resolution speed and cache hit rates
-- **Metrics**: Integrated Prometheus metrics for cache performance monitoring
-
-### Comprehensive Monitoring
-
-- **Prometheus Integration**: Cache metrics, query statistics, and health checks
-- **Admin Interface**: Graceful shutdown and runtime configuration management
-
-### Advanced Condition Matching
-
-- **Flexible Rules**: Support for qclass, rcode, has_cname, and complex rule combinations
-- **Granular Control**: Fine-tuned DNS traffic routing and filtering
-
-### Environment Variable Configuration
-
-- **Runtime Config**: `METRICS_ADDR`, `METRICS_ENABLED`, `ADMIN_ADDR`, `ADMIN_ENABLED`
-- **Deployment Friendly**: Container-ready configuration via environment variables or `.env` files
-
-### Optimized Build System
-
-- **Multi-Profile**: Minimal (<2MB) and full (<4MB) builds with UPX compression
-- **Cross-Platform**: Linux, macOS, Windows, FreeBSD across multiple architectures
-- **Compact Binaries**: Highly optimized Rust binaries for efficient deployment
 
 ## Contributing
 
