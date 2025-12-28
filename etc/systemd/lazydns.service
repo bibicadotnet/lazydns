@@ -6,8 +6,7 @@ After=network.target
 [Service]
 Type=simple
 # Path to the installed binary; adjust if you install elsewhere
-ExecStart=/usr/bin/lazydns
-EnvironmentFile=/etc/lazydns/config.yaml
+ExecStart=/usr/bin/lazydns -c /etc/lazydns/config.toml
 Restart=on-failure
 RestartSec=5s
 # Run as root by default; change User= if you create a dedicated service user
@@ -17,5 +16,5 @@ AmbientCapabilities=CAP_SYS_ADMIN
 [Install]
 WantedBy=multi-user.target
 [Unit]
-Description=Sleep Remap PowerKey
+Description=LazyDNS Service
 After=basic.target

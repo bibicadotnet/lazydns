@@ -64,6 +64,14 @@ jobs:
       - name: Install cross
         run: cargo install --version 0.2.5 cross
 
+      - name: Install cross toolchain for aarch64
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
       - name: Install cargo-deb (only for deb targets)
         if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-gnu'
         run: cargo install cargo-deb
@@ -73,17 +81,11 @@ jobs:
           cross build --profile minimal --target ${{ matrix.target }}
           cross build --profile full --all-features --target ${{ matrix.target }}
 
-      - name: Generate deb for x86_64
-        # Generate .deb package for native x86_64 with automatic dependency detection
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
+      - name: Generate deb for target
+        # Generate .deb packages for Linux targets x86_64 and ARM64 only
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           cargo deb --no-build --profile full --target ${{ matrix.target }}
-
-      - name: Generate deb for aarch64 (ci variant)
-        # Use the 'ci' variant (depends = []) to skip dpkg-shlibdeps on cross-built aarch64
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          cargo deb --variant=ci --no-build --profile full --no-strip --target ${{ matrix.target }}
 
       - name: Run UPX (non-Windows)
         # UPX may not support some platforms; ignore errors
