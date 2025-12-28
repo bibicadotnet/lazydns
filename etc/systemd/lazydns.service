@@ -6,7 +6,7 @@ After=network.target
 [Service]
 Type=simple
 # Path to the installed binary; adjust if you install elsewhere
-ExecStart=/usr/bin/lazydns -c /etc/lazydns/config.toml
+ExecStart=/usr/bin/lazydns -c /etc/lazydns/config.yaml
 Restart=on-failure
 RestartSec=5s
 # Run as root by default; change User= if you create a dedicated service user
