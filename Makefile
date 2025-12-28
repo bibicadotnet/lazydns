@@ -72,3 +72,14 @@ local: build-for
 	@echo "Using EXTRA features: $(EXTRA)"; \
 	docker buildx build --platform $(PLATFORM) --output=type=docker -f docker/Dockerfile.local.scratch -t lazywalker/lazydns:local .; \
 	docker save lazywalker/lazydns:local > lazydns.tar
+
+
+# Generate man pages from markdown sources using pandoc
+.PHONY: man
+man:
+	@echo "Generating man pages from docs/man/*.md"
+	@for f in docs/man/*.md; do \
+		out=$${f%.md}; \
+		pandoc -s -t man "$$f" -o "$$out" && gzip -f "$$out"; \
+	done
+

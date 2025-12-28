@@ -186,6 +186,21 @@ assets = [
         "etc/lazydns/",
         "644",
     ],
+    [
+        "docs/man/lazydns.1.gz",
+        "usr/share/man/man1/",
+        "644",
+    ],
+    [
+        "docs/man/lazydns.5.gz",
+        "usr/share/man/man5/",
+        "644",
+    ],
+    [
+        "docs/man/lazydns.8.gz",
+        "usr/share/man/man8/",
+        "644",
+    ],
 ]
 maintainer-scripts = "etc/systemd/"
 systemd-units = { enable = true }
