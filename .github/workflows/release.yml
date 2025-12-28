@@ -73,11 +73,17 @@ jobs:
           cross build --profile minimal --target ${{ matrix.target }}
           cross build --profile full --all-features --target ${{ matrix.target }}
 
-      - name: Generate deb for target
-        # Generate .deb packages for Linux targets x86_64 and ARM64 only
-        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Generate deb for x86_64
+        # Generate .deb package for native x86_64 with automatic dependency detection
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           cargo deb --no-build --profile full --target ${{ matrix.target }}
+
+      - name: Generate deb for aarch64 (ci variant)
+        # Use the 'ci' variant (depends = []) to skip dpkg-shlibdeps on cross-built aarch64
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          cargo deb --variant=ci --no-build --profile full --target ${{ matrix.target }}
 
       - name: Run UPX (non-Windows)
         # UPX may not support some platforms; ignore errors

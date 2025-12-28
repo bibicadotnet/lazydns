@@ -189,3 +189,7 @@ assets = [
 ]
 maintainer-scripts = "etc/systemd/"
 systemd-units = { enable = true }
+
+[package.metadata.deb.variants.ci]
+# Prevent automatic dependency detection (dpkg-shlibdeps) for CI cross-built packages
+depends = []
