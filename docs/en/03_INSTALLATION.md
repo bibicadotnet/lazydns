@@ -32,7 +32,7 @@ sudo apt update
 sudo apt install lazydns
 ```
 ### 3. Systemd Service Setup (via apt & systemd Linux)
-after installation, modify the config file at `/etc/lazydns/lazydns.toml` as needed, then start the service:
+after installation, modify the config file at `/etc/lazydns/lazydns.yaml` as needed, then start the service:
 ```bash
 sudo systemctl start lazydns
 ```
