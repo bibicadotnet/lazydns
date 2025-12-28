@@ -76,7 +76,7 @@ quinn = { version = "0.11", optional = true }
 base64 = "0.21"
 
 # Metrics
-prometheus = { version = "0.13", optional = true }
+prometheus = { version = "0.14", optional = true }
 
 # File watching for hot reload
 notify = "8.2"
