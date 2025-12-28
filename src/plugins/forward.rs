@@ -669,10 +669,10 @@ impl ForwardPlugin {
             {
                 use crate::metrics::{UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL};
                 UPSTREAM_QUERIES_TOTAL
-                    .with_label_values(&[&upstream.addr, "success"])
+                    .with_label_values(&[upstream.addr.as_str(), "success"])
                     .inc();
                 UPSTREAM_DURATION_SECONDS
-                    .with_label_values(&[&upstream.addr])
+                    .with_label_values(&[upstream.addr.as_str()])
                     .observe(elapsed.as_secs_f64());
             }
         } else {
@@ -681,7 +681,7 @@ impl ForwardPlugin {
             {
                 use crate::metrics::UPSTREAM_QUERIES_TOTAL;
                 UPSTREAM_QUERIES_TOTAL
-                    .with_label_values(&[&upstream.addr, "error"])
+                    .with_label_values(&[upstream.addr.as_str(), "error"])
                     .inc();
             }
         }
@@ -770,10 +770,10 @@ impl ForwardPlugin {
                                     UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL,
                                 };
                                 UPSTREAM_QUERIES_TOTAL
-                                    .with_label_values(&[&upstream.addr, "success"])
+                                    .with_label_values(&[upstream.addr.as_str(), "success"])
                                     .inc();
                                 UPSTREAM_DURATION_SECONDS
-                                    .with_label_values(&[&upstream.addr])
+                                    .with_label_values(&[upstream.addr.as_str()])
                                     .observe(elapsed.as_secs_f64());
                             }
                         }
@@ -787,7 +787,7 @@ impl ForwardPlugin {
                             {
                                 use crate::metrics::UPSTREAM_QUERIES_TOTAL;
                                 UPSTREAM_QUERIES_TOTAL
-                                    .with_label_values(&[&upstream.addr, "error"])
+                                    .with_label_values(&[upstream.addr.as_str(), "error"])
                                     .inc();
                             }
                         }

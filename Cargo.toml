@@ -3,7 +3,7 @@ name = "lazydns"
 version = "0.2.50"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
-description = "A DNS server/forwarder implementation in Rust, inspired by mosdns"
+description = "A light and fast DNS server/forwarder implementation in Rust"
 repository = "https://github.com/lazywalker/lazydns"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -170,7 +170,7 @@ maintainer = "lazywalker <lazywalkerz@gmail.com>"
 copyright = "2025, lazywalker <lazywalkerz@gmail.com>"
 license-file = ["LICENSE"]
 extended-description = """\
-A DNS server/forwarder implementation in Rust, inspired by mosdns.
+A light and fast DNS server/forwarder implementation in Rust.
 """
 section = "net"
 priority = "optional"
