@@ -1,9 +1,9 @@
 [package]
 name = "lazydns"
-version = "0.2.48"
+version = "0.2.50"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
-description = "A DNS server implementation in Rust, inspired by mosdns"
+description = "A DNS server/forwarder implementation in Rust, inspired by mosdns"
 repository = "https://github.com/lazywalker/lazydns"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -164,3 +164,28 @@ path = "examples/collector/metrics_collector_demo.rs"
 [[example]]
 name = "prometheus_metrics_collector_demo"
 path = "examples/collector/prometheus_metrics_collector_demo.rs"
+
+[package.metadata.deb]
+maintainer = "lazywalker <lazywalkerz@gmail.com>"
+copyright = "2025, lazywalker <lazywalkerz@gmail.com>"
+license-file = ["LICENSE"]
+extended-description = """\
+A DNS server/forwarder implementation in Rust, inspired by mosdns.
+"""
+section = "net"
+priority = "optional"
+assets = [
+    # `target/release` path is special and will be replaced by cargo-deb at build time
+    [
+        "target/release/lazydns",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "etc/lazydns/config.yaml",
+        "etc/lazydns/",
+        "644",
+    ],
+]
+maintainer-scripts = "etc/systemd/"
+systemd-units = { enable = true }
