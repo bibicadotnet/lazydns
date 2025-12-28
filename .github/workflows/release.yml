@@ -64,6 +64,10 @@ jobs:
       - name: Install cross
         run: cargo install --version 0.2.5 cross
 
+      - name: Install cargo-deb (only for deb targets)
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-gnu'
+        run: cargo install cargo-deb
+
       - name: Build release
         run: |
           cross build --profile minimal --target ${{ matrix.target }}
