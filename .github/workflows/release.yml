@@ -83,7 +83,7 @@ jobs:
         # Use the 'ci' variant (depends = []) to skip dpkg-shlibdeps on cross-built aarch64
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
-          cargo deb --variant=ci --no-build --profile full --target ${{ matrix.target }}
+          cargo deb --variant=ci --no-build --profile full --no-strip --target ${{ matrix.target }}
 
       - name: Run UPX (non-Windows)
         # UPX may not support some platforms; ignore errors
