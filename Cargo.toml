@@ -1,6 +1,6 @@
 [package]
 name = "lazydns"
-version = "0.2.51"
+version = "0.2.52"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A light and fast DNS server/forwarder implementation in Rust"
