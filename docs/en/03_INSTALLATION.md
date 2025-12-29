@@ -31,6 +31,13 @@ echo "deb [arch=arm64] https://raw.githubusercontent.com/lazywalker/apt/refs/hea
 sudo apt update
 sudo apt install lazydns
 ```
+
+### 2.3 Install on Arch Linux
+You can install lazydns from the Arch User Repository (AUR) using an AUR helper like `yay`:
+```bash
+yay -S lazydns-bin
+```
+
 ### 3. Systemd Service Setup (via apt & systemd Linux)
 after installation, modify the config file at `/etc/lazydns/lazydns.yaml` as needed, then start the service:
 ```bash
