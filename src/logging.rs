@@ -127,11 +127,17 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
                             .and_then(|s| s.to_str())
                             .unwrap_or("log");
 
-                        let rolling = if cfg.rotate == "daily" {
-                            tracing_appender::rolling::daily(rotation_dir, file_name)
+                        let rotation = if cfg.rotate == "daily" {
+                            tracing_appender::rolling::Rotation::DAILY
                         } else {
-                            tracing_appender::rolling::hourly(rotation_dir, file_name)
+                            tracing_appender::rolling::Rotation::HOURLY
                         };
+
+                        let rolling = tracing_appender::rolling::Builder::new()
+                            .rotation(rotation)
+                            .filename_prefix(file_name)
+                            .build(rotation_dir)
+                            .expect("failed to create rolling file appender");
 
                         let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
 
@@ -199,11 +205,17 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
                             .and_then(|s| s.to_str())
                             .unwrap_or("log");
 
-                        let rolling = if cfg.rotate == "daily" {
-                            tracing_appender::rolling::daily(rotation_dir, file_name)
+                        let rotation = if cfg.rotate == "daily" {
+                            tracing_appender::rolling::Rotation::DAILY
                         } else {
-                            tracing_appender::rolling::hourly(rotation_dir, file_name)
+                            tracing_appender::rolling::Rotation::HOURLY
                         };
+
+                        let rolling = tracing_appender::rolling::Builder::new()
+                            .rotation(rotation)
+                            .filename_prefix(file_name)
+                            .build(rotation_dir)
+                            .expect("failed to create rolling file appender");
 
                         let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
 
