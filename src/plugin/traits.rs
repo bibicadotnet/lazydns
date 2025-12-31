@@ -73,6 +73,26 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
         None
     }
 
+    /// Get the effective display name for logging
+    ///
+    /// Returns the tag if set, otherwise falls back to the plugin name.
+    /// This is useful for logging to distinguish between multiple instances
+    /// of the same plugin type.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use lazydns::plugin::Plugin;
+    /// # fn example(plugin: &dyn Plugin) {
+    /// // Instead of: plugin.tag().unwrap_or(plugin.name())
+    /// // Use: plugin.display_name()
+    /// println!("Executing plugin: {}", plugin.display_name());
+    /// # }
+    /// ```
+    fn display_name(&self) -> &str {
+        self.tag().unwrap_or(self.name())
+    }
+
     /// Check if this plugin should execute
     ///
     /// Plugins can override this to provide conditional execution logic.

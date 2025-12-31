@@ -151,15 +151,12 @@ impl Plugin for FallbackPlugin {
         debug!("Fallback: plugin count = {}", plugins.len());
         debug!(
             "Fallback children: {:?}",
-            plugins
-                .iter()
-                .map(|p| p.tag().unwrap_or(p.name()))
-                .collect::<Vec<_>>()
+            plugins.iter().map(|p| p.display_name()).collect::<Vec<_>>()
         );
         for (i, plugin) in plugins.iter().enumerate() {
             debug!(
                 "Fallback: trying plugin {} (index {})",
-                plugin.tag().unwrap_or(plugin.name()),
+                plugin.display_name(),
                 i
             );
 
@@ -168,7 +165,7 @@ impl Plugin for FallbackPlugin {
                 Err(e) => {
                     warn!(
                         plugin_index = i,
-                        plugin_name = plugin.tag().unwrap_or(plugin.name()),
+                        plugin_name = plugin.display_name(),
                         error = %e,
                         "Fallback: plugin failed"
                     );
@@ -180,7 +177,7 @@ impl Plugin for FallbackPlugin {
             if !self.should_fallback(ctx, had_error) {
                 debug!(
                     plugin_index = i,
-                    plugin_name = plugin.tag().unwrap_or(plugin.name()),
+                    plugin_name = plugin.display_name(),
                     "Fallback: plugin succeeded, stopping"
                 );
                 return Ok(());
@@ -189,7 +186,7 @@ impl Plugin for FallbackPlugin {
             if i < plugins.len() - 1 {
                 debug!(
                     plugin_index = i,
-                    plugin_name = plugin.tag().unwrap_or(plugin.name()),
+                    plugin_name = plugin.display_name(),
                     "Fallback: trying next plugin"
                 );
             }

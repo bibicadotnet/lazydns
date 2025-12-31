@@ -71,16 +71,13 @@ impl Plugin for SequencePlugin {
             match step {
                 SequenceStep::Exec(plugin) => {
                     trace!(
-                        plugin = plugin.tag().unwrap_or(plugin.name()),
+                        plugin = plugin.display_name(),
                         "Sequence: executing plugin (exec)"
                     );
                     match plugin.execute(ctx).await {
-                        Ok(_) => trace!(
-                            plugin = plugin.tag().unwrap_or(plugin.name()),
-                            "Sequence: exec succeeded"
-                        ),
+                        Ok(_) => trace!(plugin = plugin.display_name(), "Sequence: exec succeeded"),
                         Err(e) => {
-                            trace!(plugin = plugin.tag().unwrap_or(plugin.name()), error = %e, "Sequence: exec failed");
+                            trace!(plugin = plugin.display_name(), error = %e, "Sequence: exec failed");
                             return Err(e);
                         }
                     }
@@ -91,15 +88,15 @@ impl Plugin for SequencePlugin {
                     desc,
                 } => {
                     let cond = condition(ctx);
-                    trace!(condition = %desc, result = cond, plugin = action.tag().unwrap_or(action.name()), "Sequence: conditional step evaluated");
+                    trace!(condition = %desc, result = cond, plugin = action.display_name(), "Sequence: conditional step evaluated");
                     if cond {
-                        trace!(plugin = action.tag().unwrap_or(action.name()), condition = %desc, "Sequence: executing conditional action");
+                        trace!(plugin = action.display_name(), condition = %desc, "Sequence: executing conditional action");
                         match action.execute(ctx).await {
                             Ok(_) => {
-                                trace!(plugin = action.tag().unwrap_or(action.name()), condition = %desc, "Sequence: conditional action succeeded")
+                                trace!(plugin = action.display_name(), condition = %desc, "Sequence: conditional action succeeded")
                             }
                             Err(e) => {
-                                trace!(plugin = action.tag().unwrap_or(action.name()), condition = %desc, error = %e, "Sequence: conditional action failed");
+                                trace!(plugin = action.display_name(), condition = %desc, error = %e, "Sequence: conditional action failed");
                                 return Err(e);
                             }
                         }
