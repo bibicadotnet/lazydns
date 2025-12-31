@@ -19,6 +19,7 @@ Use the site sidebar (`en/SUMMARY.md`) or the quick links below to jump to commo
   * [Cache](en/05_03_PLUGIN_CACHE.md)
   * [ACL](en/05_04_PLUGIN_ACL.md)
   * [Cron](en/05_06_PLUGIN_CRON.md)
+  * [Domain Validator](en/05_09_PLUGIN_DOMAIN_VALIDATOR.md)
   * DataSet Plugins
     - [Hosts](en/05_01_PLUGIN_HOSTS.md)
     - [Domain Set](en/05_07_01_PLUGIN_DOMAIN_SET.md)

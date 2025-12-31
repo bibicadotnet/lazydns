@@ -9,6 +9,7 @@
   * [Cache](05_03_PLUGIN_CACHE.md)
   * [ACL](05_04_PLUGIN_ACL.md)
   * [Cron](05_06_PLUGIN_CRON.md)
+  * [Domain Validator](05_09_PLUGIN_DOMAIN_VALIDATOR.md)
   * DataSet Plugins
     - [Hosts](05_01_PLUGIN_HOSTS.md)
     - [Domain Set](05_07_01_PLUGIN_DOMAIN_SET.md)
