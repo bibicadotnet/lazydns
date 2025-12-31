@@ -1,0 +1,102 @@
+# Example configuration for DomainValidatorPlugin
+# This demonstrates how to use the domain_validator plugin to filter invalid DNS queries
+#
+# Usage:
+#   cargo run -- -c examples/domain_validator.demo.yaml -vv
+#
+# The domain_validator plugin validates domain names in DNS queries according to RFC 1035/1123.
+# Invalid domains are rejected early, reducing upstream load and improving server robustness.
+# It includes LRU caching for performance and optional blacklisting of specific domains.
+#
+# Configuration options:
+#   - cache_size: Maximum number of domains to cache validation results (integer, default: 1000)
+#   - blacklist: List of domain patterns to reject (array of strings, optional)
+#
+# Examples:
+#   - Default caching with no blacklist
+#   - Custom cache size with domain blacklisting
+#   - Integration with other plugins in sequences
+
+# Log configuration
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Domain validator with default settings (cache_size: 1000, no blacklist)
+  - tag: domain_validator_default
+    type: domain_validator
+    args:
+      cache_size: 1000
+
+  # Domain validator with custom cache size and blacklist
+  - tag: domain_validator_custom
+    type: domain_validator
+    args:
+      cache_size: 500
+      blacklist:
+        - "malicious.example.com"
+        - "*.blocked.org"
+        - "test.invalid"
+
+  # Forward to upstream DNS servers
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
+
+  # Arbitrary response plugin for testing valid domains
+  - tag: test_response
+    type: arbitrary
+    args:
+      rules:
+        - "valid.example.com A 192.0.2.1"
+        - "another.valid.com AAAA 2001:db8::1"
+
+  # Main sequence with default domain validation
+  - tag: main_sequence_with_validation
+    type: sequence
+    args:
+      - exec: $domain_validator_default
+      - exec: $test_response
+      - exec: accept
+
+  # Sequence with custom validation and blacklisting
+  - tag: custom_validation_sequence
+    type: sequence
+    args:
+      - exec: $domain_validator_custom
+      - exec: $test_response
+      - exec: accept
+
+  # UDP server with default domain validation
+  - tag: udp_server_default
+    type: udp_server
+    args:
+      entry: main_sequence_with_validation
+      listen: ":5354"
+
+  # UDP server with custom validation
+  - tag: udp_server_custom
+    type: udp_server
+    args:
+      entry: custom_validation_sequence
+      listen: ":5355"
+
+  # TCP server with default domain validation
+  - tag: tcp_server_default
+    type: tcp_server
+    args:
+      entry: main_sequence_with_validation
+      listen: ":5354"
+
+  # TCP server with custom validation
+  - tag: tcp_server_custom
+    type: tcp_server
+    args:
+      entry: custom_validation_sequence
+      listen: ":5355"

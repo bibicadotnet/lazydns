@@ -34,6 +34,7 @@ pub mod cache;
 #[cfg(feature = "cron")]
 pub mod cron;
 pub mod dataset;
+pub mod domain_validator;
 pub mod executable;
 pub mod flow;
 pub mod forward;

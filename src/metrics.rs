@@ -49,7 +49,8 @@
 
 use once_cell::sync::Lazy;
 use prometheus::{
-    HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
+    Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Opts,
+    Registry,
 };
 use std::sync::Arc;
 
@@ -196,6 +197,54 @@ pub static ACTIVE_CONNECTIONS: Lazy<IntGaugeVec> = Lazy::new(|| {
         .register(Box::new(gauge.clone()))
         .expect("Failed to register active_connections");
     gauge
+});
+
+/// Counter of domain validation events, labelled by `result`.
+///
+/// Labels:
+/// - `result`: validation outcome (e.g. `valid`, `invalid_chars`, `blacklisted`).
+pub static DNS_DOMAIN_VALIDATION_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let counter = IntCounterVec::new(
+        Opts::new(
+            "dns_domain_validation_total",
+            "Total number of domain validations",
+        ),
+        &["result"],
+    )
+    .expect("Failed to create dns_domain_validation_total metric");
+    METRICS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("Failed to register dns_domain_validation_total");
+    counter
+});
+
+/// Histogram of domain validation durations (seconds).
+pub static DNS_DOMAIN_VALIDATION_DURATION_SECONDS: Lazy<Histogram> = Lazy::new(|| {
+    let histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "dns_domain_validation_duration_seconds",
+            "Domain validation duration in seconds",
+        )
+        .buckets(vec![0.0001, 0.0005, 0.001, 0.005, 0.01]),
+    )
+    .expect("Failed to create dns_domain_validation_duration_seconds metric");
+    METRICS_REGISTRY
+        .register(Box::new(histogram.clone()))
+        .expect("Failed to register dns_domain_validation_duration_seconds");
+    histogram
+});
+
+/// Counter of domain validation cache hits.
+pub static DNS_DOMAIN_VALIDATION_CACHE_HITS_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
+    let counter = IntCounter::new(
+        "dns_domain_validation_cache_hits_total",
+        "Total number of domain validation cache hits",
+    )
+    .expect("Failed to create dns_domain_validation_cache_hits_total metric");
+    METRICS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("Failed to register dns_domain_validation_cache_hits_total");
+    counter
 });
 
 /// Counter of plugin execution events, labelled by `plugin` and `status`.
