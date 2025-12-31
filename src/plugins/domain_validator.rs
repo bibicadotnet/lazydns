@@ -15,7 +15,7 @@ use tracing::{debug, warn};
 
 /// Validation result
 #[derive(Debug, Clone, PartialEq)]
-enum ValidationResult {
+pub enum ValidationResult {
     Valid,
     InvalidChars,
     InvalidLength,
@@ -51,7 +51,7 @@ impl DomainValidatorPlugin {
     }
 
     /// Validate a domain name
-    fn validate_domain(&self, domain: &str) -> ValidationResult {
+    pub fn validate_domain(&self, domain: &str) -> ValidationResult {
         // Check blacklist first
         if self.blacklist.contains(domain)
             || self
