@@ -127,10 +127,10 @@ impl Plugin for DomainValidatorPlugin {
             .map(|q| q.qname().to_string())
             .unwrap_or_default();
 
-        // Check cache first
+        // Check cache first (using read lock and peek to avoid write contention)
         {
-            let mut cache = self.cache.write().await;
-            if let Some(result) = cache.get(&qname) {
+            let cache = self.cache.read().await;
+            if let Some(result) = cache.peek(&qname) {
                 #[cfg(feature = "metrics")]
                 {
                     crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_HITS_TOTAL.inc();
