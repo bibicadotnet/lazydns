@@ -38,6 +38,8 @@ pub struct IpSetPlugin {
     auto_reload: bool,
     /// Loaded IP networks (stored in shared state)
     networks: Arc<RwLock<Vec<IpNet>>>,
+    /// Tag from YAML config
+    tag: Option<String>,
 }
 
 impl IpSetPlugin {
@@ -49,6 +51,7 @@ impl IpSetPlugin {
             ips: Vec::new(),
             auto_reload: false,
             networks: Arc::new(RwLock::new(Vec::new())),
+            tag: None,
         }
     }
 
@@ -278,6 +281,10 @@ impl Plugin for IpSetPlugin {
         "ip_set"
     }
 
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
+    }
+
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         // Store the IP set in context metadata for other plugins to use
         ctx.set_metadata(format!("ip_set_{}", self.name), Arc::clone(&self.networks));
@@ -300,6 +307,7 @@ impl Plugin for IpSetPlugin {
         };
 
         let mut plugin = IpSetPlugin::new(name);
+        plugin.tag = config.tag.clone();
 
         if let Some(files_val) = args.get("files") {
             match files_val {

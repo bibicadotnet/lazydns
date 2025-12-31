@@ -395,6 +395,8 @@ pub struct DomainSetPlugin {
     default_match_type: MatchType,
     /// Loaded domain rules (stored in shared state)
     rules: Arc<RwLock<DomainRules>>,
+    /// Tag from YAML config
+    tag: Option<String>,
 }
 
 impl DomainSetPlugin {
@@ -407,6 +409,7 @@ impl DomainSetPlugin {
             auto_reload: false,
             default_match_type: MatchType::Domain,
             rules: Arc::new(RwLock::new(DomainRules::new())),
+            tag: None,
         }
     }
 
@@ -596,6 +599,10 @@ impl Plugin for DomainSetPlugin {
         "domain_set"
     }
 
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
+    }
+
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         // Store the domain rules in context metadata for other plugins to use
         ctx.set_metadata(format!("domain_set_{}", self.name), Arc::clone(&self.rules));
@@ -618,6 +625,7 @@ impl Plugin for DomainSetPlugin {
         };
 
         let mut plugin = DomainSetPlugin::new(name);
+        plugin.tag = config.tag.clone();
 
         // Parse default match type
         if let Some(s) = args

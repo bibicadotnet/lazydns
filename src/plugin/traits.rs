@@ -64,6 +64,15 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
     /// Returns a unique identifier for this plugin.
     fn name(&self) -> &str;
 
+    /// Get the plugin tag (from YAML configuration)
+    ///
+    /// Returns the tag value from the plugin's YAML configuration if set,
+    /// otherwise None. This allows distinguishing between multiple instances
+    /// of the same plugin type.
+    fn tag(&self) -> Option<&str> {
+        None
+    }
+
     /// Check if this plugin should execute
     ///
     /// Plugins can override this to provide conditional execution logic.

@@ -579,6 +579,8 @@ pub struct ForwardPlugin {
     current: AtomicUsize,
     /// Enable concurrent queries (race mode)
     concurrent_queries: bool,
+    /// Plugin tag from YAML configuration
+    tag: Option<String>,
 }
 
 impl ForwardPlugin {
@@ -607,6 +609,7 @@ impl ForwardPlugin {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         }
     }
 
@@ -636,6 +639,7 @@ impl ForwardPlugin {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         }
     }
 
@@ -895,6 +899,7 @@ impl Plugin for ForwardPlugin {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: concurrent,
+            tag: config.tag.clone(),
         };
 
         Ok(Arc::new(plugin))
@@ -927,6 +932,10 @@ impl Plugin for ForwardPlugin {
 
     fn name(&self) -> &str {
         "forward"
+    }
+
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
     }
 
     fn priority(&self) -> i32 {
@@ -1034,6 +1043,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         // Build a request message
@@ -1085,6 +1095,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         let mut req = Message::new();
@@ -1127,6 +1138,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
         let mut ctx2 = Context::new(req);
         let _res = bad_plugin.execute(&mut ctx2).await;
@@ -1152,6 +1164,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         assert_eq!(plugin.upstreams.len(), 2);
@@ -1232,6 +1245,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         let mut req = Message::new();
@@ -1274,6 +1288,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         assert_eq!(plugin.upstreams.len(), 1);
@@ -1380,6 +1395,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         let mut req = Message::new();
