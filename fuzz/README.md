@@ -12,6 +12,7 @@ This directory contains fuzz tests for the lazydns DNS server to help discover c
 
 - Rust nightly toolchain (required for fuzzing)
 - Install cargo-fuzz: `cargo install cargo-fuzz`
+  - For production/CI environments, pin to a specific version: `cargo install cargo-fuzz --version 0.13.1 --locked`
 
 ## Running Fuzz Tests
 
@@ -51,7 +52,9 @@ For continuous integration, you can add fuzz testing to your CI pipeline:
 ```yaml
 # Example GitHub Actions
 - name: Install cargo-fuzz
-  run: cargo install cargo-fuzz
+  run: |
+    # Pin to a specific version to mitigate supply-chain risks
+    cargo install cargo-fuzz --version 0.13.1 --locked
 
 - name: Run fuzz tests
   run: |
@@ -60,6 +63,8 @@ For continuous integration, you can add fuzz testing to your CI pipeline:
         timeout 60s cargo fuzz run $target -- -max_total_time=60 || true
     done
 ```
+
+**Security Note**: Always pin `cargo-fuzz` to a specific version in CI environments to prevent executing mutable third-party code with access to repository secrets and build artifacts. Update the version periodically after reviewing the release notes and changes.
 
 ## Corpus Management
 
