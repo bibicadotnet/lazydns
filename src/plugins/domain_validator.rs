@@ -57,14 +57,13 @@ impl DomainValidatorPlugin {
     /// - Wildcard match: "sub.blocked.org" matches "*.blocked.org"
     fn is_blacklisted(&self, domain: &str) -> bool {
         self.blacklist.iter().any(|pattern| {
-            if pattern.starts_with("*.") {
+            if let Some(suffix) = pattern.strip_prefix("*.") {
                 // Wildcard pattern: *.example.com
-                let suffix = &pattern[2..]; // Remove "*."
                 // Match: domain ends with .suffix OR domain equals suffix
-                domain == suffix || domain.ends_with(&format!(".{}", suffix))
+                domain == suffix || (domain.len() > suffix.len() && domain.ends_with(suffix) && domain.as_bytes()[domain.len() - suffix.len() - 1] == b'.')
             } else {
                 // Exact or suffix match
-                domain == pattern || domain.ends_with(&format!(".{}", pattern))
+                domain == pattern || (domain.len() > pattern.len() && domain.ends_with(pattern) && domain.as_bytes()[domain.len() - pattern.len() - 1] == b'.')
             }
         })
     }
