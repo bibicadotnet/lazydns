@@ -38,7 +38,7 @@ pub struct IpSetPlugin {
     auto_reload: bool,
     /// Loaded IP networks (stored in shared state)
     networks: Arc<RwLock<Vec<IpNet>>>,
-    /// Tag from YAML config
+    /// Plugin tag from YAML configuration
     tag: Option<String>,
 }
 
