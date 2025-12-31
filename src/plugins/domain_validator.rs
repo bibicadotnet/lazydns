@@ -363,6 +363,62 @@ mod tests {
             assert!(cache.contains("example.com"));
         }
     }
+
+    #[tokio::test]
+    async fn test_consecutive_dots() {
+        let plugin = DomainValidatorPlugin::default();
+        // Consecutive dots result in empty labels
+        assert_eq!(
+            plugin.validate_domain("example..com"),
+            ValidationResult::InvalidLength
+        );
+        assert_eq!(
+            plugin.validate_domain("sub..domain.example.com"),
+            ValidationResult::InvalidLength
+        );
+        assert_eq!(
+            plugin.validate_domain("..."),
+            ValidationResult::InvalidLength
+        );
+    }
+
+    #[tokio::test]
+    async fn test_domains_starting_with_dot() {
+        let plugin = DomainValidatorPlugin::default();
+        // Domains starting with dot have empty first label (except root ".")
+        assert_eq!(
+            plugin.validate_domain(".example.com"),
+            ValidationResult::InvalidLength
+        );
+        assert_eq!(
+            plugin.validate_domain(".com"),
+            ValidationResult::InvalidLength
+        );
+    }
+
+    #[tokio::test]
+    async fn test_domains_ending_with_dot() {
+        let plugin = DomainValidatorPlugin::default();
+        // Domains ending with dot have empty last label
+        assert_eq!(
+            plugin.validate_domain("example.com."),
+            ValidationResult::InvalidLength
+        );
+        assert_eq!(
+            plugin.validate_domain("localhost."),
+            ValidationResult::InvalidLength
+        );
+    }
+
+    #[tokio::test]
+    async fn test_empty_string() {
+        let plugin = DomainValidatorPlugin::default();
+        // Empty string should be invalid
+        assert_eq!(
+            plugin.validate_domain(""),
+            ValidationResult::InvalidLength
+        );
+    }
 }
 
 crate::register_plugin_builder!(DomainValidatorPlugin);
