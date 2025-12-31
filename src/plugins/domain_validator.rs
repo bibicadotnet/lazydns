@@ -70,10 +70,10 @@ impl DomainValidatorPlugin {
     /// Check if domain matches a suffix pattern
     /// Returns true if domain equals suffix or ends with ".suffix"
     fn matches_suffix(&self, domain: &str, suffix: &str) -> bool {
-        domain == suffix || 
-        (domain.len() > suffix.len() && 
-         domain.ends_with(suffix) && 
-         domain.as_bytes()[domain.len() - suffix.len() - 1] == b'.')
+        domain == suffix
+            || (domain.len() > suffix.len()
+                && domain.ends_with(suffix)
+                && domain.as_bytes()[domain.len() - suffix.len() - 1] == b'.')
     }
 
     /// Validate a domain name
@@ -363,10 +363,7 @@ mod tests {
         let plugin = DomainValidatorPlugin::new(
             true,
             1000,
-            vec![
-                "*.blocked.org".to_string(),
-                "*.test.invalid".to_string(),
-            ],
+            vec!["*.blocked.org".to_string(), "*.test.invalid".to_string()],
         );
 
         // Test wildcard pattern *.blocked.org
@@ -526,10 +523,7 @@ mod tests {
     async fn test_empty_string() {
         let plugin = DomainValidatorPlugin::default();
         // Empty string should be invalid
-        assert_eq!(
-            plugin.validate_domain(""),
-            ValidationResult::InvalidLength
-        );
+        assert_eq!(plugin.validate_domain(""), ValidationResult::InvalidLength);
     }
 }
 
