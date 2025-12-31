@@ -59,13 +59,21 @@ impl DomainValidatorPlugin {
         self.blacklist.iter().any(|pattern| {
             if let Some(suffix) = pattern.strip_prefix("*.") {
                 // Wildcard pattern: *.example.com
-                // Match: domain ends with .suffix OR domain equals suffix
-                domain == suffix || (domain.len() > suffix.len() && domain.ends_with(suffix) && domain.as_bytes()[domain.len() - suffix.len() - 1] == b'.')
+                self.matches_suffix(domain, suffix)
             } else {
                 // Exact or suffix match
-                domain == pattern || (domain.len() > pattern.len() && domain.ends_with(pattern) && domain.as_bytes()[domain.len() - pattern.len() - 1] == b'.')
+                self.matches_suffix(domain, pattern)
             }
         })
+    }
+
+    /// Check if domain matches a suffix pattern
+    /// Returns true if domain equals suffix or ends with ".suffix"
+    fn matches_suffix(&self, domain: &str, suffix: &str) -> bool {
+        domain == suffix || 
+        (domain.len() > suffix.len() && 
+         domain.ends_with(suffix) && 
+         domain.as_bytes()[domain.len() - suffix.len() - 1] == b'.')
     }
 
     /// Validate a domain name
