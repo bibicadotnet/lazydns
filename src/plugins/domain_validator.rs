@@ -50,15 +50,29 @@ impl DomainValidatorPlugin {
         }
     }
 
+    /// Check if a domain matches any blacklist pattern
+    /// Supports:
+    /// - Exact match: "example.com" matches "example.com"
+    /// - Suffix match: "sub.example.com" matches "example.com"
+    /// - Wildcard match: "sub.blocked.org" matches "*.blocked.org"
+    fn is_blacklisted(&self, domain: &str) -> bool {
+        self.blacklist.iter().any(|pattern| {
+            if pattern.starts_with("*.") {
+                // Wildcard pattern: *.example.com
+                let suffix = &pattern[2..]; // Remove "*."
+                // Match: domain ends with .suffix OR domain equals suffix
+                domain == suffix || domain.ends_with(&format!(".{}", suffix))
+            } else {
+                // Exact or suffix match
+                domain == pattern || domain.ends_with(&format!(".{}", pattern))
+            }
+        })
+    }
+
     /// Validate a domain name
     pub fn validate_domain(&self, domain: &str) -> ValidationResult {
         // Check blacklist first
-        if self.blacklist.contains(domain)
-            || self
-                .blacklist
-                .iter()
-                .any(|b| domain.ends_with(&format!(".{}", b)))
-        {
+        if self.is_blacklisted(domain) {
             return ValidationResult::Blacklisted;
         }
 
@@ -334,6 +348,97 @@ mod tests {
         assert_eq!(
             plugin.validate_domain("sub.malicious.com"),
             ValidationResult::Blacklisted
+        );
+    }
+
+    #[tokio::test]
+    async fn test_wildcard_blacklist() {
+        let plugin = DomainValidatorPlugin::new(
+            true,
+            1000,
+            vec![
+                "*.blocked.org".to_string(),
+                "*.test.invalid".to_string(),
+            ],
+        );
+
+        // Test wildcard pattern *.blocked.org
+        assert_eq!(
+            plugin.validate_domain("blocked.org"),
+            ValidationResult::Blacklisted
+        );
+        assert_eq!(
+            plugin.validate_domain("sub.blocked.org"),
+            ValidationResult::Blacklisted
+        );
+        assert_eq!(
+            plugin.validate_domain("deep.sub.blocked.org"),
+            ValidationResult::Blacklisted
+        );
+
+        // Test wildcard pattern *.test.invalid
+        assert_eq!(
+            plugin.validate_domain("test.invalid"),
+            ValidationResult::Blacklisted
+        );
+        assert_eq!(
+            plugin.validate_domain("any.test.invalid"),
+            ValidationResult::Blacklisted
+        );
+
+        // Test non-matching domains
+        assert_eq!(
+            plugin.validate_domain("example.com"),
+            ValidationResult::Valid
+        );
+        assert_eq!(
+            plugin.validate_domain("blocked.com"),
+            ValidationResult::Valid
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mixed_blacklist() {
+        let plugin = DomainValidatorPlugin::new(
+            true,
+            1000,
+            vec![
+                "exact.example.com".to_string(),
+                "*.wildcard.com".to_string(),
+                "suffix.org".to_string(),
+            ],
+        );
+
+        // Exact match
+        assert_eq!(
+            plugin.validate_domain("exact.example.com"),
+            ValidationResult::Blacklisted
+        );
+
+        // Wildcard match
+        assert_eq!(
+            plugin.validate_domain("wildcard.com"),
+            ValidationResult::Blacklisted
+        );
+        assert_eq!(
+            plugin.validate_domain("sub.wildcard.com"),
+            ValidationResult::Blacklisted
+        );
+
+        // Suffix match
+        assert_eq!(
+            plugin.validate_domain("suffix.org"),
+            ValidationResult::Blacklisted
+        );
+        assert_eq!(
+            plugin.validate_domain("sub.suffix.org"),
+            ValidationResult::Blacklisted
+        );
+
+        // Non-matching domains
+        assert_eq!(
+            plugin.validate_domain("example.com"),
+            ValidationResult::Valid
         );
     }
 
