@@ -180,8 +180,27 @@ impl Plugin for DomainValidatorPlugin {
         2100 // High priority, run early
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
+    fn init(config: &crate::config::PluginConfig) -> Result<Arc<dyn Plugin>> {
+        let args = config.effective_args();
+        let strict_mode = args
+            .get("strict_mode")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let cache_size = args
+            .get("cache_size")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1000) as usize;
+        let blacklist = args
+            .get("blacklist")
+            .and_then(|v| v.as_sequence())
+            .map(|seq| {
+                seq.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(Arc::new(Self::new(strict_mode, cache_size, blacklist)))
     }
 }
 
@@ -222,32 +241,6 @@ fn set_refused_response(ctx: &mut Context) {
 impl Default for DomainValidatorPlugin {
     fn default() -> Self {
         Self::new(true, 1000, vec![])
-    }
-}
-
-/// Plugin initialization
-impl DomainValidatorPlugin {
-    pub fn init(config: &crate::config::PluginConfig) -> Result<Arc<dyn Plugin>> {
-        let args = config.effective_args();
-        let strict_mode = args
-            .get("strict_mode")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-        let cache_size = args
-            .get("cache_size")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1000) as usize;
-        let blacklist = args
-            .get("blacklist")
-            .and_then(|v| v.as_sequence())
-            .map(|seq| {
-                seq.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        Ok(Arc::new(Self::new(strict_mode, cache_size, blacklist)))
     }
 }
 
