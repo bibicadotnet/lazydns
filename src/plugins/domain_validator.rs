@@ -96,10 +96,12 @@ impl DomainValidatorPlugin {
                 return ValidationResult::InvalidChars;
             }
 
-            // Middle characters: alphanumeric or hyphen
-            for &b in &bytes[1..bytes.len() - 1] {
-                if !b.is_ascii_alphanumeric() && b != b'-' {
-                    return ValidationResult::InvalidChars;
+            // Middle characters: alphanumeric or hyphen (only if there are middle characters)
+            if bytes.len() > 2 {
+                for &b in &bytes[1..bytes.len() - 1] {
+                    if !b.is_ascii_alphanumeric() && b != b'-' {
+                        return ValidationResult::InvalidChars;
+                    }
                 }
             }
 
@@ -282,6 +284,14 @@ mod tests {
             plugin.validate_domain("test-.com"),
             ValidationResult::InvalidChars
         );
+    }
+
+    #[tokio::test]
+    async fn test_single_char_labels() {
+        let plugin = DomainValidatorPlugin::default();
+        assert_eq!(plugin.validate_domain("a.com"), ValidationResult::Valid);
+        assert_eq!(plugin.validate_domain("a.b.com"), ValidationResult::Valid);
+        assert_eq!(plugin.validate_domain("x.y.z"), ValidationResult::Valid);
     }
 
     #[tokio::test]
