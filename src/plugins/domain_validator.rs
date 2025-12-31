@@ -57,7 +57,7 @@ impl DomainValidatorPlugin {
             || self
                 .blacklist
                 .iter()
-                .any(|b| domain.ends_with(&format!(".{}", b)) || b == domain)
+                .any(|b| domain.ends_with(&format!(".{}", b)))
         {
             return ValidationResult::Blacklisted;
         }
