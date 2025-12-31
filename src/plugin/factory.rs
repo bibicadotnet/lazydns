@@ -444,6 +444,7 @@ pub fn initialize_all_plugin_factories() {
 
         Lazy::force(&crate::plugins::geoip::GEO_IP_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::geosite::GEO_SITE_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::domain_validator::DOMAIN_VALIDATOR_PLUGIN_FACTORY);
 
         #[cfg(feature = "cron")]
         Lazy::force(&crate::plugins::cron::CRON_PLUGIN_FACTORY);

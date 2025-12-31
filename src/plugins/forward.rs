@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tokio::net::UdpSocket;
 use tokio::time::{Duration, Instant, timeout};
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, trace, warn};
 
 /// Load balancing strategy for upstream selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -849,7 +849,7 @@ impl ForwardPlugin {
                     return Ok(());
                 }
                 Err(e) => {
-                    error!(
+                    warn!(
                         "Failed to forward query to {} (attempt {}/{}): {}",
                         self.core.upstreams[upstream_idx].addr,
                         attempts + 1,
