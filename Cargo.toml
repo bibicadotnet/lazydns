@@ -49,6 +49,9 @@ async-trait = "0.1"
 dashmap = "6.1"
 parking_lot = "0.12"
 
+# LRU cache
+lru = "0.12"
+
 # Networking
 axum = { version = "0.8", default-features = false, features = [
     "json",
