@@ -395,7 +395,7 @@ pub struct DomainSetPlugin {
     default_match_type: MatchType,
     /// Loaded domain rules (stored in shared state)
     rules: Arc<RwLock<DomainRules>>,
-    /// Tag from YAML config
+    /// Plugin tag from YAML configuration
     tag: Option<String>,
 }
 
