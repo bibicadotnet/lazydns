@@ -63,7 +63,7 @@ use crate::server::{RequestHandler, Server, ServerConfig};
 use crate::{Error, Result};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 /// UDP DNS server
 ///
@@ -303,7 +303,7 @@ impl UdpServer {
                         if let Err(e) =
                             Self::handle_request(&request_data, peer_addr, handler, socket).await
                         {
-                            error!("Error handling request from {}: {}", peer_addr, e);
+                            warn!("Error handling request from {}: {}", peer_addr, e);
                         }
                     });
                 }

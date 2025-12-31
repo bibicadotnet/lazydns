@@ -140,8 +140,8 @@ impl Plugin for FallbackPlugin {
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         let plugins = { self.plugins.read().unwrap().clone() };
 
-        info!("Fallback: plugin count = {}", plugins.len());
-        info!(
+        debug!("Fallback: plugin count = {}", plugins.len());
+        debug!(
             "Fallback children: {:?}",
             plugins.iter().map(|p| p.name()).collect::<Vec<_>>()
         );

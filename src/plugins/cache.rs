@@ -71,7 +71,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tracing::debug;
+use tracing::{debug, trace};
 
 /// TTL used when serving stale responses during cache_ttl window
 const STALE_RESPONSE_TTL_SECS: u32 = 5;
@@ -815,7 +815,7 @@ impl Plugin for CachePlugin {
                         let threshold = self.lazycache_threshold;
 
                         debug!(
-                            "Lazycache check: {}, original_ttl: {}s, remaining: {}s, percentage: {:.2}%, threshold: {:.2}%",
+                            "LazyCache check: {}, original_ttl: {}s, remaining: {}s, percentage: {:.2}%, threshold: {:.2}%",
                             key,
                             entry.original_ttl,
                             remaining_ttl,
@@ -826,7 +826,7 @@ impl Plugin for CachePlugin {
                         if ttl_percentage <= threshold {
                             // Lazycache: Entry needs refresh
                             debug!(
-                                "Lazycache threshold REACHED for {}: {:.2}% TTL remaining (< {:.2}%), triggering refresh",
+                                "LazyCache threshold REACHED for {}: {:.2}% TTL remaining (< {:.2}%), triggering refresh",
                                 key,
                                 ttl_percentage * 100.0,
                                 threshold * 100.0
@@ -967,7 +967,7 @@ impl Plugin for CachePlugin {
                         // Mark that response came from cache to prevent Phase 2 re-execution
                         context.set_metadata("response_from_cache", true);
 
-                        debug!("Normal cache hit: returning immediately and stopping chain");
+                        trace!("Normal cache hit: returning immediately and stopping chain");
                         // Stop the plugin chain to prevent downstream plugins (like Forward)
                         // from executing and overwriting our cached response.
                         context.set_metadata(RETURN_FLAG, true);
