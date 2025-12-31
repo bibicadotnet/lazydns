@@ -82,7 +82,7 @@ impl DomainValidatorPlugin {
             // Check characters
             let bytes = label.as_bytes();
             if bytes.is_empty() {
-                continue;
+                return ValidationResult::InvalidLength;
             }
 
             // First character must be alphanumeric
