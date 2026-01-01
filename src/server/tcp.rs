@@ -146,6 +146,7 @@ impl TcpServer {
         let request = Self::parse_request(&buf)?;
 
         debug!(
+            peer = %peer_addr,
             question = ?request.questions(),
             "Processing query ID {} with {} questions",
             request.id(),

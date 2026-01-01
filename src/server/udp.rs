@@ -326,6 +326,7 @@ impl UdpServer {
         let request = Self::parse_request(request_data)?;
 
         debug!(
+            peer = %peer_addr,
             question = ?request.questions(),
             "Processing query ID {} with {} questions from {}",
             request.id(),
