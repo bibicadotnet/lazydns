@@ -84,7 +84,8 @@ jobs:
     needs: discover
     runs-on: ubuntu-latest
     strategy:
-      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+      matrix:
+        include: ${{ fromJson(needs.discover.outputs.matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
