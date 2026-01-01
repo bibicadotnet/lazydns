@@ -86,7 +86,7 @@ impl FallbackPlugin {
 
         for name in pending.drain(..) {
             if let Some(p) = registry.get(&name).cloned() {
-                debug!(plugin = %name, "Resolved fallback child");
+                debug!(plugin = %name, child = %p.display_name(), "Resolved fallback child");
                 resolved.push(p);
             } else {
                 warn!(plugin = %name, "Fallback child plugin not found");

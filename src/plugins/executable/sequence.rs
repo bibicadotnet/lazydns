@@ -48,19 +48,46 @@ impl std::fmt::Debug for SequenceStep {
 #[derive(Debug)]
 pub struct SequencePlugin {
     steps: Vec<SequenceStep>,
+    #[allow(dead_code)]
     tag: Option<String>,
+    display_name: Box<str>,
 }
 
 impl SequencePlugin {
     /// Create a new sequence plugin from a simple list of plugins.
     pub fn new(plugins: Vec<Arc<dyn Plugin>>) -> Self {
         let steps = plugins.into_iter().map(SequenceStep::Exec).collect();
-        Self { steps, tag: None }
+        let display_name = "sequence".into();
+        Self {
+            steps,
+            tag: None,
+            display_name,
+        }
     }
 
     /// Create a sequence plugin with explicit steps (including conditional steps).
     pub fn with_steps(steps: Vec<SequenceStep>) -> Self {
-        Self { steps, tag: None }
+        let display_name = "sequence".into();
+        Self {
+            steps,
+            tag: None,
+            display_name,
+        }
+    }
+
+    /// Create a sequence plugin with explicit steps and an optional tag.
+    /// This preserves the configured tag so `display_name()` can include it.
+    pub fn with_steps_and_tag(steps: Vec<SequenceStep>, tag: Option<String>) -> Self {
+        let display_name = tag
+            .as_ref()
+            .map(|t| format!("sequence({})", t))
+            .unwrap_or_else(|| "sequence".to_string())
+            .into_boxed_str();
+        Self {
+            steps,
+            tag,
+            display_name,
+        }
     }
 }
 
@@ -116,8 +143,8 @@ impl Plugin for SequencePlugin {
         "sequence"
     }
 
-    fn tag(&self) -> Option<&str> {
-        self.tag.as_deref()
+    fn display_name(&self) -> &str {
+        &self.display_name
     }
 
     fn init(config: &crate::config::PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
@@ -126,6 +153,13 @@ impl Plugin for SequencePlugin {
         // and should be handled by the builder system.
         let args = config.effective_args();
 
+        let display_name = config
+            .tag
+            .as_ref()
+            .map(|t| format!("sequence({})", t))
+            .unwrap_or_else(|| "sequence".to_string())
+            .into_boxed_str();
+
         if let Some(serde_yaml::Value::Sequence(_plugin_names)) = args.get("plugins") {
             // This is a simplified implementation - in practice, sequences with
             // plugin references need to be resolved later in the build process
@@ -133,12 +167,14 @@ impl Plugin for SequencePlugin {
             Ok(std::sync::Arc::new(Self {
                 steps: vec![],
                 tag: config.tag.clone(),
+                display_name,
             }))
         } else {
             // Default to empty sequence
             Ok(std::sync::Arc::new(Self {
                 steps: vec![],
                 tag: config.tag.clone(),
+                display_name,
             }))
         }
     }
