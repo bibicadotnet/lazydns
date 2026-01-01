@@ -53,21 +53,14 @@ jobs:
             targets_str=${targets_str%,}
             echo "Discovered targets: $targets_str"
           fi
-          # Produce JSON array for matrix
+          # Produce JSON array for matrix (use jq to ensure valid JSON)
           if [ -z "$targets_str" ]; then
             echo "matrix=[]" >> "$GITHUB_OUTPUT"
             echo "targets=$targets_str" >> "$GITHUB_OUTPUT"
           else
-            json=""
-            IFS=',' read -r -a arr <<< "$targets_str"
-            for t in "${arr[@]}"; do
-              if [ -z "$json" ]; then
-                json="{\"target\":\"$t\"}"
-              else
-                json+=",{\"target\":\"$t\"}"
-              fi
-            done
-            json="[$json]"
+            # Convert comma-separated list to JSON array of objects: [{"target":"t1"},...]
+            # Use printf + tr to produce newline-separated names, then jq to build array safely.
+            json=$(printf "%s" "$targets_str" | tr ',' '\n' | jq -R -s -c 'split("\n") | map(select(length>0) | {target: .})')
             echo "matrix=$json" >> "$GITHUB_OUTPUT"
             echo "targets=$targets_str" >> "$GITHUB_OUTPUT"
           fi
