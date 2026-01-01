@@ -59,8 +59,21 @@ jobs:
             echo "targets=$targets_str" >> "$GITHUB_OUTPUT"
           else
             # Convert comma-separated list to JSON array of objects: [{"target":"t1"},...]
-            # Use printf + tr to produce newline-separated names, then jq to build array safely.
-            json=$(printf "%s" "$targets_str" | tr ',' '\n' | jq -R -s -c 'split("\n") | map(select(length>0) | {target: .})')
+            # Prefer jq when available; otherwise fall back to safe shell construction.
+            if command -v jq >/dev/null 2>&1; then
+              json=$(printf "%s" "$targets_str" | tr ',' '\n' | jq -R -s -c 'split("\n") | map(select(length>0) | {target: .})')
+            else
+              json=""
+              IFS=',' read -r -a arr <<< "$targets_str"
+              for t in "${arr[@]}"; do
+                if [ -z "$json" ]; then
+                  json="{\"target\":\"$t\"}"
+                else
+                  json+=",{\"target\":\"$t\"}"
+                fi
+              done
+              json="[$json]"
+            fi
             echo "matrix=$json" >> "$GITHUB_OUTPUT"
             echo "targets=$targets_str" >> "$GITHUB_OUTPUT"
           fi
