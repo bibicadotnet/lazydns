@@ -32,7 +32,7 @@ jobs:
     name: Discover fuzz targets
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      matrix: ${{ steps.discover.outputs.matrix }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -78,10 +78,6 @@ jobs:
             echo "targets=$targets_str" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set matrix output
-        id: set-matrix
-        run: |
-          echo "matrix=${{ steps.discover.outputs.matrix }}" >> "$GITHUB_OUTPUT"
 
   fuzz:
     name: "Run fuzz target: ${{ matrix.target }}"
