@@ -62,12 +62,12 @@ jobs:
             IFS=',' read -r -a arr <<< "$targets_str"
             for t in "${arr[@]}"; do
               if [ -z "$json" ]; then
-                json="[{\"target\":\"$t\"}"
+                json="{\"target\":\"$t\"}"
               else
                 json+=",{\"target\":\"$t\"}"
               fi
             done
-            json+="]"
+            json="[$json]"
             echo "matrix=$json" >> "$GITHUB_OUTPUT"
             echo "targets=$targets_str" >> "$GITHUB_OUTPUT"
           fi
