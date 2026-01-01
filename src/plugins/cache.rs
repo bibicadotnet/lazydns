@@ -524,11 +524,27 @@ impl CachePlugin {
     fn store(&self, key: String, entry: CacheEntry) {
         let mut cache = self.cache.write();
 
-        // LruCache automatically evicts LRU entry when at capacity
+        // Check if this key already exists (replacement, not eviction)
+        let key_exists = cache.contains(&key);
+
+        // LruCache::push returns Some if the key existed (replacement)
+        // or if cache was full and a new key was added (true eviction)
         if let Some((evicted_key, _)) = cache.push(key, entry) {
-            self.stats.record_eviction();
-            debug!("LRU evicted cache entry: {}", evicted_key);
+            // Only count as eviction if this is a new key (not a replacement)
+            if !key_exists {
+                // Cache was full, this is a true LRU eviction
+                self.stats.record_eviction();
+                debug!("LRU evicted cache entry: {}", evicted_key);
+            } else {
+                // This was a key replacement (update), not an eviction
+                trace!("Cache store: replaced existing entry: {}", evicted_key);
+            }
         }
+
+        trace!(
+            stats = ?self.stats,
+            "Cache stats after store operation"
+        );
 
         // Update cache size metric
         #[cfg(feature = "metrics")]
@@ -1092,6 +1108,14 @@ impl Plugin for CachePlugin {
 
         // Set tag from config
         cache.tag = config.tag.clone();
+
+        debug!(
+            "CachePlugin initialized: size={}, negative_cache={}, lazycache_enabled={}, lazycache_threshold={:.1}%",
+            cache.max_size,
+            cache.negative_cache,
+            cache.enable_lazycache,
+            cache.lazycache_threshold * 100.0
+        );
 
         Ok(Arc::new(cache))
     }
