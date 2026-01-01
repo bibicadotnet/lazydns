@@ -150,7 +150,39 @@ impl PluginBuilder {
     /// (for example, `fallback` refers to other plugins by name).
     /// This also re-parses sequences to update plugin references after fallback resolution.
     pub fn resolve_references(&mut self, configs: &[PluginConfig]) -> Result<()> {
-        // First pass: ask fallback plugins to resolve their pending child references
+        // First pass: update sequence plugins to reflect resolved plugins
+        for config in configs {
+            if config.plugin_type == "sequence"
+                && let Value::Sequence(sequence) = &config.args
+            {
+                // Re-parse the steps with the now-resolved plugins
+                match parse_sequence_steps(self, sequence) {
+                    Ok(steps) => {
+                        // Preserve the configured tag when creating the resolved sequence
+                        let sequence_plugin = Arc::new(SequencePlugin::with_steps_and_tag(
+                            steps,
+                            config.tag.clone(),
+                        ));
+                        let name = config.effective_name().to_string();
+                        let dname = sequence_plugin.display_name().to_string();
+                        self.plugins.insert(name.clone(), sequence_plugin);
+                        trace!(
+                            "Updated sequence plugin '{}' with resolved references (display={})",
+                            name, dname
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to update sequence '{}': {}",
+                            config.effective_name(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        // Second pass: ask fallback plugins to resolve their pending child references
         for config in configs {
             if config.plugin_type == "fallback" {
                 let name = config.effective_name().to_string();
@@ -164,33 +196,6 @@ impl PluginBuilder {
                     }
                 } else {
                     warn!(plugin = %name, "Fallback plugin not found in registry");
-                }
-            }
-        }
-
-        // Second pass: update sequence plugins to reflect resolved plugins
-        for config in configs {
-            if config.plugin_type == "sequence"
-                && let Value::Sequence(sequence) = &config.args
-            {
-                // Re-parse the steps with the now-resolved plugins
-                match parse_sequence_steps(self, sequence) {
-                    Ok(steps) => {
-                        let sequence_plugin = Arc::new(SequencePlugin::with_steps(steps));
-                        let name = config.effective_name().to_string();
-                        self.plugins.insert(name.clone(), sequence_plugin);
-                        trace!(
-                            "Updated sequence plugin '{}' with resolved references",
-                            name
-                        );
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to update sequence '{}': {}",
-                            config.effective_name(),
-                            e
-                        );
-                    }
                 }
             }
         }

@@ -40,6 +40,8 @@ pub struct FallbackPlugin {
     pending: RwLock<Vec<String>>,
     /// Whether to fallback on errors only or also on empty responses
     error_only: bool,
+    /// Plugin tag from YAML configuration
+    tag: Option<String>,
 }
 
 impl FallbackPlugin {
@@ -53,6 +55,7 @@ impl FallbackPlugin {
             plugins: RwLock::new(plugins),
             pending: RwLock::new(Vec::new()),
             error_only: false,
+            tag: None,
         }
     }
 
@@ -62,6 +65,7 @@ impl FallbackPlugin {
             plugins: RwLock::new(Vec::new()),
             pending: RwLock::new(names),
             error_only: false,
+            tag: None,
         }
     }
 
@@ -82,7 +86,7 @@ impl FallbackPlugin {
 
         for name in pending.drain(..) {
             if let Some(p) = registry.get(&name).cloned() {
-                debug!(plugin = %name, "Resolved fallback child");
+                debug!(plugin = %name, child = %p.display_name(), "Resolved fallback child");
                 resolved.push(p);
             } else {
                 warn!(plugin = %name, "Fallback child plugin not found");
@@ -137,23 +141,31 @@ impl Plugin for FallbackPlugin {
         "fallback"
     }
 
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
+    }
+
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         let plugins = { self.plugins.read().unwrap().clone() };
 
         debug!("Fallback: plugin count = {}", plugins.len());
         debug!(
             "Fallback children: {:?}",
-            plugins.iter().map(|p| p.name()).collect::<Vec<_>>()
+            plugins.iter().map(|p| p.display_name()).collect::<Vec<_>>()
         );
         for (i, plugin) in plugins.iter().enumerate() {
-            debug!("Fallback: trying plugin {} (index {})", plugin.name(), i);
+            debug!(
+                "Fallback: trying plugin {} (index {})",
+                plugin.display_name(),
+                i
+            );
 
             let had_error = match plugin.execute(ctx).await {
                 Ok(_) => false,
                 Err(e) => {
                     warn!(
                         plugin_index = i,
-                        plugin_name = plugin.name(),
+                        plugin_name = plugin.display_name(),
                         error = %e,
                         "Fallback: plugin failed"
                     );
@@ -165,7 +177,7 @@ impl Plugin for FallbackPlugin {
             if !self.should_fallback(ctx, had_error) {
                 debug!(
                     plugin_index = i,
-                    plugin_name = plugin.name(),
+                    plugin_name = plugin.display_name(),
                     "Fallback: plugin succeeded, stopping"
                 );
                 return Ok(());
@@ -174,7 +186,7 @@ impl Plugin for FallbackPlugin {
             if i < plugins.len() - 1 {
                 debug!(
                     plugin_index = i,
-                    plugin_name = plugin.name(),
+                    plugin_name = plugin.display_name(),
                     "Fallback: trying next plugin"
                 );
             }
@@ -219,7 +231,12 @@ impl Plugin for FallbackPlugin {
             names.push(secondary);
         }
 
-        Ok(Arc::new(FallbackPlugin::with_names(names)))
+        Ok(Arc::new(FallbackPlugin {
+            plugins: RwLock::new(Vec::new()),
+            pending: RwLock::new(names),
+            error_only: false,
+            tag: config.tag.clone(),
+        }))
     }
 }
 

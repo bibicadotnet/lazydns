@@ -355,6 +355,8 @@ pub struct CachePlugin {
     lazycache_threshold_dynamic: Arc<tokio::sync::RwLock<f32>>,
     /// Set of keys currently being refreshed (to prevent duplicate refreshes)
     refreshing_keys: Arc<DashSet<String>>,
+    /// Plugin tag from YAML configuration
+    tag: Option<String>,
 }
 
 impl CachePlugin {
@@ -387,6 +389,7 @@ impl CachePlugin {
             lazycache_stats: Arc::new(LazyCacheStats::new()),
             lazycache_threshold_dynamic: Arc::new(tokio::sync::RwLock::new(0.05)),
             refreshing_keys: Arc::new(DashSet::new()),
+            tag: None,
         }
     }
 
@@ -1002,6 +1005,10 @@ impl Plugin for CachePlugin {
         "cache"
     }
 
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
+    }
+
     fn priority(&self) -> i32 {
         // Cache should run early to check for cached responses
         // and after it's been populated (when returning from other plugins)
@@ -1082,6 +1089,9 @@ impl Plugin for CachePlugin {
             };
             cache = cache.with_lazycache(threshold);
         }
+
+        // Set tag from config
+        cache.tag = config.tag.clone();
 
         Ok(Arc::new(cache))
     }

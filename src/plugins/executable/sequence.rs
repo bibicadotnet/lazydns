@@ -48,18 +48,46 @@ impl std::fmt::Debug for SequenceStep {
 #[derive(Debug)]
 pub struct SequencePlugin {
     steps: Vec<SequenceStep>,
+    #[allow(dead_code)]
+    tag: Option<String>,
+    display_name: Box<str>,
 }
 
 impl SequencePlugin {
     /// Create a new sequence plugin from a simple list of plugins.
     pub fn new(plugins: Vec<Arc<dyn Plugin>>) -> Self {
         let steps = plugins.into_iter().map(SequenceStep::Exec).collect();
-        Self { steps }
+        let display_name = "sequence".into();
+        Self {
+            steps,
+            tag: None,
+            display_name,
+        }
     }
 
     /// Create a sequence plugin with explicit steps (including conditional steps).
     pub fn with_steps(steps: Vec<SequenceStep>) -> Self {
-        Self { steps }
+        let display_name = "sequence".into();
+        Self {
+            steps,
+            tag: None,
+            display_name,
+        }
+    }
+
+    /// Create a sequence plugin with explicit steps and an optional tag.
+    /// This preserves the configured tag so `display_name()` can include it.
+    pub fn with_steps_and_tag(steps: Vec<SequenceStep>, tag: Option<String>) -> Self {
+        let display_name = tag
+            .as_ref()
+            .map(|t| format!("sequence({})", t))
+            .unwrap_or_else(|| "sequence".to_string())
+            .into_boxed_str();
+        Self {
+            steps,
+            tag,
+            display_name,
+        }
     }
 }
 
@@ -69,11 +97,14 @@ impl Plugin for SequencePlugin {
         for step in &self.steps {
             match step {
                 SequenceStep::Exec(plugin) => {
-                    trace!(plugin = plugin.name(), "Sequence: executing plugin (exec)");
+                    trace!(
+                        plugin = plugin.display_name(),
+                        "Sequence: executing plugin (exec)"
+                    );
                     match plugin.execute(ctx).await {
-                        Ok(_) => trace!(plugin = plugin.name(), "Sequence: exec succeeded"),
+                        Ok(_) => trace!(plugin = plugin.display_name(), "Sequence: exec succeeded"),
                         Err(e) => {
-                            trace!(plugin = plugin.name(), error = %e, "Sequence: exec failed");
+                            trace!(plugin = plugin.display_name(), error = %e, "Sequence: exec failed");
                             return Err(e);
                         }
                     }
@@ -84,15 +115,15 @@ impl Plugin for SequencePlugin {
                     desc,
                 } => {
                     let cond = condition(ctx);
-                    trace!(condition = %desc, result = cond, plugin = action.name(), "Sequence: conditional step evaluated");
+                    trace!(condition = %desc, result = cond, plugin = action.display_name(), "Sequence: conditional step evaluated");
                     if cond {
-                        trace!(plugin = action.name(), condition = %desc, "Sequence: executing conditional action");
+                        trace!(plugin = action.display_name(), condition = %desc, "Sequence: executing conditional action");
                         match action.execute(ctx).await {
                             Ok(_) => {
-                                trace!(plugin = action.name(), condition = %desc, "Sequence: conditional action succeeded")
+                                trace!(plugin = action.display_name(), condition = %desc, "Sequence: conditional action succeeded")
                             }
                             Err(e) => {
-                                trace!(plugin = action.name(), condition = %desc, error = %e, "Sequence: conditional action failed");
+                                trace!(plugin = action.display_name(), condition = %desc, error = %e, "Sequence: conditional action failed");
                                 return Err(e);
                             }
                         }
@@ -112,20 +143,39 @@ impl Plugin for SequencePlugin {
         "sequence"
     }
 
+    fn display_name(&self) -> &str {
+        &self.display_name
+    }
+
     fn init(config: &crate::config::PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
         // For now, implement a simple sequence that expects a "plugins" array
         // with plugin names. Full sequence parsing with conditions is complex
         // and should be handled by the builder system.
         let args = config.effective_args();
 
+        let display_name = config
+            .tag
+            .as_ref()
+            .map(|t| format!("sequence({})", t))
+            .unwrap_or_else(|| "sequence".to_string())
+            .into_boxed_str();
+
         if let Some(serde_yaml::Value::Sequence(_plugin_names)) = args.get("plugins") {
             // This is a simplified implementation - in practice, sequences with
             // plugin references need to be resolved later in the build process
             // For now, return an empty sequence that will be resolved later
-            Ok(std::sync::Arc::new(Self::new(vec![])))
+            Ok(std::sync::Arc::new(Self {
+                steps: vec![],
+                tag: config.tag.clone(),
+                display_name,
+            }))
         } else {
             // Default to empty sequence
-            Ok(std::sync::Arc::new(Self::new(vec![])))
+            Ok(std::sync::Arc::new(Self {
+                steps: vec![],
+                tag: config.tag.clone(),
+                display_name,
+            }))
         }
     }
 }
@@ -155,6 +205,10 @@ mod tests {
 
             fn name(&self) -> &str {
                 self.label
+            }
+
+            fn tag(&self) -> Option<&str> {
+                None
             }
         }
 
