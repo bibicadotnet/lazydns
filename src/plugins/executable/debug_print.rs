@@ -137,7 +137,7 @@ impl Plugin for DebugPrintPlugin {
     }
 
     fn aliases() -> Vec<&'static str> {
-        vec!["debug", "print"]
+        vec!["debug", "print", "dbg"]
     }
 }
 
@@ -147,10 +147,11 @@ impl ExecPlugin for DebugPrintPlugin {
     /// Accepts comma-separated options: "queries", "responses", and "prefix=VALUE"
     /// Examples: "queries,responses", "queries,prefix=TEST", "responses"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
-        if prefix != "debug_print" {
+        if !DebugPrintPlugin::aliases().contains(&prefix) && prefix != "debug_print" {
             return Err(crate::Error::Config(format!(
-                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'debug_print'",
-                prefix
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected one of {:?}",
+                prefix,
+                DebugPrintPlugin::aliases()
             )));
         }
 
