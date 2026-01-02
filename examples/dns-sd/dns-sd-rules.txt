@@ -1,0 +1,7 @@
+# DNS-SD Domain Enumeration queries (regexp)
+# Matches typical DNS-SD enumeration PTR queries, e.g.
+#   b._dns-sd._udp.0.88.168.192.in-addr.arpa
+# Use `regexp:` prefix so this file can be loaded as a domain_set with regexp match type.
+regexp:^(?:b|db|r|dr|lb|_services)\._dns-sd\._udp\..*$
+# Reverse-map / in-addr / ip6 variants (optional but helpful)
+regexp:^(?:b|db|r|dr|lb|_services)\._dns-sd\._udp\..*\.(?:in-addr|ip6)\.arpa\.?$

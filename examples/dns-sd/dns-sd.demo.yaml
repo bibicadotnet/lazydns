@@ -1,0 +1,125 @@
+# dns-sd.demo.yaml — demo configuration to detect and handle DNS‑SD PTR queries
+# Place this file under examples/dns-sd/ and run with:
+#   cargo run -- -c examples/dns-sd/dns-sd.demo.yaml -vv
+#
+# This demo shows three handling strategies for DNS‑SD domain-enumeration PTR queries:
+#  - dns_sd_empty_reply: return NOERROR with no answers (default safe behavior)
+#  - dns_sd_forward_no_cache: forward to upstreams but avoid caching
+#  - dns_sd_sink: sinkhole / reject responses
+#
+# Test steps are included at the bottom of this file (see "TESTING" section).
+
+# TESTING (quick steps)
+# 1) Start lazydns with this demo config:
+#    cargo run -- -c examples/dns-sd/dns-sd.demo.yaml -vv
+#
+# 2) Send a DNS-SD PTR query (simulate reverse-derived domain from RFC 6763):
+#      dig @127.0.0.1 -p 5353 b._dns-sd._udp.0.88.168.192.in-addr.arpa PTR +noall +answer
+#
+#    Expected (default here): NO ANSWER (server returns NOERROR with empty answer section)
+#    You should see debug_print output in the server logs showing the matched qname.
+#
+# 3) To test forwarding without caching: edit the `main` sequence above and replace
+#    `exec: goto dns_sd_empty_reply` with `exec: goto dns_sd_forward_no_cache`, then
+#    reload the config (auto_reload behavior depends on your run flags) or restart.
+#    Run the same dig; you should see upstream responses (but those will not be stored in cache
+#    because the forwarded sequence doesn't include the `cache` step).
+#
+# 4) To test sink/reject: change to `exec: goto dns_sd_sink` (or use `exec: reject 5`) and
+#    observe the returned sink IP or rejection code.
+#
+# 5) Check metrics / logs for hits to the domain_set/demonstration mark and confirm that
+#    these queries are not populating the cache (check cache debug log lines).
+#
+# Notes / Tips:
+#  - Use -vv logging to see debug_print messages that help verify match/route behavior.
+#  - rules in examples/dns-sd/dns-sd-rules.txt can be edited live (auto_reload=true). Add more
+#    regex lines for other service discovery patterns (e.g., _services._dns-sd._udp.<domain>,
+#    _printer._sub._http._tcp.<domain>, etc.) as needed.
+#  - If you prefer to keep the client experience unchanged, forward the queries instead of
+#    returning empty replies; otherwise empty replies prevent clients from discovering services.
+
+log:
+  level: info
+  format: text
+
+plugins:
+  # Cache
+  - tag: defaul_cache
+    type: cache
+
+  # 1) Domain set with DNS-SD regexp rules (auto_reload: true for quick edits)
+  - tag: dns_sd_rules
+    type: domain_set
+    args:
+      files:
+        - examples/dns-sd/dns-sd-rules.txt
+      default_match_type: regexp
+      auto_reload: true
+
+  # 2) Optional mark for telemetry/metrics
+  - tag: dns_sd_mark
+    type: mark
+    args:
+      name: "is_dns_sd"
+  
+  # 3) Forwarder (simple quick-setup; adjust upstreams to your choice)
+  - tag: upstream
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "1.1.1.1:53"
+        - addr: "8.8.8.8:53"
+
+  # 4) Blackhole (sink) example
+  - tag: sink
+    type: blackhole
+    args:
+      ips:
+        - "0.0.0.0"
+
+  # 5) Sequences implementing handling strategies
+  - tag: dns_sd_forward_no_cache
+    type: sequence
+    args:
+      - exec: dbg                         # log for demo
+      - exec: mark is_dns_sd              # set a mark if you want metrics/joins
+      - exec: $upstream                   # forward to upstream without touching cache
+      - exec: accept
+
+  - tag: dns_sd_empty_reply
+    type: sequence
+    args:
+      - exec: dbg                         # log the event
+      - exec: $dns_sd_mark                # set a mark if you want metrics/joins
+      - exec: drop_resp                   # clear any response (ensures NOANSWER)
+      - exec: accept                      # return NOERROR with no answers
+
+  - tag: dns_sd_sink
+    type: sequence
+    args:
+      - exec: dbg queries
+      - exec: black_hole 127.0.0.1                       # return synthetic A/AAAA answers (sinkhole)
+      - exec: accept
+
+  # 6) Main handling sequence: detect DNS-SD PTR via qname matcher and route it
+  - tag: main
+    type: sequence
+    args:
+      # If query matches DNS-SD domain enumeration patterns -> apply safe handling
+      - matches: qname $dns_sd_rules
+        # change this target to try forward_no_cache or sink
+        exec: goto dns_sd_empty_reply
+        
+
+      # Normal caching and forward flow for other queries
+      - exec: $defaul_cache
+      - exec: $upstream
+
+  # 7) UDP server for demo (listening on 5353 to avoid interfering with system resolvers)
+  - tag: udp_demo
+    type: udp_server
+    args:
+      entry: main
+      listen: ":5353"
