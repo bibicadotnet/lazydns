@@ -3,8 +3,23 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, watch};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
+
+/// Handle returned by `spawn_file_watcher` to allow graceful shutdown of the watcher task.
+pub struct FileWatcherHandle {
+    stop_tx: watch::Sender<bool>,
+    handle: JoinHandle<()>,
+}
+
+impl FileWatcherHandle {
+    /// Signal the watcher to stop and await the background task termination.
+    pub async fn stop(self) {
+        let _ = self.stop_tx.send(true);
+        let _ = self.handle.await;
+    }
+}
 
 /// Spawn a generic file watcher task.
 ///
@@ -17,12 +32,16 @@ pub fn spawn_file_watcher<F>(
     files: Vec<PathBuf>,
     debounce_ms: u64,
     on_reload: F,
-) where
+) -> FileWatcherHandle
+where
     F: FnMut(&PathBuf, &Vec<PathBuf>) + Send + 'static,
 {
     let name = name.into();
 
-    tokio::spawn(async move {
+    // Channel used to notify the background task to stop
+    let (stop_tx, mut stop_rx) = watch::channel(false);
+
+    let handle = tokio::spawn(async move {
         let (tx, mut rx) = mpsc::channel(100);
 
         // Create watcher
@@ -71,85 +90,101 @@ pub fn spawn_file_watcher<F>(
         info!(name = %name, "file watcher started successfully");
         debug!(name = %name, "file watcher loop started");
 
-        while let Some(event) = rx.recv().await {
-            for path in &event.paths {
-                let canonical_path = path.canonicalize().ok();
-                if canonical_path
-                    .as_ref()
-                    .is_some_and(|cp| canonical_files.contains(cp))
-                {
-                    let file_name = path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown");
+        loop {
+            tokio::select! {
+                biased;
+                maybe_event = rx.recv() => {
+                    match maybe_event {
+                        Some(event) => {
+                            for path in &event.paths {
+                                let canonical_path = path.canonicalize().ok();
+                                if canonical_path
+                                    .as_ref()
+                                    .is_some_and(|cp| canonical_files.contains(cp))
+                                {
+                                    let file_name = path
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or("unknown");
 
-                    if let Some(cp) = canonical_path.as_ref() {
-                        // Record last event timestamp for this path and schedule a debounced
-                        // task only if not already scheduled. The scheduled task will wait
-                        // until events have quiesced for `debounce_ms` before invoking
-                        // the callback; new events update the timestamp and reset the wait.
-                        let cp_clone = cp.clone();
-                        let now = StdInstant::now();
-                        let mut map = pending_map.lock().await;
-                        let already_scheduled = map.contains_key(&cp_clone);
-                        map.insert(cp_clone.clone(), now);
-                        drop(map);
+                                    if let Some(cp) = canonical_path.as_ref() {
+                                        // Record last event timestamp for this path and schedule a debounced
+                                        // task only if not already scheduled. The scheduled task will wait
+                                        // until events have quiesced for `debounce_ms` before invoking
+                                        // the callback; new events update the timestamp and reset the wait.
+                                        let cp_clone = cp.clone();
+                                        let now = StdInstant::now();
+                                        let mut map = pending_map.lock().await;
+                                        let already_scheduled = map.contains_key(&cp_clone);
+                                        map.insert(cp_clone.clone(), now);
+                                        drop(map);
 
-                        // Handle file removal/rename immediately (attempt to re-watch)
-                        if matches!(event.kind, EventKind::Remove(_)) {
-                            info!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
-                            tokio::time::sleep(Duration::from_millis(50)).await;
-                            if path.exists() {
-                                if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
-                                    warn!(name = %name, file = file_name, error = %e, "failed to re-watch file");
-                                } else {
-                                    info!(name = %name, file = file_name, "successfully re-added file to watch list");
-                                }
-                            }
-                        }
-
-                        if !already_scheduled {
-                            // Clone for the spawned task
-                            let pending_map_clone = Arc::clone(&pending_map);
-                            let on_reload_clone = Arc::clone(&on_reload_mutex);
-                            let files_clone = files.clone();
-                            let path_clone = path.clone();
-                            let name_clone = name.clone();
-
-                            tokio::spawn(async move {
-                                loop {
-                                    tokio::time::sleep(Duration::from_millis(debounce_ms)).await;
-
-                                    // Check last event time
-                                    let mut guard = pending_map_clone.lock().await;
-                                    let last = guard.get(&cp_clone).cloned();
-                                    if let Some(ts) = last {
-                                        if StdInstant::now().duration_since(ts)
-                                            >= Duration::from_millis(debounce_ms)
-                                        {
-                                            // Invoke the callback under mutex
-                                            let mut f = on_reload_clone.lock().await;
-                                            (f)(&path_clone, &files_clone);
-
-                                            // Remove pending marker
-                                            guard.remove(&cp_clone);
-                                            info!(name = %name_clone, file = ?path_clone, "scheduled reload: invoking callback (debounced)");
-                                            break;
-                                        } else {
-                                            // Not yet quiesced; loop and wait again
-                                            continue;
+                                        // Handle file removal/rename immediately (attempt to re-watch)
+                                        if matches!(event.kind, EventKind::Remove(_)) {
+                                            info!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
+                                            tokio::time::sleep(Duration::from_millis(50)).await;
+                                            if path.exists() {
+                                                if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
+                                                    warn!(name = %name, file = file_name, error = %e, "failed to re-watch file");
+                                                } else {
+                                                    info!(name = %name, file = file_name, "successfully re-added file to watch list");
+                                                }
+                                            }
                                         }
-                                    } else {
-                                        // No pending entry; nothing to do
+
+                                        if !already_scheduled {
+                                            // Clone for the spawned task
+                                            let pending_map_clone = Arc::clone(&pending_map);
+                                            let on_reload_clone = Arc::clone(&on_reload_mutex);
+                                            let files_clone = files.clone();
+                                            let path_clone = path.clone();
+                                            let name_clone = name.clone();
+
+                                            tokio::spawn(async move {
+                                                loop {
+                                                    tokio::time::sleep(Duration::from_millis(debounce_ms)).await;
+
+                                                    // Check last event time
+                                                    let mut guard = pending_map_clone.lock().await;
+                                                    let last = guard.get(&cp_clone).cloned();
+                                                    if let Some(ts) = last {
+                                                        if StdInstant::now().duration_since(ts)
+                                                            >= Duration::from_millis(debounce_ms)
+                                                        {
+                                                            // Invoke the callback under mutex
+                                                            let mut f = on_reload_clone.lock().await;
+                                                            (f)(&path_clone, &files_clone);
+
+                                                            // Remove pending marker
+                                                            guard.remove(&cp_clone);
+                                                            info!(name = %name_clone, file = ?path_clone, "scheduled reload: invoking callback (debounced)");
+                                                            break;
+                                                        } else {
+                                                            // Not yet quiesced; loop and wait again
+                                                            continue;
+                                                        }
+                                                    } else {
+                                                        // No pending entry; nothing to do
+                                                        break;
+                                                    }
+                                                }
+                                            });
+                                        } else {
+                                            debug!(name = %name, file = file_name, "updated pending debounce timestamp");
+                                        }
+
+                                        // Only reload once per event batch
                                         break;
                                     }
                                 }
-                            });
-                        } else {
-                            debug!(name = %name, file = file_name, "updated pending debounce timestamp");
+                            }
                         }
-
-                        // Only reload once per event batch
+                        None => break, // channel closed
+                    }
+                }
+                _ = stop_rx.changed() => {
+                    if *stop_rx.borrow() {
+                        debug!(name = %name, "file watcher stop requested");
                         break;
                     }
                 }
@@ -158,6 +193,8 @@ pub fn spawn_file_watcher<F>(
 
         debug!(name = %name, "file watcher closed, exiting loop");
     });
+
+    FileWatcherHandle { stop_tx, handle }
 }
 
 #[cfg(test)]
@@ -198,10 +235,11 @@ mod tests {
         let c = Arc::clone(&counter);
         let n = Arc::clone(&notify);
 
-        spawn_file_watcher("test-basic", vec![path.clone()], 100, move |_p, _files| {
-            c.fetch_add(1, Ordering::SeqCst);
-            n.notify_one();
-        });
+        let handle =
+            spawn_file_watcher("test-basic", vec![path.clone()], 100, move |_p, _files| {
+                c.fetch_add(1, Ordering::SeqCst);
+                n.notify_one();
+            });
 
         // Give watcher a short moment to start watching; avoids races on CI
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -225,6 +263,9 @@ mod tests {
         let res = timeout(Duration::from_secs(15), notify.notified()).await;
         assert!(res.is_ok(), "timeout waiting for file watcher callback");
         assert!(counter.load(Ordering::SeqCst) >= 1);
+
+        // Stop watcher to avoid leaking background task on CI
+        handle.stop().await;
     }
 
     #[tokio::test]
@@ -239,7 +280,7 @@ mod tests {
         let n = Arc::clone(&notify);
 
         // Use debounce window 200ms
-        spawn_file_watcher(
+        let handle = spawn_file_watcher(
             "test-debounce",
             vec![path.clone()],
             200,
@@ -266,6 +307,9 @@ mod tests {
 
         // Counter should be 1 (or at least not >1 if debounce works)
         assert_eq!(counter.load(Ordering::SeqCst), 1);
+
+        // Stop watcher
+        handle.stop().await;
     }
 
     #[test]

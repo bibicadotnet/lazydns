@@ -38,6 +38,7 @@ use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::{Message, Question, RData, RecordType, ResourceRecord};
 use crate::error::Error;
+use crate::plugin::traits::Shutdown;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use parking_lot::RwLock;
@@ -167,6 +168,8 @@ pub struct HostsPlugin {
     hosts: Arc<Hosts>,
     files: Vec<PathBuf>,
     auto_reload: bool,
+    /// Optional file watcher handle for auto-reload
+    watcher: Arc<parking_lot::Mutex<Option<crate::utils::FileWatcherHandle>>>,
 }
 
 impl HostsPlugin {
@@ -175,6 +178,7 @@ impl HostsPlugin {
             hosts: Arc::new(Hosts::new()),
             files: Vec::new(),
             auto_reload: false,
+            watcher: Arc::new(parking_lot::Mutex::new(None)),
         }
     }
 
@@ -224,7 +228,7 @@ impl HostsPlugin {
 
         const DEBOUNCE_MS: u64 = 200;
 
-        crate::utils::spawn_file_watcher(
+        let handle = crate::utils::spawn_file_watcher(
             "hosts",
             files.clone(),
             DEBOUNCE_MS,
@@ -257,6 +261,10 @@ impl HostsPlugin {
                 info!(filename = file_name, duration = ?duration, "scheduled auto-reload completed");
             },
         );
+
+        // Store handle so we can stop it on shutdown
+        let mut guard = self.watcher.lock();
+        *guard = Some(handle);
     }
 
     fn create_response(&self, question: &Question, ips: &[IpAddr]) -> Message {
@@ -310,6 +318,22 @@ impl fmt::Debug for HostsPlugin {
         f.debug_struct("HostsPlugin")
             .field("entries", &self.hosts.len())
             .finish()
+    }
+}
+
+#[async_trait]
+impl Shutdown for HostsPlugin {
+    async fn shutdown(&self) -> Result<()> {
+        // Stop file watcher if running
+        let handle = {
+            let mut guard = self.watcher.lock();
+            guard.take()
+        };
+
+        if let Some(h) = handle {
+            h.stop().await;
+        }
+        Ok(())
     }
 }
 
@@ -416,4 +440,23 @@ mod tests {
     }
 
     // Other tests omitted for brevity; preserved in moved file
+
+    #[tokio::test]
+    async fn test_hosts_plugin_shutdown_stops_watcher() {
+        use tempfile::NamedTempFile;
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+
+        let plugin = HostsPlugin::new()
+            .with_files(vec![path.clone()])
+            .with_auto_reload(true);
+
+        plugin.start_file_watcher();
+
+        // Give watcher a moment to start
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Shutdown should stop watcher without panic
+        Shutdown::shutdown(&plugin).await.unwrap();
+    }
 }

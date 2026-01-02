@@ -1,6 +1,7 @@
 use crate::Result;
 use crate::config::PluginConfig;
 use crate::plugin::traits::Matcher;
+use crate::plugin::traits::Shutdown;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use parking_lot::RwLock;
@@ -397,6 +398,8 @@ pub struct DomainSetPlugin {
     rules: Arc<RwLock<DomainRules>>,
     /// Plugin tag from YAML configuration
     tag: Option<String>,
+    /// Optional file watcher handle for auto-reload
+    watcher: Arc<parking_lot::Mutex<Option<crate::utils::FileWatcherHandle>>>,
 }
 
 impl DomainSetPlugin {
@@ -410,6 +413,7 @@ impl DomainSetPlugin {
             default_match_type: MatchType::Domain,
             rules: Arc::new(RwLock::new(DomainRules::new())),
             tag: None,
+            watcher: Arc::new(parking_lot::Mutex::new(None)),
         }
     }
 
@@ -456,7 +460,7 @@ impl DomainSetPlugin {
 
         const DEBOUNCE_MS: u64 = 200;
 
-        crate::utils::spawn_file_watcher(
+        let handle = crate::utils::spawn_file_watcher(
             name.clone(),
             files.clone(),
             DEBOUNCE_MS,
@@ -493,6 +497,10 @@ impl DomainSetPlugin {
                 );
             },
         );
+
+        // Store handle so we can stop it on shutdown
+        let mut guard = self.watcher.lock();
+        *guard = Some(handle);
     }
 
     /// Load domains from all configured files
@@ -697,6 +705,20 @@ impl Matcher for DomainSetPlugin {
         } else {
             false
         }
+    }
+}
+
+#[async_trait]
+impl Shutdown for DomainSetPlugin {
+    async fn shutdown(&self) -> Result<()> {
+        let handle = {
+            let mut guard = self.watcher.lock();
+            guard.take()
+        };
+        if let Some(h) = handle {
+            h.stop().await;
+        }
+        Ok(())
     }
 }
 
