@@ -1,0 +1,60 @@
+# GeoIP demo configuration
+#
+# Purpose: Demonstrate how the `geoip` plugin tags responses with a country
+# code based on IP addresses present in answer records.
+#
+# How to use:
+# 1. Start lazydns with this config:
+#      RUST_LOG=debug cargo run -- --config examples/geo/geoip.demo.yaml
+# 2. Query the demo server and watch the logs for GeoIP debug output:
+#      dig @127.0.0.1 -p 5356 us.example A
+#      dig @127.0.0.1 -p 5356 cn.example A
+#
+# You should see debug logs like:
+#    GeoIP: IP 8.8.8.8 belongs to country US
+#
+# Note: This demo relies on the arbitrary plugin to generate responses that
+# contain IPs which the geoip plugin can match against the CIDR file below.
+
+plugins:
+  # GeoIP database loader
+  - tag: geoip_db
+    type: geo_ip
+    args:
+      # metadata key to set on match (defaults to "country")
+      metadata_key: country
+      # Load ranges from a small local file included with the demo
+      files:
+        - "examples/geo/geoip.txt"
+
+  # Simple arbitrary responder to produce test answers
+  - tag: arbitrary_geo
+    type: arbitrary
+    args:
+      rules:
+        - "us.example A 8.8.8.8"
+        - "cn.example A 1.0.1.1"
+        - "both.example A 8.8.8.8"
+        - "both.example A 1.0.1.1"
+
+  # Sequence: produce answers, then let geoip inspect and tag metadata
+  - tag: geoip_sequence
+    type: sequence
+    args:
+      - exec: $arbitrary_geo
+      - exec: $geoip_db
+      - exec: accept
+
+  # UDP server that runs the geoip demo on :5356
+  - tag: udp_geoip
+    type: udp_server
+    args:
+      entry: geoip_sequence
+      listen: ":5356"
+
+  # TCP server for the same demo (optional)
+  - tag: tcp_geoip
+    type: tcp_server
+    args:
+      entry: geoip_sequence
+      listen: ":5356"

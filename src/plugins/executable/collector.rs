@@ -14,6 +14,7 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 #[cfg(feature = "metrics")]
 use prometheus;
+// Text encoding of metrics used in tests via fully-qualified call
 #[cfg(feature = "metrics")]
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -454,13 +455,10 @@ mod tests {
         let metric_families = registry.gather();
         assert!(!metric_families.is_empty());
 
-        // Find our metrics
-        let query_total = metric_families
-            .iter()
-            .find(|mf| mf.get_name() == "dns_query_total_test_collector")
-            .unwrap();
-        assert_eq!(query_total.get_metric().len(), 1);
-        assert_eq!(query_total.get_metric()[0].get_counter().get_value(), 1.0);
+        // Verify via text encoder to avoid relying on proto internals
+        let mut output = String::new();
+        let _ = prometheus::TextEncoder::new().encode_utf8(&metric_families, &mut output);
+        assert!(output.contains("dns_query_total_test_collector{collector=\"test_collector\"} 1"));
     }
 
     #[cfg(feature = "metrics")]
@@ -476,17 +474,11 @@ mod tests {
         let metric_families = registry.gather();
 
         // Check latency histogram
-        let latency_metric = metric_families
-            .iter()
-            .find(|mf| mf.get_name() == "dns_response_latency_millisecond_test_latency")
-            .unwrap();
-        assert_eq!(latency_metric.get_metric().len(), 1);
-        assert_eq!(
-            latency_metric.get_metric()[0]
-                .get_histogram()
-                .get_sample_count(),
-            1
-        );
+        let mut output = String::new();
+        let _ = prometheus::TextEncoder::new().encode_utf8(&metric_families, &mut output);
+        assert!(output.contains(
+            "dns_response_latency_millisecond_test_latency_count{collector=\"test_latency\"} 1"
+        ));
     }
 
     #[cfg(feature = "metrics")]
@@ -502,12 +494,9 @@ mod tests {
         let metric_families = registry.gather();
 
         // Check error counter
-        let error_metric = metric_families
-            .iter()
-            .find(|mf| mf.get_name() == "dns_err_total_test_error")
-            .unwrap();
-        assert_eq!(error_metric.get_metric().len(), 1);
-        assert_eq!(error_metric.get_metric()[0].get_counter().get_value(), 1.0);
+        let mut output = String::new();
+        let _ = prometheus::TextEncoder::new().encode_utf8(&metric_families, &mut output);
+        assert!(output.contains("dns_err_total_test_error{collector=\"test_error\"} 1"));
     }
 
     #[cfg(feature = "metrics")]
@@ -531,11 +520,9 @@ mod tests {
         assert!(!metrics1.is_empty());
 
         // Check that the counter was incremented twice (both plugins use same metrics)
-        let query_total = metrics1
-            .iter()
-            .find(|mf| mf.get_name() == "dns_query_total_cached_test")
-            .unwrap();
-        assert_eq!(query_total.get_metric()[0].get_counter().get_value(), 2.0);
+        let mut output = String::new();
+        let _ = prometheus::TextEncoder::new().encode_utf8(&metrics1, &mut output);
+        assert!(output.contains("dns_query_total_cached_test{collector=\"cached_test\"} 2"));
     }
 
     #[cfg(feature = "metrics")]

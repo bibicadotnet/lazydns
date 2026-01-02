@@ -1,5 +1,6 @@
 use crate::Result;
 use crate::config::PluginConfig;
+use crate::dns::RData;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use ipnet::IpNet;
@@ -31,10 +32,14 @@ pub struct IpSetPlugin {
     name: String,
     /// Files to load IPs from
     files: Vec<PathBuf>,
+    /// Inline IP addresses/networks
+    ips: Vec<String>,
     /// Whether to auto-reload files
     auto_reload: bool,
     /// Loaded IP networks (stored in shared state)
     networks: Arc<RwLock<Vec<IpNet>>>,
+    /// Plugin tag from YAML configuration
+    tag: Option<String>,
 }
 
 impl IpSetPlugin {
@@ -43,14 +48,22 @@ impl IpSetPlugin {
         Self {
             name: name.into(),
             files: Vec::new(),
+            ips: Vec::new(),
             auto_reload: false,
             networks: Arc::new(RwLock::new(Vec::new())),
+            tag: None,
         }
     }
 
     /// Add files to load IPs from
     pub fn with_files(mut self, files: Vec<String>) -> Self {
         self.files = files.into_iter().map(PathBuf::from).collect();
+        self
+    }
+
+    /// Add inline IP addresses/networks
+    pub fn with_ips(mut self, ips: Vec<String>) -> Self {
+        self.ips = ips;
         self
     }
 
@@ -144,6 +157,7 @@ impl IpSetPlugin {
     pub fn load_networks(&self) -> Result<()> {
         let mut networks = Vec::new();
 
+        // Load from files first
         for file_path in &self.files {
             match self.load_ip_file(file_path) {
                 Ok(file_networks) => {
@@ -165,6 +179,25 @@ impl IpSetPlugin {
             }
         }
 
+        // Then load from inline IPs
+        for ip_str in &self.ips {
+            match ip_str.parse::<IpNet>() {
+                Ok(net) => networks.push(net),
+                Err(_) => {
+                    // Try parsing as single IP
+                    if let Ok(ip) = ip_str.parse::<IpAddr>() {
+                        let net = match ip {
+                            IpAddr::V4(addr) => IpNet::new(addr.into(), 32).unwrap(),
+                            IpAddr::V6(addr) => IpNet::new(addr.into(), 128).unwrap(),
+                        };
+                        networks.push(net);
+                    } else {
+                        debug!(ip = %ip_str, "Skipping invalid IP/CIDR in ips");
+                    }
+                }
+            }
+        }
+
         let count = networks.len();
         *self.networks.write() = networks;
 
@@ -172,6 +205,7 @@ impl IpSetPlugin {
             name = %self.name,
             count = count,
             files = self.files.len(),
+            ips = self.ips.len(),
             "IP set loaded"
         );
 
@@ -247,6 +281,10 @@ impl Plugin for IpSetPlugin {
         "ip_set"
     }
 
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
+    }
+
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
         // Store the IP set in context metadata for other plugins to use
         ctx.set_metadata(format!("ip_set_{}", self.name), Arc::clone(&self.networks));
@@ -269,6 +307,7 @@ impl Plugin for IpSetPlugin {
         };
 
         let mut plugin = IpSetPlugin::new(name);
+        plugin.tag = config.tag.clone();
 
         if let Some(files_val) = args.get("files") {
             match files_val {
@@ -290,6 +329,19 @@ impl Plugin for IpSetPlugin {
             plugin = plugin.with_auto_reload(*b);
         }
 
+        // Parse inline IP addresses (ips parameter)
+        if let Some(ips_val) = args.get("ips") {
+            let ips: Vec<String> = match ips_val {
+                Value::Sequence(seq) => seq
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect(),
+                Value::String(s) => vec![s.clone()],
+                _ => Vec::new(),
+            };
+            plugin = plugin.with_ips(ips);
+        }
+
         // Load and start watcher as per legacy behavior
         if let Err(e) = plugin.load_networks() {
             tracing::warn!(error = %e, "Failed to load IPs during init, continuing");
@@ -304,9 +356,14 @@ impl crate::plugin::traits::Matcher for IpSetPlugin {
     fn matches_context(&self, ctx: &crate::plugin::Context) -> bool {
         if let Some(response) = ctx.response() {
             for record in response.answers() {
-                if let Some(ip) =
-                    crate::plugins::ip_matcher::IpMatcherPlugin::extract_ip(record.rdata())
-                    && self.matches(&ip)
+                if let Some(ip) = {
+                    let rdata = record.rdata();
+                    match rdata {
+                        RData::A(ipv4) => Some(IpAddr::V4(*ipv4)),
+                        RData::AAAA(ipv6) => Some(IpAddr::V6(*ipv6)),
+                        _ => None,
+                    }
+                } && self.matches(&ip)
                 {
                     return true;
                 }
@@ -380,6 +437,69 @@ mod tests {
 
         // Verify metadata was set
         assert!(ctx.has_metadata("ip_set_test"));
+    }
+
+    #[test]
+    fn test_init_with_ips() {
+        use serde_yaml::Value;
+
+        let mut config_args = serde_yaml::Mapping::new();
+        config_args.insert(
+            Value::String("ips".to_string()),
+            Value::Sequence(vec![
+                Value::String("1.1.1.1".to_string()),
+                Value::String("192.168.0.0/16".to_string()),
+                Value::String("2001:db8::/32".to_string()),
+            ]),
+        );
+
+        let config = crate::config::PluginConfig {
+            tag: Some("test".to_string()),
+            plugin_type: "ip_set".to_string(),
+            args: Value::Mapping(config_args),
+            name: None,
+            priority: 100,
+            config: std::collections::HashMap::new(),
+        };
+
+        let plugin_arc = IpSetPlugin::init(&config).expect("Failed to init");
+        let plugin = plugin_arc.as_any().downcast_ref::<IpSetPlugin>().unwrap();
+
+        // Verify IPs were loaded
+        let networks = plugin.networks.read();
+        assert_eq!(networks.len(), 3);
+
+        // Verify they match correctly
+        assert!(plugin.matches(&"1.1.1.1".parse().unwrap()));
+        assert!(plugin.matches(&"192.168.1.1".parse().unwrap()));
+        assert!(plugin.matches(&"2001:db8:0:0:0:0:0:1".parse().unwrap()));
+        assert!(!plugin.matches(&"8.8.8.8".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_init_with_ips_single_string() {
+        use serde_yaml::Value;
+
+        let mut config_args = serde_yaml::Mapping::new();
+        config_args.insert(
+            Value::String("ips".to_string()),
+            Value::String("10.0.0.0/8".to_string()),
+        );
+
+        let config = crate::config::PluginConfig {
+            tag: Some("test".to_string()),
+            plugin_type: "ip_set".to_string(),
+            args: Value::Mapping(config_args),
+            name: None,
+            priority: 100,
+            config: std::collections::HashMap::new(),
+        };
+
+        let plugin_arc = IpSetPlugin::init(&config).expect("Failed to init");
+        let plugin = plugin_arc.as_any().downcast_ref::<IpSetPlugin>().unwrap();
+
+        assert!(plugin.matches(&"10.5.5.5".parse().unwrap()));
+        assert!(!plugin.matches(&"192.168.1.1".parse().unwrap()));
     }
 }
 

@@ -48,18 +48,26 @@ impl std::fmt::Debug for SequenceStep {
 #[derive(Debug)]
 pub struct SequencePlugin {
     steps: Vec<SequenceStep>,
+    #[allow(dead_code)]
+    tag: Option<String>,
 }
 
 impl SequencePlugin {
     /// Create a new sequence plugin from a simple list of plugins.
     pub fn new(plugins: Vec<Arc<dyn Plugin>>) -> Self {
         let steps = plugins.into_iter().map(SequenceStep::Exec).collect();
-        Self { steps }
+        Self { steps, tag: None }
     }
 
     /// Create a sequence plugin with explicit steps (including conditional steps).
     pub fn with_steps(steps: Vec<SequenceStep>) -> Self {
-        Self { steps }
+        Self { steps, tag: None }
+    }
+
+    /// Create a sequence plugin with explicit steps and an optional tag.
+    /// This preserves the configured tag so `display_name()` can include it.
+    pub fn with_steps_and_tag(steps: Vec<SequenceStep>, tag: Option<String>) -> Self {
+        Self { steps, tag }
     }
 }
 
@@ -69,11 +77,14 @@ impl Plugin for SequencePlugin {
         for step in &self.steps {
             match step {
                 SequenceStep::Exec(plugin) => {
-                    trace!(plugin = plugin.name(), "Sequence: executing plugin (exec)");
+                    trace!(
+                        plugin = plugin.display_name(),
+                        "Sequence: executing plugin (exec)"
+                    );
                     match plugin.execute(ctx).await {
-                        Ok(_) => trace!(plugin = plugin.name(), "Sequence: exec succeeded"),
+                        Ok(_) => trace!(plugin = plugin.display_name(), "Sequence: exec succeeded"),
                         Err(e) => {
-                            trace!(plugin = plugin.name(), error = %e, "Sequence: exec failed");
+                            trace!(plugin = plugin.display_name(), error = %e, "Sequence: exec failed");
                             return Err(e);
                         }
                     }
@@ -84,15 +95,15 @@ impl Plugin for SequencePlugin {
                     desc,
                 } => {
                     let cond = condition(ctx);
-                    trace!(condition = %desc, result = cond, plugin = action.name(), "Sequence: conditional step evaluated");
+                    trace!(condition = %desc, result = cond, plugin = action.display_name(), "Sequence: conditional step evaluated");
                     if cond {
-                        trace!(plugin = action.name(), condition = %desc, "Sequence: executing conditional action");
+                        trace!(plugin = action.display_name(), condition = %desc, "Sequence: executing conditional action");
                         match action.execute(ctx).await {
                             Ok(_) => {
-                                trace!(plugin = action.name(), condition = %desc, "Sequence: conditional action succeeded")
+                                trace!(plugin = action.display_name(), condition = %desc, "Sequence: conditional action succeeded")
                             }
                             Err(e) => {
-                                trace!(plugin = action.name(), condition = %desc, error = %e, "Sequence: conditional action failed");
+                                trace!(plugin = action.display_name(), condition = %desc, error = %e, "Sequence: conditional action failed");
                                 return Err(e);
                             }
                         }
@@ -100,7 +111,61 @@ impl Plugin for SequencePlugin {
                 }
             }
 
-            // If a plugin set the return flag, stop executing further steps.
+            // Handle jump_target (push/return semantics): execute target and continue with next step
+            while ctx.has_metadata("jump_target") {
+                if let Some(target) = ctx.get_metadata::<String>("jump_target").cloned() {
+                    // Remove jump target and return flag before executing target
+                    ctx.remove_metadata("jump_target");
+                    ctx.remove_metadata(RETURN_FLAG);
+
+                    trace!(jump_target = %target, "Sequence: handling jump target (push/return)");
+
+                    // Get registry from context metadata
+                    if let Some(registry) = ctx
+                        .get_metadata::<std::sync::Arc<crate::plugin::Registry>>(
+                            "__plugin_registry",
+                        )
+                    {
+                        if let Some(target_plugin) = registry.get(&target) {
+                            // Save the current RETURN_FLAG state before executing jump target
+                            // This prevents jump targets from stopping the calling sequence
+                            let saved_return_flag = ctx.get_metadata::<bool>(RETURN_FLAG).copied();
+
+                            match target_plugin.execute(ctx).await {
+                                Ok(_) => {
+                                    trace!(jump_target = %target, "Sequence: jump target succeeded")
+                                }
+                                Err(e) => {
+                                    trace!(jump_target = %target, error = %e, "Sequence: jump target failed");
+                                    return Err(e);
+                                }
+                            }
+
+                            // Restore the RETURN_FLAG state after jump target execution
+                            // This ensures jump targets don't affect the calling sequence's flow
+                            if let Some(flag) = saved_return_flag {
+                                ctx.set_metadata(RETURN_FLAG, flag);
+                            } else {
+                                ctx.remove_metadata(RETURN_FLAG);
+                            }
+                        } else {
+                            trace!(jump_target = %target, "Sequence: jump target plugin not found");
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            // Handle goto_label (replace sequence semantics): stop and return to PluginHandler
+            if ctx.has_metadata("goto_label") {
+                // Set RETURN_FLAG to signal PluginHandler to handle the goto
+                ctx.set_metadata(RETURN_FLAG, true);
+                trace!("Sequence: goto_label detected, stopping sequence execution");
+                break;
+            }
+
+            // If a plugin set the return flag (and it's not a goto), stop executing further steps.
             if matches!(ctx.get_metadata::<bool>(RETURN_FLAG), Some(true)) {
                 break;
             }
@@ -110,6 +175,10 @@ impl Plugin for SequencePlugin {
 
     fn name(&self) -> &str {
         "sequence"
+    }
+
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
     }
 
     fn init(config: &crate::config::PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
@@ -122,10 +191,16 @@ impl Plugin for SequencePlugin {
             // This is a simplified implementation - in practice, sequences with
             // plugin references need to be resolved later in the build process
             // For now, return an empty sequence that will be resolved later
-            Ok(std::sync::Arc::new(Self::new(vec![])))
+            Ok(std::sync::Arc::new(Self {
+                steps: vec![],
+                tag: config.tag.clone(),
+            }))
         } else {
             // Default to empty sequence
-            Ok(std::sync::Arc::new(Self::new(vec![])))
+            Ok(std::sync::Arc::new(Self {
+                steps: vec![],
+                tag: config.tag.clone(),
+            }))
         }
     }
 }

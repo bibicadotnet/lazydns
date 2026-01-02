@@ -1,9 +1,9 @@
 [package]
 name = "lazydns"
-version = "0.2.43"
+version = "0.2.60"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
-description = "A DNS server implementation in Rust, inspired by mosdns"
+description = "A light and fast DNS server/forwarder implementation in Rust"
 repository = "https://github.com/lazywalker/lazydns"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -49,6 +49,9 @@ async-trait = "0.1"
 dashmap = "6.1"
 parking_lot = "0.12"
 
+# LRU cache
+lru = "0.16"
+
 # Networking
 axum = { version = "0.8", default-features = false, features = [
     "json",
@@ -63,20 +66,19 @@ rustls = { version = "0.23", default-features = false, features = [
 ], optional = true }
 tokio-rustls = { version = "0.26", optional = true }
 rustls-pemfile = { version = "2.0", optional = true }
-reqwest = { version = "0.11", default-features = false, features = [
+reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls",
 ] }
-# reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 
 # QUIC / DoQ support (optional)
 quinn = { version = "0.11", optional = true }
 
 # Base64 encoding
-base64 = "0.21"
+base64 = "0.22"
 
 # Metrics
-prometheus = { version = "0.13", optional = true }
+prometheus = { version = "0.14", optional = true }
 
 # File watching for hot reload
 notify = "8.2"
@@ -164,3 +166,43 @@ path = "examples/collector/metrics_collector_demo.rs"
 [[example]]
 name = "prometheus_metrics_collector_demo"
 path = "examples/collector/prometheus_metrics_collector_demo.rs"
+
+[package.metadata.deb]
+maintainer = "lazywalker <lazywalkerz@gmail.com>"
+copyright = "2025, lazywalker <lazywalkerz@gmail.com>"
+license-file = ["LICENSE"]
+extended-description = """\
+A light and fast DNS server/forwarder implementation in Rust.
+"""
+section = "net"
+priority = "optional"
+assets = [
+    # `target/release` path is special and will be replaced by cargo-deb at build time
+    [
+        "target/release/lazydns",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "etc/lazydns/config.yaml",
+        "etc/lazydns/",
+        "644",
+    ],
+    [
+        "docs/man/lazydns.1.gz",
+        "usr/share/man/man1/",
+        "644",
+    ],
+    [
+        "docs/man/lazydns.5.gz",
+        "usr/share/man/man5/",
+        "644",
+    ],
+    [
+        "docs/man/lazydns.8.gz",
+        "usr/share/man/man8/",
+        "644",
+    ],
+]
+maintainer-scripts = "etc/systemd/"
+systemd-units = { enable = true }

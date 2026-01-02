@@ -1,15 +1,14 @@
 # lazydns example configuration file
-# This is a work-in-progress configuration format
-# Full configuration documentation will be available as implementation progresses
-
-# NOTE: The legacy `server` configuration section has been removed.
-# Server listeners and runtime server configuration are now managed via
-# the server launcher and runtime settings (see `src/server/*` for details).
+#
+# See full examples and documentation at:
+# https://github.com/lazywalker/lazydns/tree/master/examples
+# https://lazywalker.github.io/lazydns/docs/
 
 # Log configuration
 log:
   level: info
   format: text
+  # file: log/lazydns.log
 
 # Plugin execution flow
 plugins:

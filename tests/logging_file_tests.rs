@@ -118,7 +118,11 @@ fn test_rolling_daily_creates_file() {
 
     let filter = tracing_subscriber::EnvFilter::try_new(cfg.level.clone()).unwrap();
 
-    let rolling = tracing_appender::rolling::daily(&dir_str, "app.log");
+    let rolling = tracing_appender::rolling::Builder::new()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("app.log")
+        .build(&dir_str)
+        .expect("failed to create rolling file appender");
     let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
 
     let mut builder = tracing_subscriber::fmt::Subscriber::builder()

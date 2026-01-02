@@ -59,11 +59,11 @@
 //! ```
 
 use crate::dns::Message;
-use crate::server::{RequestHandler, ServerConfig};
+use crate::server::{RequestHandler, Server, ServerConfig};
 use crate::{Error, Result};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 /// UDP DNS server
 ///
@@ -303,7 +303,7 @@ impl UdpServer {
                         if let Err(e) =
                             Self::handle_request(&request_data, peer_addr, handler, socket).await
                         {
-                            error!("Error handling request from {}: {}", peer_addr, e);
+                            warn!("Error handling request from {}: {}", peer_addr, e);
                         }
                     });
                 }
@@ -326,6 +326,7 @@ impl UdpServer {
         let request = Self::parse_request(request_data)?;
 
         debug!(
+            peer = %peer_addr,
             question = ?request.questions(),
             "Processing query ID {} with {} questions from {}",
             request.id(),
@@ -463,6 +464,21 @@ impl UdpServer {
     /// ```
     fn serialize_response(message: &Message) -> Result<Vec<u8>> {
         crate::dns::wire::serialize_message(message)
+    }
+}
+
+#[async_trait::async_trait]
+impl Server for UdpServer {
+    async fn from_config(config: ServerConfig) -> Result<Self> {
+        let handler = config
+            .handler
+            .clone()
+            .ok_or_else(|| Error::Config("Handler not configured".to_string()))?;
+        Self::new(config, handler).await
+    }
+
+    async fn run(self) -> Result<()> {
+        UdpServer::run(&self).await
     }
 }
 

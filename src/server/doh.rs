@@ -24,7 +24,7 @@
 
 use crate::dns::Message;
 use crate::error::{Error, Result};
-use crate::server::{RequestHandler, TlsConfig};
+use crate::server::{RequestHandler, Server, ServerConfig, TlsConfig};
 use axum::{
     Router,
     body::Bytes,
@@ -40,7 +40,7 @@ use axum_server::tls_rustls::RustlsConfig as AxumRustlsConfig;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 /// DNS over HTTPS server
 ///
@@ -166,6 +166,34 @@ impl DohServer {
     }
 }
 
+#[async_trait::async_trait]
+impl Server for DohServer {
+    async fn from_config(config: ServerConfig) -> crate::Result<Self> {
+        let addr = config
+            .tcp_addr
+            .ok_or_else(|| Error::Config("TCP address not configured for DoH".to_string()))?
+            .to_string();
+
+        let tls_config = config
+            .tls_config
+            .ok_or_else(|| Error::Config("TLS config not configured for DoH".to_string()))?;
+
+        let handler = config
+            .handler
+            .ok_or_else(|| Error::Config("Handler not configured".to_string()))?;
+
+        let mut server = Self::new(addr, tls_config, handler);
+        if let Some(path) = config.doh_path {
+            server = server.with_path(path);
+        }
+        Ok(server)
+    }
+
+    async fn run(self) -> crate::Result<()> {
+        DohServer::run(self).await
+    }
+}
+
 /// Handle DoH GET requests (RFC 8484 Section 4.1)
 ///
 /// Expected behavior:
@@ -200,6 +228,8 @@ async fn handle_get_query(
         }
     };
 
+    trace!(dns_param, "DoH GET query parameters");
+
     // Decode base64url-encoded DNS message
     let dns_data = match URL_SAFE_NO_PAD.decode(dns_param.as_bytes()) {
         Ok(data) => data,
@@ -212,7 +242,7 @@ async fn handle_get_query(
         }
     };
 
-    debug!("Decoded DNS query: {} bytes", dns_data.len());
+    trace!("Decoded DNS query: {} bytes", dns_data.len());
 
     // Parse DNS query
     let request = match parse_dns_message(&dns_data) {
@@ -225,6 +255,14 @@ async fn handle_get_query(
                 .into_response();
         }
     };
+
+    // Log parsed query details similar to UDP/TCP handlers
+    debug!(
+        question = ?request.questions(),
+        "Processing query ID {} with {} questions",
+        request.id(),
+        request.question_count()
+    );
 
     // Create request context (DoH doesn't have reliable client IP)
     let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoH);
@@ -253,7 +291,8 @@ async fn handle_get_query(
         }
     };
 
-    debug!("Sending DoH response: {} bytes", response_data.len());
+    debug!("DoH GET handler processed query successfully");
+    trace!("Sending DoH response: {} bytes", response_data.len());
 
     // Return DNS response with proper content type
     (
@@ -284,6 +323,7 @@ async fn handle_post_query(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    debug!("Handling DoH POST request");
     // Verify content type
     if let Some(content_type) = headers.get(header::CONTENT_TYPE) {
         if content_type != "application/dns-message" {
@@ -296,10 +336,14 @@ async fn handle_post_query(
     } else {
         return (StatusCode::BAD_REQUEST, "Content-Type header required").into_response();
     }
+    trace!(content_length = body.len(), "DoH POST body length");
 
-    // Parse DNS query (placeholder)
+    // Parse DNS query
     let request = match parse_dns_message(&body) {
-        Ok(msg) => msg,
+        Ok(msg) => {
+            trace!(bytes = body.len(), "Parsed DNS POST query");
+            msg
+        }
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -309,12 +353,23 @@ async fn handle_post_query(
         }
     };
 
+    // Log parsed query details similar to UDP/TCP handlers
+    debug!(
+        question = ?request.questions(),
+        "Processing query ID {} with {} questions",
+        request.id(),
+        request.question_count()
+    );
+
     // Create request context
     let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoH);
 
     // Process query
     let response = match handler.handle(ctx).await {
-        Ok(resp) => resp,
+        Ok(resp) => {
+            debug!("DoH POST handler processed query successfully");
+            resp
+        }
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -324,9 +379,12 @@ async fn handle_post_query(
         }
     };
 
-    // Serialize response (placeholder)
+    // Serialize response
     let response_data = match serialize_dns_message(&response) {
-        Ok(data) => data,
+        Ok(data) => {
+            trace!(bytes = data.len(), "Serialized DoH POST response");
+            data
+        }
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,

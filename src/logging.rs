@@ -7,6 +7,10 @@
 
 use crate::config::LogConfig;
 use anyhow::Result;
+#[cfg(feature = "log-file")]
+use std::io::Write;
+#[cfg(feature = "log-file")]
+use std::sync::{Arc, Mutex};
 #[cfg(feature = "tracing-subscriber")]
 use tracing_subscriber::{
     EnvFilter, fmt::time::OffsetTime, layer::SubscriberExt, util::SubscriberInitExt,
@@ -24,6 +28,117 @@ const RFC3339_MS: &[time::format_description::FormatItem<'static>] = time::macro
 #[cfg(feature = "log-file")]
 static FILE_GUARD: once_cell::sync::OnceCell<tracing_appender::non_blocking::WorkerGuard> =
     once_cell::sync::OnceCell::new();
+
+/// A custom writer that rotates log files based on local time.
+/// This is necessary because `tracing_appender::rolling` uses UTC time for rotation,
+/// which causes issues for users expecting rotation based on their local timezone.
+#[cfg(feature = "log-file")]
+struct LocalTimeRotatingWriter {
+    rotation_dir: std::path::PathBuf,
+    file_prefix: String,
+    rotation_period: RotationPeriod,
+    current_file: Arc<Mutex<Option<(std::fs::File, String)>>>,
+}
+
+#[cfg(feature = "log-file")]
+#[derive(Clone, Copy, PartialEq)]
+enum RotationPeriod {
+    Daily,
+    Hourly,
+}
+
+#[cfg(feature = "log-file")]
+/// Alias for the shared file handle used by the rotating writer.
+type LogFileHandle = Arc<Mutex<Option<(std::fs::File, String)>>>;
+
+#[cfg(feature = "log-file")]
+impl LocalTimeRotatingWriter {
+    fn new(
+        rotation_dir: impl Into<std::path::PathBuf>,
+        file_prefix: impl Into<String>,
+        rotation_period: RotationPeriod,
+    ) -> Self {
+        Self {
+            rotation_dir: rotation_dir.into(),
+            file_prefix: file_prefix.into(),
+            rotation_period,
+            current_file: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn get_current_suffix(&self) -> String {
+        let now =
+            time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+
+        match self.rotation_period {
+            RotationPeriod::Daily => {
+                format!(
+                    "{:04}-{:02}-{:02}",
+                    now.year(),
+                    now.month() as u8,
+                    now.day()
+                )
+            }
+            RotationPeriod::Hourly => {
+                format!(
+                    "{:04}-{:02}-{:02}-{:02}",
+                    now.year(),
+                    now.month() as u8,
+                    now.day(),
+                    now.hour()
+                )
+            }
+        }
+    }
+
+    fn get_or_create_file(&self) -> std::io::Result<LogFileHandle> {
+        let current_suffix = self.get_current_suffix();
+        let mut file_guard = self.current_file.lock().unwrap();
+
+        // Check if we need to rotate (suffix changed or no file open)
+        let needs_rotation = match &*file_guard {
+            None => true,
+            Some((_, suffix)) => suffix != &current_suffix,
+        };
+
+        if needs_rotation {
+            let filename = format!("{}.{}", self.file_prefix, current_suffix);
+            let filepath = self.rotation_dir.join(&filename);
+
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&filepath)?;
+
+            *file_guard = Some((file, current_suffix));
+        }
+
+        Ok(self.current_file.clone())
+    }
+}
+
+#[cfg(feature = "log-file")]
+impl Write for LocalTimeRotatingWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let file_arc = self.get_or_create_file()?;
+        let mut file_guard = file_arc.lock().unwrap();
+
+        if let Some((file, _)) = &mut *file_guard {
+            file.write(buf)
+        } else {
+            Err(std::io::Error::other("Failed to open log file"))
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let mut file_guard = self.current_file.lock().unwrap();
+        if let Some((file, _)) = &mut *file_guard {
+            file.flush()
+        } else {
+            Ok(())
+        }
+    }
+}
 
 /// Determine the effective log specification string used to build an `EnvFilter`.
 ///
@@ -127,11 +242,14 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
                             .and_then(|s| s.to_str())
                             .unwrap_or("log");
 
-                        let rolling = if cfg.rotate == "daily" {
-                            tracing_appender::rolling::daily(rotation_dir, file_name)
+                        let rotation_period = if cfg.rotate == "daily" {
+                            RotationPeriod::Daily
                         } else {
-                            tracing_appender::rolling::hourly(rotation_dir, file_name)
+                            RotationPeriod::Hourly
                         };
+
+                        let rolling =
+                            LocalTimeRotatingWriter::new(rotation_dir, file_name, rotation_period);
 
                         let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
 
@@ -199,11 +317,14 @@ pub fn init_logging(cfg: &LogConfig, cli_verbose: Option<u8>) -> Result<()> {
                             .and_then(|s| s.to_str())
                             .unwrap_or("log");
 
-                        let rolling = if cfg.rotate == "daily" {
-                            tracing_appender::rolling::daily(rotation_dir, file_name)
+                        let rotation_period = if cfg.rotate == "daily" {
+                            RotationPeriod::Daily
                         } else {
-                            tracing_appender::rolling::hourly(rotation_dir, file_name)
+                            RotationPeriod::Hourly
                         };
+
+                        let rolling =
+                            LocalTimeRotatingWriter::new(rotation_dir, file_name, rotation_period);
 
                         let (non_blocking, guard) = tracing_appender::non_blocking(rolling);
 
@@ -277,7 +398,7 @@ mod tests {
         // Preserve and remove RUST_LOG to ensure the default is used.
         let prev = std::env::var("RUST_LOG").ok();
         unsafe {
-            std::env::set_var("RUST_LOG", "");
+            std::env::remove_var("RUST_LOG");
         }
         let cfg = LogConfig {
             level: "warn".to_string(),
@@ -295,9 +416,8 @@ mod tests {
 
         // Restore previous value
         unsafe {
-            match prev {
-                Some(v) => std::env::set_var("RUST_LOG", v),
-                None => std::env::remove_var("RUST_LOG"),
+            if let Some(v) = prev {
+                std::env::set_var("RUST_LOG", v);
             }
         }
     }
@@ -315,5 +435,60 @@ mod tests {
 
         // If the feature is disabled this should return Ok without touching the filesystem.
         assert!(init_logging(&cfg, None).is_ok());
+    }
+
+    #[cfg(feature = "log-file")]
+    #[test]
+    fn rotating_writer_suffix_formats() {
+        let daily =
+            LocalTimeRotatingWriter::new(std::env::temp_dir(), "test.log", RotationPeriod::Daily);
+        let suffix = daily.get_current_suffix();
+        let parts: Vec<_> = suffix.split('-').collect();
+        assert_eq!(parts.len(), 3);
+        let year: i32 = parts[0].parse().unwrap();
+        let month: u8 = parts[1].parse().unwrap();
+        let day: u8 = parts[2].parse().unwrap();
+        assert!(year >= 2000);
+        assert!((1..=12).contains(&month));
+        assert!((1..=31).contains(&day));
+
+        let hourly =
+            LocalTimeRotatingWriter::new(std::env::temp_dir(), "test.log", RotationPeriod::Hourly);
+        let suffix_h = hourly.get_current_suffix();
+        let parts_h: Vec<_> = suffix_h.split('-').collect();
+        assert_eq!(parts_h.len(), 4);
+        let hour: u8 = parts_h[3].parse().unwrap();
+        assert!((0..=23).contains(&hour));
+    }
+
+    #[cfg(feature = "log-file")]
+    #[test]
+    fn rotating_writer_creates_file_and_writes() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let unique = format!(
+            "{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let tmpdir = std::env::temp_dir().join(format!("lazydns_test_{}", unique));
+        std::fs::create_dir_all(&tmpdir).unwrap();
+
+        let mut writer =
+            LocalTimeRotatingWriter::new(&tmpdir, "lazydns.log", RotationPeriod::Daily);
+        use std::io::Write as IoWrite;
+        writer.write_all(b"hello\n").unwrap();
+        writer.flush().unwrap();
+
+        let suffix = writer.get_current_suffix();
+        let filename = tmpdir.join(format!("lazydns.log.{}", suffix));
+        let content = std::fs::read_to_string(&filename).unwrap();
+        assert!(content.contains("hello\n"));
+
+        // cleanup
+        let _ = std::fs::remove_file(&filename);
+        let _ = std::fs::remove_dir(&tmpdir);
     }
 }

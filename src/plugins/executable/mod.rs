@@ -1,7 +1,6 @@
 //! Executable plugins for DNS query processing
 //!
 //! This module contains plugins that perform actions on DNS queries and responses.
-
 pub mod arbitrary;
 pub mod black_hole;
 pub mod collector;
@@ -13,6 +12,7 @@ pub mod ecs;
 pub mod edns0opt;
 pub mod fallback;
 pub mod ipset;
+pub mod mark;
 pub mod nftset;
 pub mod query_summary;
 pub mod ratelimit;
@@ -23,7 +23,6 @@ pub mod sequence;
 pub mod sleep;
 pub mod ttl;
 
-pub use arbitrary::ArbitraryPlugin;
 pub use black_hole::BlackholePlugin;
 pub use collector::MetricsCollectorPlugin;
 #[cfg(feature = "metrics")]
@@ -36,6 +35,7 @@ pub use ecs::EcsPlugin;
 pub use edns0opt::{Edns0OptPlugin, Edns0Option};
 pub use fallback::FallbackPlugin;
 pub use ipset::IpSetPlugin;
+pub use mark::MarkPlugin;
 pub use nftset::NftSetPlugin;
 pub use query_summary::QuerySummaryPlugin;
 pub use ratelimit::RateLimitPlugin;

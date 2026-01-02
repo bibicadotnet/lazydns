@@ -1,0 +1,123 @@
+# Example configuration for ACL (Access Control List) Plugin
+# This demonstrates how to use the query_acl plugin for IP-based access control
+#
+# The ACL plugin provides IP-based access control for DNS queries, allowing you
+# to create allow-lists or deny-lists based on client IP addresses.
+#
+# Configuration options:
+# - default: Default action when no rules match ("allow" or "deny", defaults to "deny")
+# - rules: List of ACL rules, each with:
+#   - network: IP network in CIDR notation (e.g., "192.168.0.0/16")
+#   - action: Action to take for this network ("allow" or "deny")
+#
+# Examples:
+#   # Allow-list (deny by default, allow specific networks)
+#   - tag: allow_list_acl
+#     type: query_acl
+#     args:
+#       default: "deny"
+#       rules:
+#         - network: "192.168.0.0/16"
+#           action: "allow"
+#         - network: "10.0.0.0/8"
+#           action: "allow"
+#
+#   # Deny-list (allow by default, deny specific networks)
+#   - tag: deny_list_acl
+#     type: query_acl
+#     args:
+#       default: "allow"
+#       rules:
+#         - network: "192.168.100.0/24"
+#           action: "deny"
+#
+# The plugin processes DNS queries and:
+# - Extracts client IP from metadata (set by server)
+# - Evaluates rules in order until a match is found
+# - Takes the specified action (allow/deny) or default action
+# - For denied queries, returns REFUSED response code
+# - Logs all access control decisions
+#
+# Prerequisites:
+# - Server must set "client_ip" metadata for each query
+# - Use high priority (runs early in pipeline, default priority 2000)
+#
+# Usage:
+#   cargo run -- -c examples/acl.demo.yaml -vv
+#
+# Test commands:
+#   # Test from allowed IP (if running on local network)
+#   dig @127.0.0.1 -p 5353 example.com A
+#
+#   # Test from denied IP (will get REFUSED)
+#   # WARN lazydns::plugins::acl: ACL: Denied query from x.x.x.x
+#   # Note: Actual behavior depends on your network setup
+
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Forward plugin to get DNS responses (for allowed queries)
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
+
+  # ACL plugin - Allow-list example (deny by default, allow specific networks)
+  - tag: allow_list_acl
+    type: query_acl
+    args:
+      default: "deny"
+      rules:
+        - network: "127.0.0.0/8"      # Allow localhost
+          action: "allow"
+        - network: "192.168.0.0/16"   # Allow private network
+          action: "allow"
+        - network: "10.0.0.0/8"       # Allow private network
+          action: "allow"
+        - network: "172.16.0.0/12"    # Allow private network
+          action: "allow"
+
+  # ACL plugin - Deny-list example (allow by default, deny specific networks)
+  - tag: deny_list_acl
+    type: query_acl
+    args:
+      default: "allow"
+      rules:
+        - network: "192.168.100.0/24" # Block this specific subnet
+          action: "deny"
+
+  # Sequence for allow-list demo
+  - tag: allow_list_sequence
+    type: sequence
+    args:
+      - exec: $allow_list_acl
+      - exec: $forward
+      - exec: accept
+
+  # Sequence for deny-list demo
+  - tag: deny_list_sequence
+    type: sequence
+    args:
+      - exec: $deny_list_acl
+      - exec: $forward
+      - exec: accept
+
+  # UDP server for allow-list ACL demo (port 5353)
+  - tag: udp_server_allow_list
+    type: udp_server
+    args:
+      entry: allow_list_sequence
+      listen: ":5353"
+
+  # UDP server for deny-list ACL demo (port 5354)
+  - tag: udp_server_deny_list
+    type: udp_server
+    args:
+      entry: deny_list_sequence
+      listen: ":5354"

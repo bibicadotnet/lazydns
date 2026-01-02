@@ -1,0 +1,108 @@
+# Example configuration for MarkPlugin
+# This demonstrates how to use the mark plugin to add metadata/tags to DNS queries
+#
+# The mark plugin allows you to add arbitrary metadata (marks/tags) to DNS queries.
+# These marks can be used by other plugins to make routing decisions, apply different
+# processing logic, or enable conditional behavior.
+#
+# The plugin supports the following configuration options:
+#   - name: The name/key of the mark (required)
+#   - value: The value to assign (optional, defaults to true for boolean marks)
+#
+# Examples:
+#   # Boolean mark (sets to true)
+#   - tag: vip_mark
+#     type: mark
+#     args:
+#       name: "vip_customer"
+#
+#   # Mark with string value
+#   - tag: priority_mark
+#     type: mark
+#     args:
+#       name: "priority"
+#       value: "high"
+#
+# Exec syntax (inline):
+#   - exec: mark priority high        # Set priority to "high"
+#   - exec: mark vip_customer         # Set vip_customer to true
+#   - exec: mark status "very important"  # Multi-word values with quotes
+#
+# The plugin processes DNS queries and:
+# - Adds metadata to the query context using the specified name and value
+# - Stores marks in a thread-safe manner for access by other plugins
+# - Supports both boolean marks (defaulting to true) and string values
+# - Logs mark application for debugging and monitoring
+#
+# Use cases:
+# - Traffic routing: Mark queries based on client IP, domain, or other criteria
+# - Quality of Service: Prioritize certain queries with different upstream servers
+# - Logging: Add metadata for monitoring and analytics
+# - Policy enforcement: Apply different policies based on marks
+# - Load balancing: Route queries to different servers based on marks
+#
+# Usage:
+#   cargo run -- -c examples/mark.demo.yaml -vv
+#
+# Test with:
+#   dig @127.0.0.1 -p 5353 example.com A
+
+log:
+  level: info
+  format: text
+
+# Plugin execution flow
+plugins:
+  # Mark plugin - adds high priority metadata to queries
+  - tag: high_priority_mark
+    type: mark
+    args:
+      name: "priority"
+      value: "high"
+
+  # Mark plugin - boolean mark for VIP customers (sets to true)
+  - tag: vip_mark
+    type: mark
+    args:
+      name: "vip_customer"
+
+  # Forward to upstream DNS servers
+  - tag: forward
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: "8.8.8.8:53"
+        - addr: "1.1.1.1:53"
+
+  # Main sequence that marks queries and forwards them
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $high_priority_mark
+      - exec: $vip_mark
+      - exec: $forward
+      - exec: accept
+
+  # Alternative sequence using inline exec syntax
+  - tag: exec_sequence
+    type: sequence
+    args:
+      - exec: mark priority high
+      - exec: mark vip_customer
+      - exec: $forward
+      - exec: accept
+
+  # UDP server listening on port 5353 (using main_sequence)
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: ":5353"
+
+  # Alternative UDP server using exec syntax (port 5354)
+  - tag: udp_server_exec
+    type: udp_server
+    args:
+      entry: exec_sequence
+      listen: ":5354"

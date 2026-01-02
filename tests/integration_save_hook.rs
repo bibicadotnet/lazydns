@@ -52,7 +52,7 @@ async fn integration_sequence_save_hook() {
     ));
 
     // Build an ArbitraryPlugin that will set the response when executed
-    use lazydns::plugins::executable::arbitrary::ArbitraryArgs;
+    use lazydns::plugins::dataset::arbitrary::ArbitraryArgs;
     let mut rules = Vec::new();
     for rr in resp.answers() {
         match rr.rdata() {

@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tokio::net::UdpSocket;
 use tokio::time::{Duration, Instant, timeout};
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, trace, warn};
 
 /// Load balancing strategy for upstream selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -579,6 +579,8 @@ pub struct ForwardPlugin {
     current: AtomicUsize,
     /// Enable concurrent queries (race mode)
     concurrent_queries: bool,
+    /// Plugin tag from YAML configuration
+    tag: Option<String>,
 }
 
 impl ForwardPlugin {
@@ -607,6 +609,7 @@ impl ForwardPlugin {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         }
     }
 
@@ -636,6 +639,7 @@ impl ForwardPlugin {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         }
     }
 
@@ -669,10 +673,10 @@ impl ForwardPlugin {
             {
                 use crate::metrics::{UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL};
                 UPSTREAM_QUERIES_TOTAL
-                    .with_label_values(&[&upstream.addr, "success"])
+                    .with_label_values(&[upstream.addr.as_str(), "success"])
                     .inc();
                 UPSTREAM_DURATION_SECONDS
-                    .with_label_values(&[&upstream.addr])
+                    .with_label_values(&[upstream.addr.as_str()])
                     .observe(elapsed.as_secs_f64());
             }
         } else {
@@ -681,7 +685,7 @@ impl ForwardPlugin {
             {
                 use crate::metrics::UPSTREAM_QUERIES_TOTAL;
                 UPSTREAM_QUERIES_TOTAL
-                    .with_label_values(&[&upstream.addr, "error"])
+                    .with_label_values(&[upstream.addr.as_str(), "error"])
                     .inc();
             }
         }
@@ -770,10 +774,10 @@ impl ForwardPlugin {
                                     UPSTREAM_DURATION_SECONDS, UPSTREAM_QUERIES_TOTAL,
                                 };
                                 UPSTREAM_QUERIES_TOTAL
-                                    .with_label_values(&[&upstream.addr, "success"])
+                                    .with_label_values(&[upstream.addr.as_str(), "success"])
                                     .inc();
                                 UPSTREAM_DURATION_SECONDS
-                                    .with_label_values(&[&upstream.addr])
+                                    .with_label_values(&[upstream.addr.as_str()])
                                     .observe(elapsed.as_secs_f64());
                             }
                         }
@@ -787,7 +791,7 @@ impl ForwardPlugin {
                             {
                                 use crate::metrics::UPSTREAM_QUERIES_TOTAL;
                                 UPSTREAM_QUERIES_TOTAL
-                                    .with_label_values(&[&upstream.addr, "error"])
+                                    .with_label_values(&[upstream.addr.as_str(), "error"])
                                     .inc();
                             }
                         }
@@ -845,7 +849,7 @@ impl ForwardPlugin {
                     return Ok(());
                 }
                 Err(e) => {
-                    error!(
+                    warn!(
                         "Failed to forward query to {} (attempt {}/{}): {}",
                         self.core.upstreams[upstream_idx].addr,
                         attempts + 1,
@@ -895,6 +899,7 @@ impl Plugin for ForwardPlugin {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: concurrent,
+            tag: config.tag.clone(),
         };
 
         Ok(Arc::new(plugin))
@@ -927,6 +932,10 @@ impl Plugin for ForwardPlugin {
 
     fn name(&self) -> &str {
         "forward"
+    }
+
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
     }
 
     fn priority(&self) -> i32 {
@@ -1034,6 +1043,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         // Build a request message
@@ -1085,6 +1095,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         let mut req = Message::new();
@@ -1127,6 +1138,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
         let mut ctx2 = Context::new(req);
         let _res = bad_plugin.execute(&mut ctx2).await;
@@ -1152,6 +1164,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         assert_eq!(plugin.upstreams.len(), 2);
@@ -1232,6 +1245,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         let mut req = Message::new();
@@ -1274,6 +1288,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         assert_eq!(plugin.upstreams.len(), 1);
@@ -1380,6 +1395,7 @@ mod tests {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: false,
+            tag: None,
         };
 
         let mut req = Message::new();

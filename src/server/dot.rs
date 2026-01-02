@@ -16,12 +16,12 @@
 //! limits.
 
 use crate::error::{Error, Result};
-use crate::server::{RequestHandler, TlsConfig};
+use crate::server::{RequestHandler, Server, ServerConfig, TlsConfig};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// DNS over TLS server
 ///
@@ -109,11 +109,16 @@ impl DotServer {
         acceptor: TlsAcceptor,
         handler: Arc<dyn RequestHandler>,
     ) -> Result<()> {
+        // Capture peer address if available for logging
+        let peer_addr = stream.peer_addr().ok();
+
         // Perform TLS handshake
         let mut tls_stream = acceptor
             .accept(stream)
             .await
             .map_err(|e| Error::Other(format!("TLS handshake failed: {}", e)))?;
+
+        debug!(peer = ?peer_addr, "TLS handshake succeeded for DoT connection");
 
         // Process DNS queries over this TLS connection
         loop {
@@ -141,10 +146,20 @@ impl DotServer {
 
             // Read message data
             let mut buf = vec![0u8; msg_len];
+            trace!(peer = ?peer_addr, len = msg_len, "Reading DoT message");
             tls_stream.read_exact(&mut buf).await.map_err(Error::Io)?;
 
             // Parse request from wire-format bytes
             let request = Self::parse_request(&buf)?;
+
+            // Log parsed query details
+            debug!(
+                peer = ?peer_addr,
+                question = ?request.questions(),
+                "Processing DoT query ID {} with {} questions",
+                request.id(),
+                request.question_count()
+            );
 
             // Create request context (DoT doesn't provide client address reliably)
             let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoT);
@@ -154,6 +169,9 @@ impl DotServer {
 
             // Serialize response to wire-format bytes
             let response_data = Self::serialize_response(&response)?;
+
+            // Log response details
+            trace!(peer = ?peer_addr, id = response.id(), answers = response.answer_count(), "Sending DoT response");
 
             // Write response length
             let response_len = response_data.len() as u16;
@@ -186,6 +204,30 @@ impl DotServer {
     /// Serializes to binary DNS wire format according to RFC 1035 using hickory-proto.
     fn serialize_response(message: &crate::dns::Message) -> Result<Vec<u8>> {
         crate::dns::wire::serialize_message(message)
+    }
+}
+
+#[async_trait::async_trait]
+impl Server for DotServer {
+    async fn from_config(config: ServerConfig) -> Result<Self> {
+        let addr = config
+            .tcp_addr
+            .ok_or_else(|| Error::Config("TCP address not configured for DoT".to_string()))?
+            .to_string();
+
+        let tls_config = config
+            .tls_config
+            .ok_or_else(|| Error::Config("TLS config not configured for DoT".to_string()))?;
+
+        let handler = config
+            .handler
+            .ok_or_else(|| Error::Config("Handler not configured".to_string()))?;
+
+        Ok(Self::new(addr, tls_config, handler))
+    }
+
+    async fn run(self) -> Result<()> {
+        DotServer::run(self).await
     }
 }
 

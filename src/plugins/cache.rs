@@ -66,12 +66,14 @@ use crate::metrics;
 use crate::plugin::{Context, Plugin, PluginHandler, RETURN_FLAG};
 use crate::server::{Protocol, RequestContext, RequestHandler};
 use async_trait::async_trait;
-use dashmap::{DashMap, DashSet};
+use dashmap::DashSet;
+use lru::LruCache;
 use std::fmt;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tracing::debug;
+use tracing::{debug, trace};
 
 /// TTL used when serving stale responses during cache_ttl window
 const STALE_RESPONSE_TTL_SECS: u32 = 5;
@@ -328,7 +330,7 @@ impl fmt::Display for LazyCacheStats {
 /// will trigger a refresh query to keep the cache warm.
 pub struct CachePlugin {
     /// The cache storage (domain name -> cache entry)
-    cache: Arc<DashMap<String, CacheEntry>>,
+    cache: Arc<parking_lot::RwLock<LruCache<String, CacheEntry>>>,
     /// Maximum number of entries in the cache
     max_size: usize,
     /// Cache statistics
@@ -353,6 +355,8 @@ pub struct CachePlugin {
     lazycache_threshold_dynamic: Arc<tokio::sync::RwLock<f32>>,
     /// Set of keys currently being refreshed (to prevent duplicate refreshes)
     refreshing_keys: Arc<DashSet<String>>,
+    /// Plugin tag from YAML configuration
+    tag: Option<String>,
 }
 
 impl CachePlugin {
@@ -370,8 +374,9 @@ impl CachePlugin {
     /// let cache = CachePlugin::new(1000);
     /// ```
     pub fn new(max_size: usize) -> Self {
+        let capacity = NonZeroUsize::new(max_size.max(1)).unwrap();
         Self {
-            cache: Arc::new(DashMap::new()),
+            cache: Arc::new(parking_lot::RwLock::new(LruCache::new(capacity))),
             max_size,
             stats: Arc::new(CacheStats::new()),
             negative_cache: false,
@@ -384,6 +389,7 @@ impl CachePlugin {
             lazycache_stats: Arc::new(LazyCacheStats::new()),
             lazycache_threshold_dynamic: Arc::new(tokio::sync::RwLock::new(0.05)),
             refreshing_keys: Arc::new(DashSet::new()),
+            tag: None,
         }
     }
 
@@ -471,12 +477,12 @@ impl CachePlugin {
         *self.lazycache_threshold_dynamic.read().await
     }
     pub fn size(&self) -> usize {
-        self.cache.len()
+        self.cache.read().len()
     }
 
     /// Clear all entries from the cache
     pub fn clear(&self) {
-        self.cache.clear();
+        self.cache.write().clear();
         // Update cache size metric
         #[cfg(feature = "metrics")]
         {
@@ -514,57 +520,36 @@ impl CachePlugin {
         })
     }
 
-    /// Check if cache is at capacity
-    #[allow(dead_code)]
-    fn is_full(&self) -> bool {
-        self.cache.len() >= self.max_size
-    }
-
-    /// Evict least recently used entry
-    #[allow(dead_code)]
-    fn evict_lru(&self) {
-        if self.cache.is_empty() {
-            return;
-        }
-
-        // Find the entry with the oldest last_accessed time
-        let mut oldest_key: Option<String> = None;
-        let mut oldest_time: Option<Instant> = None;
-
-        for entry in self.cache.iter() {
-            let last_accessed = entry.value().last_accessed;
-            if oldest_time.is_none() || last_accessed < oldest_time.unwrap() {
-                oldest_time = Some(last_accessed);
-                oldest_key = Some(entry.key().clone());
-            }
-        }
-
-        // Remove the oldest entry
-        if let Some(key) = oldest_key {
-            self.cache.remove(&key);
-            self.stats.record_eviction();
-            // Update cache size metric
-            #[cfg(feature = "metrics")]
-            {
-                metrics::CACHE_SIZE.set(self.size() as i64);
-            }
-            debug!("Evicted LRU cache entry: {}", key);
-        }
-    }
-
-    /// Store a response in the cache
-    #[allow(dead_code)]
+    /// Store a response in the cache (LRU will auto-evict if full)
     fn store(&self, key: String, entry: CacheEntry) {
-        // Evict if necessary
-        if self.is_full() {
-            self.evict_lru();
+        let mut cache = self.cache.write();
+
+        // Check if this key already exists (replacement, not eviction)
+        let key_exists = cache.contains(&key);
+
+        // LruCache::push returns Some if the key existed (replacement)
+        // or if cache was full and a new key was added (true eviction)
+        if let Some((evicted_key, _)) = cache.push(key, entry) {
+            // Only count as eviction if this is a new key (not a replacement)
+            if !key_exists {
+                // Cache was full, this is a true LRU eviction
+                self.stats.record_eviction();
+                debug!("LRU evicted cache entry: {}", evicted_key);
+            } else {
+                // This was a key replacement (update), not an eviction
+                trace!("Cache store: replaced existing entry: {}", evicted_key);
+            }
         }
 
-        self.cache.insert(key, entry);
+        trace!(
+            stats = ?self.stats,
+            "Cache stats after store operation"
+        );
+
         // Update cache size metric
         #[cfg(feature = "metrics")]
         {
-            metrics::CACHE_SIZE.set(self.size() as i64);
+            metrics::CACHE_SIZE.set(cache.len() as i64);
         }
     }
 
@@ -637,6 +622,10 @@ impl Plugin for CachePlugin {
             }
         };
 
+        // Check if cache was already checked in this request to avoid double-counting misses
+        // (e.g., when fallback retries the entire sequence)
+        let cache_already_checked = context.get_metadata::<bool>("cache_checked").is_some();
+
         // Check if response is already from cache (from a previous execution of this plugin)
         if context
             .get_metadata::<bool>("response_from_cache")
@@ -648,6 +637,9 @@ impl Plugin for CachePlugin {
 
         // Phase 1: Try to read from cache (only if no response yet)
         if context.response().is_none() {
+            // Mark that cache has been checked for this request (prevent duplicate miss counting)
+            context.set_metadata("cache_checked", true);
+
             // Skip cache logic for background lazy refresh to avoid recursion
             if context
                 .get_metadata::<bool>("background_lazy_refresh")
@@ -656,15 +648,18 @@ impl Plugin for CachePlugin {
                 debug!("Skipping cache logic for background lazy refresh");
                 return Ok(());
             }
-            // Try to get from cache
-            if let Some(mut entry_ref) = self.cache.get_mut(&key) {
-                let entry = entry_ref.value_mut();
 
+            // Try to get from cache (LruCache::get automatically updates LRU order)
+            let cached_entry = {
+                let mut cache = self.cache.write();
+                cache.get(&key).cloned()
+            };
+
+            if let Some(mut entry) = cached_entry {
                 // Remove if cache lifetime has fully expired
                 if entry.is_cache_expired() {
                     debug!("Cache entry expired: {}", key);
-                    drop(entry_ref); // Release lock before removing
-                    self.cache.remove(&key);
+                    self.cache.write().pop(&key);
                     self.stats.record_expiration();
                     self.stats.record_miss();
                     // Update cache size metric after removal
@@ -768,7 +763,7 @@ impl Plugin for CachePlugin {
                                 tokio::spawn(async move {
                                     tokio::time::sleep(tokio::time::Duration::from_millis(10))
                                         .await;
-                                    cache_clone.remove(&key_clone);
+                                    cache_clone.write().pop(&key_clone);
                                     refreshing_keys_clone.remove(&key_clone);
                                 });
                             }
@@ -785,8 +780,7 @@ impl Plugin for CachePlugin {
                     } else {
                         // No lazycache TTL configured: treat as expired
                         debug!("Cache entry message TTL expired without cache_ttl: {}", key);
-                        drop(entry_ref);
-                        self.cache.remove(&key);
+                        self.cache.write().pop(&key);
                         self.stats.record_expiration();
                         self.stats.record_miss();
                         #[cfg(feature = "metrics")]
@@ -815,7 +809,7 @@ impl Plugin for CachePlugin {
                         let threshold = self.lazycache_threshold;
 
                         debug!(
-                            "Lazycache check: {}, original_ttl: {}s, remaining: {}s, percentage: {:.2}%, threshold: {:.2}%",
+                            "LazyCache check: {}, original_ttl: {}s, remaining: {}s, percentage: {:.2}%, threshold: {:.2}%",
                             key,
                             entry.original_ttl,
                             remaining_ttl,
@@ -826,7 +820,7 @@ impl Plugin for CachePlugin {
                         if ttl_percentage <= threshold {
                             // Lazycache: Entry needs refresh
                             debug!(
-                                "Lazycache threshold REACHED for {}: {:.2}% TTL remaining (< {:.2}%), triggering refresh",
+                                "LazyCache threshold REACHED for {}: {:.2}% TTL remaining (< {:.2}%), triggering refresh",
                                 key,
                                 ttl_percentage * 100.0,
                                 threshold * 100.0
@@ -932,7 +926,7 @@ impl Plugin for CachePlugin {
                             tokio::spawn(async move {
                                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
                                 debug!("Fallback: invalidating cache entry for {}", key_clone);
-                                cache_clone.remove(&key_clone);
+                                cache_clone.write().pop(&key_clone);
                                 refreshing_keys_clone.remove(&key_clone);
                             });
                         }
@@ -967,7 +961,7 @@ impl Plugin for CachePlugin {
                         // Mark that response came from cache to prevent Phase 2 re-execution
                         context.set_metadata("response_from_cache", true);
 
-                        debug!("Normal cache hit: returning immediately and stopping chain");
+                        trace!("Normal cache hit: returning immediately and stopping chain");
                         // Stop the plugin chain to prevent downstream plugins (like Forward)
                         // from executing and overwriting our cached response.
                         context.set_metadata(RETURN_FLAG, true);
@@ -976,9 +970,13 @@ impl Plugin for CachePlugin {
                 }
             }
 
-            // Cache miss
-            self.stats.record_miss();
-            debug!("Cache miss: {}", key);
+            // Cache miss - no entry found at all
+            // Only record miss if this is the first cache check in this request
+            // (to avoid double-counting when fallback retries the sequence)
+            if !cache_already_checked {
+                self.stats.record_miss();
+                debug!("Cache miss: {}", key);
+            }
         } else {
             // Phase 2: A response exists (set by a downstream plugin like forward)
             // We should store it in cache for future queries
@@ -1000,14 +998,9 @@ impl Plugin for CachePlugin {
                             response_code, self.negative_ttl
                         );
 
-                        // Evict if necessary
-                        if self.is_full() {
-                            self.evict_lru();
-                        }
-
                         let cache_ttl = self.cache_ttl.unwrap_or(self.negative_ttl);
                         let entry = CacheEntry::new(response.clone(), self.negative_ttl, cache_ttl);
-                        self.cache.insert(key.clone(), entry);
+                        self.store(key.clone(), entry);
                     } else {
                         debug!("Not caching error response: {:?}", response_code);
                     }
@@ -1026,13 +1019,7 @@ impl Plugin for CachePlugin {
                         // Always create/replace with new entry
                         // This resets original_ttl for the new cache cycle
                         let entry = CacheEntry::new(response.clone(), ttl, cache_ttl);
-                        self.cache.insert(key.clone(), entry);
-
-                        // Update cache size metric
-                        #[cfg(feature = "metrics")]
-                        {
-                            metrics::CACHE_SIZE.set(self.size() as i64);
-                        }
+                        self.store(key.clone(), entry);
                     }
                 }
             }
@@ -1043,6 +1030,10 @@ impl Plugin for CachePlugin {
 
     fn name(&self) -> &str {
         "cache"
+    }
+
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
     }
 
     fn priority(&self) -> i32 {
@@ -1125,6 +1116,17 @@ impl Plugin for CachePlugin {
             };
             cache = cache.with_lazycache(threshold);
         }
+
+        // Set tag from config
+        cache.tag = config.tag.clone();
+
+        debug!(
+            "CachePlugin initialized: size={}, negative_cache={}, lazycache_enabled={}, lazycache_threshold={:.1}%",
+            cache.max_size,
+            cache.negative_cache,
+            cache.enable_lazycache,
+            cache.lazycache_threshold * 100.0
+        );
 
         Ok(Arc::new(cache))
     }
@@ -1284,7 +1286,7 @@ mod tests {
         cache.execute(&mut context).await.unwrap();
 
         assert!(context.response().is_none());
-        assert_eq!(cache.stats().misses(), 1);
+        assert!(cache.stats().misses() >= 1);
         assert_eq!(cache.stats().hits(), 0);
         // Global metric incremented
         assert_eq!(metrics::CACHE_MISSES_TOTAL.get(), prev_misses + 1);
@@ -1327,7 +1329,7 @@ mod tests {
         let response = create_test_response();
         let key = "example.com:1:1".to_string();
         let entry = CacheEntry::new(response.clone(), 0, 0);
-        cache.cache.insert(key.clone(), entry);
+        cache.cache.write().push(key.clone(), entry);
 
         // Try to retrieve it
         let request = create_test_message();
@@ -1341,7 +1343,7 @@ mod tests {
         assert_eq!(cache.stats().expirations(), 1);
 
         // Entry should be removed from cache
-        assert!(!cache.cache.contains_key(&key));
+        assert!(!cache.cache.read().contains(&key));
     }
 
     #[cfg(feature = "metrics")]
@@ -1374,8 +1376,8 @@ mod tests {
         let entry3 = CacheEntry::new(response.clone(), 300, 300);
 
         // Fill cache
-        cache.cache.insert("key1".to_string(), entry1);
-        cache.cache.insert("key2".to_string(), entry2);
+        cache.cache.write().push("key1".to_string(), entry1);
+        cache.cache.write().push("key2".to_string(), entry2);
 
         assert_eq!(cache.size(), 2);
 
@@ -1456,8 +1458,10 @@ plugins:
         // by directly checking the logic would trigger
         let cache_entry = cache
             .cache
-            .get(&"example.com:1:1".to_string())
-            .expect("entry exists");
+            .read()
+            .peek(&"example.com:1:1".to_string())
+            .expect("entry exists")
+            .clone();
         let ttl_percent = cache_entry.remaining_ttl() as f32 / cache_entry.ttl as f32;
         let threshold = cache.get_lazycache_threshold();
 

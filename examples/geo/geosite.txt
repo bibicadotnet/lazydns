@@ -1,0 +1,13 @@
+# Small GeoSite categories for demo
+# Format: <category> <domain>
+# Chinese domains
+cn cn.example
+cn *.baidu.com
+cn qq.com
+# US domains
+us us.example
+us *.google.com
+us facebook.com
+# Ads category
+ads ads.example
+ads *.doubleclick.net

@@ -49,7 +49,7 @@ impl PluginBuilder {
 
         // Try to get builder from registry first
         if let Some(builder) = crate::plugin::factory::get_plugin_factory(&plugin_type) {
-            debug!(
+            trace!(
                 name = %config.effective_name(),
                 plugin_type = %plugin_type,
                 "Creating plugin using registered builder"
@@ -120,12 +120,12 @@ impl PluginBuilder {
                 }
             }
 
-            // Accept doh/dot/doq server plugin types at build time so configuration
+            // Accept tcp/udp/doh/dot/doq server plugin types at build time so configuration
             // parsing succeeds. The actual servers are started by the application
-            // runtime (main.rs) when TLS and certs are available. Here we return
+            // runtime (launcher.rs). Here we return
             // a benign plugin instance (AcceptPlugin) so the name is registered
             // and can be referenced by other plugins.
-            "doh_server" | "dot_server" | "doq_server" => {
+            "tcp_server" | "udp_server" | "doh_server" | "dot_server" | "doq_server" => {
                 let tag = config.effective_name().to_string();
                 self.server_plugin_tags.push(tag.clone());
                 Arc::new(crate::plugins::AcceptPlugin::new())
@@ -150,7 +150,39 @@ impl PluginBuilder {
     /// (for example, `fallback` refers to other plugins by name).
     /// This also re-parses sequences to update plugin references after fallback resolution.
     pub fn resolve_references(&mut self, configs: &[PluginConfig]) -> Result<()> {
-        // First pass: ask fallback plugins to resolve their pending child references
+        // First pass: update sequence plugins to reflect resolved plugins
+        for config in configs {
+            if config.plugin_type == "sequence"
+                && let Value::Sequence(sequence) = &config.args
+            {
+                // Re-parse the steps with the now-resolved plugins
+                match parse_sequence_steps(self, sequence) {
+                    Ok(steps) => {
+                        // Preserve the configured tag when creating the resolved sequence
+                        let sequence_plugin = Arc::new(SequencePlugin::with_steps_and_tag(
+                            steps,
+                            config.tag.clone(),
+                        ));
+                        let name = config.effective_name().to_string();
+                        let dname = sequence_plugin.display_name().to_string();
+                        self.plugins.insert(name.clone(), sequence_plugin);
+                        trace!(
+                            "Updated sequence plugin '{}' with resolved references (display={})",
+                            name, dname
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to update sequence '{}': {}",
+                            config.effective_name(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        // Second pass: ask fallback plugins to resolve their pending child references
         for config in configs {
             if config.plugin_type == "fallback" {
                 let name = config.effective_name().to_string();
@@ -164,33 +196,6 @@ impl PluginBuilder {
                     }
                 } else {
                     warn!(plugin = %name, "Fallback plugin not found in registry");
-                }
-            }
-        }
-
-        // Second pass: update sequence plugins to reflect resolved plugins
-        for config in configs {
-            if config.plugin_type == "sequence"
-                && let Value::Sequence(sequence) = &config.args
-            {
-                // Re-parse the steps with the now-resolved plugins
-                match parse_sequence_steps(self, sequence) {
-                    Ok(steps) => {
-                        let sequence_plugin = Arc::new(SequencePlugin::with_steps(steps));
-                        let name = config.effective_name().to_string();
-                        self.plugins.insert(name.clone(), sequence_plugin);
-                        trace!(
-                            "Updated sequence plugin '{}' with resolved references",
-                            name
-                        );
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to update sequence '{}': {}",
-                            config.effective_name(),
-                            e
-                        );
-                    }
                 }
             }
         }
@@ -1001,32 +1006,6 @@ mod tests {
     }
 
     #[test]
-    fn test_build_udp_server_with_shorthand_listen() {
-        let mut builder = PluginBuilder::new();
-        let mut args_map = Mapping::new();
-        args_map.insert(
-            Value::String("listen".to_string()),
-            Value::String(":5353".to_string()),
-        );
-        args_map.insert(
-            Value::String("entry".to_string()),
-            Value::String("main_sequence".to_string()),
-        );
-
-        let config = PluginConfig {
-            tag: Some("udp_server".to_string()),
-            plugin_type: "udp_server".to_string(),
-            args: Value::Mapping(args_map),
-            name: None,
-            priority: 100,
-            config: HashMap::new(),
-        };
-
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "udp_server");
-    }
-
-    #[test]
     fn test_derived_plugin_type_names() {
         // Ensure the macro-based derivation registers canonical names derived from type names
         crate::plugin::factory::init();
@@ -1147,32 +1126,6 @@ mod tests {
                     .collect::<Vec<_>>()
             }
         );
-    }
-
-    #[test]
-    fn test_build_tcp_server_with_shorthand_listen() {
-        let mut builder = PluginBuilder::new();
-        let mut args_map = Mapping::new();
-        args_map.insert(
-            Value::String("listen".to_string()),
-            Value::String(":5353".to_string()),
-        );
-        args_map.insert(
-            Value::String("entry".to_string()),
-            Value::String("main_sequence".to_string()),
-        );
-
-        let config = PluginConfig {
-            tag: Some("tcp_server".to_string()),
-            plugin_type: "tcp_server".to_string(),
-            args: Value::Mapping(args_map),
-            name: None,
-            priority: 100,
-            config: HashMap::new(),
-        };
-
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "tcp_server");
     }
 
     #[tokio::test]

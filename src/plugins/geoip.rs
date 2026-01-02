@@ -29,6 +29,7 @@
 //! # }
 //! ```
 
+use crate::config::types::PluginConfig;
 use crate::dns::RData;
 use crate::error::Error;
 use crate::plugin::{Context, Plugin};
@@ -37,11 +38,17 @@ use ipnet::IpNet;
 use std::collections::HashMap;
 use std::fmt;
 use std::net::IpAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::debug;
+
+// Auto-register the GeoIP plugin so it is available as type `geoip` in configs
+crate::register_plugin_builder!(GeoIpPlugin);
 
 /// GeoIP plugin for geographic IP matching
 ///
 /// Matches IP addresses to countries and sets metadata for routing decisions.
+#[derive(Clone)]
 pub struct GeoIpPlugin {
     /// Metadata key to store country code
     metadata_key: String,
@@ -228,12 +235,53 @@ impl Plugin for GeoIpPlugin {
     }
 
     fn name(&self) -> &str {
-        "geoip"
+        "geo_ip"
     }
 
     fn priority(&self) -> i32 {
         // Run after response is set but before routing decisions
         -20
+    }
+
+    fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>, Error> {
+        use serde_yaml::Value;
+
+        let args = config.effective_args();
+
+        let metadata_key = match args.get("metadata_key") {
+            Some(Value::String(s)) => s.clone(),
+            _ => "country".to_string(),
+        };
+
+        let mut geoip = GeoIpPlugin::new(metadata_key);
+
+        // Load from files
+        if let Some(Value::Sequence(seq)) = args.get("files") {
+            for file_val in seq {
+                if let Some(file_str) = file_val.as_str() {
+                    let file = PathBuf::from(file_str);
+                    let content = std::fs::read_to_string(&file).map_err(|e| {
+                        Error::Config(format!(
+                            "Failed to read GeoIP file '{}': {}",
+                            file.display(),
+                            e
+                        ))
+                    })?;
+                    geoip.load_from_string(&content)?;
+                }
+            }
+        }
+
+        // Load inline data
+        if let Some(Value::Sequence(seq)) = args.get("data") {
+            for entry_val in seq {
+                if let Some(entry) = entry_val.as_str() {
+                    geoip.load_from_string(entry)?;
+                }
+            }
+        }
+
+        Ok(Arc::new(geoip))
     }
 }
 

@@ -50,7 +50,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y ipset nftables iproute2 iptables pkg-config libpcap-dev libnftnl11 libnftables1
+          sudo apt-get install -y ipset nftables
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
@@ -94,6 +94,11 @@ jobs:
 
       - name: Build (no-default-features)
         run: cargo build --verbose --no-default-features
+      
+      # detect unused dependencies
+      - name: Machete
+        if: runner.os == 'Linux'
+        uses: bnjbvr/cargo-machete@main
 
   coverage:
     name: Code Coverage

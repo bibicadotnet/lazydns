@@ -426,9 +426,11 @@ pub fn initialize_all_plugin_factories() {
         // Note: Macro generates names like CACHE_PLUGIN_FACTORY from CachePlugin
         Lazy::force(&crate::plugins::cache::CACHE_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::forward::FORWARD_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::hosts::HOSTS_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::dataset::hosts::HOSTS_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::acl::QUERY_ACL_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::executable::mark::MARK_PLUGIN_FACTORY);
 
-        Lazy::force(&crate::plugins::executable::arbitrary::ARBITRARY_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::dataset::arbitrary::ARBITRARY_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::domain_set::DOMAIN_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::ip_set::IP_SET_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::ratelimit::RATE_LIMIT_PLUGIN_FACTORY);
@@ -440,8 +442,9 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::executable::reverse_lookup::REVERSE_LOOKUP_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::executable::dual_selector::DUAL_SELECTOR_PLUGIN_FACTORY);
 
-        Lazy::force(&crate::plugins::server::UDP_SERVER_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::server::TCP_SERVER_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::geoip::GEO_IP_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::geosite::GEO_SITE_PLUGIN_FACTORY);
+        Lazy::force(&crate::plugins::domain_validator::DOMAIN_VALIDATOR_PLUGIN_FACTORY);
 
         #[cfg(feature = "cron")]
         Lazy::force(&crate::plugins::cron::CRON_PLUGIN_FACTORY);
@@ -486,11 +489,13 @@ pub fn initialize_all_exec_plugin_factories() {
         Lazy::force(&crate::plugins::flow::reject::REJECT_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::prefer_ipv4::PREFER_IPV4_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::flow::prefer_ipv6::PREFER_IPV6_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::flow::return_plugin::RETURN_PLUGIN_EXEC_FACTORY);
 
         Lazy::force(&crate::plugins::executable::ipset::IP_SET_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::nftset::NFT_SET_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::ecs::ECS_PLUGIN_EXEC_FACTORY);
         Lazy::force(&crate::plugins::executable::collector::METRICS_COLLECTOR_PLUGIN_EXEC_FACTORY);
+        Lazy::force(&crate::plugins::executable::mark::MARK_PLUGIN_EXEC_FACTORY);
         #[cfg(feature = "metrics")]
         Lazy::force(
             &crate::plugins::executable::collector::PROM_METRICS_COLLECTOR_PLUGIN_EXEC_FACTORY,

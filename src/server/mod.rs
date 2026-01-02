@@ -37,6 +37,48 @@
 //! # }
 //! ```
 
+use crate::Result;
+
+/// Unified server interface trait
+///
+/// This trait provides a common interface for all DNS server implementations,
+/// enabling uniform configuration and lifecycle management.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use lazydns::server::{Server, ServerConfig, UdpServer};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = ServerConfig::default();
+/// let server = UdpServer::from_config(config).await?;
+/// server.run().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[async_trait::async_trait]
+pub trait Server: Send + Sync + Sized {
+    /// Create a new server instance from configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Server configuration containing all necessary parameters
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server cannot be created with the given configuration
+    async fn from_config(config: ServerConfig) -> Result<Self>;
+
+    /// Run the server
+    ///
+    /// This method starts the server and runs until shutdown or error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server encounters a fatal error during operation
+    async fn run(self) -> Result<()>;
+}
+
 #[cfg(feature = "admin")]
 pub mod admin;
 pub mod config;

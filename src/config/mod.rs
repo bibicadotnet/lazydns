@@ -61,7 +61,7 @@ fn default_log_format() -> String {
 }
 
 fn default_rotate() -> String {
-    "never".to_string()
+    "daily".to_string()
 }
 
 impl Default for LogConfig {

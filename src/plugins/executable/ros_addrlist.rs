@@ -13,7 +13,7 @@ use serde_json::json;
 use std::fmt;
 use std::net::IpAddr;
 use std::time::Duration;
-use tracing::{debug, error, info};
+use tracing::{debug, warn};
 
 // Auto-register using the register macro
 crate::register_plugin_builder!(RosAddrlistPlugin);
@@ -162,7 +162,7 @@ impl RosAddrlistPlugin {
                     .map_err(|e| crate::Error::Other(format!("http request failed: {}", e)))?;
                 match resp.status() {
                     StatusCode::OK => {
-                        info!(ip = %ip, list = %self.list_name, domain = %domain, "added ip to ros addrlist")
+                        debug!(ip = %ip, list = %self.list_name, domain = %domain, "added ip to ros addrlist")
                     }
                     StatusCode::BAD_REQUEST => {
                         debug!(ip = %ip, list = %self.list_name, domain = %domain, "likely ip already exists")
@@ -227,7 +227,7 @@ impl Plugin for RosAddrlistPlugin {
                 "".to_string()
             };
 
-            info!(
+            debug!(
                 list_name = %self.list_name,
                 domain = %domain,
                 ip_count = ips.len(),
@@ -236,7 +236,7 @@ impl Plugin for RosAddrlistPlugin {
             );
 
             if let Err(e) = self.notify_server(&ips, &domain).await {
-                error!(error = %e, domain = %domain, "Failed to notify RouterOS helper server");
+                warn!(error = %e, domain = %domain, "Failed to notify RouterOS helper server");
             }
         }
 

@@ -1,0 +1,155 @@
+name: Fuzz - run all targets
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 'Number of libFuzzer runs (-runs). Set 0 to ignore.'
+        required: false
+        default: '1000'
+      max_total_time:
+        description: 'Maximum total time (seconds) to run each target (-max_total_time). Set 0 to ignore.'
+        required: false
+        default: '60'
+      targets:
+        description: 'Optional comma-separated list of targets to run. If empty, runs all targets discovered in fuzz/fuzz_targets.'
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      runs:
+        required: false
+        type: string
+      max_total_time:
+        required: false
+        type: string
+      targets:
+        required: false
+        type: string
+
+jobs:
+  discover:
+    name: Discover fuzz targets
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Discover fuzz targets
+        id: discover
+        run: |
+          if [ -n "${{ inputs.targets }}" ] && [ "${{ inputs.targets }}" != "" ]; then
+            echo "Using requested targets: ${{ inputs.targets }}"
+            targets_str="${{ inputs.targets }}"
+          else
+            # Discover targets by listing fuzz/fuzz_targets files
+            if [ -d fuzz/fuzz_targets ]; then
+              targets_str=$(ls fuzz/fuzz_targets/*.rs 2>/dev/null | xargs -n1 basename -s .rs | tr '\n' ',')
+            else
+              targets_str=""
+            fi
+            targets_str=${targets_str%,}
+            echo "Discovered targets: $targets_str"
+          fi
+          # Produce JSON array for matrix (use jq to ensure valid JSON)
+          if [ -z "$targets_str" ]; then
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            echo "targets=$targets_str" >> "$GITHUB_OUTPUT"
+          else
+            # Convert comma-separated list to JSON array of objects: [{"target":"t1"},...]
+            # Prefer jq when available; otherwise fall back to safe shell construction.
+            if command -v jq >/dev/null 2>&1; then
+              json=$(printf "%s" "$targets_str" | tr ',' '\n' | jq -R -s -c 'split("\n") | map(select(length>0) | {target: .})')
+            else
+              json=""
+              IFS=',' read -r -a arr <<< "$targets_str"
+              for t in "${arr[@]}"; do
+                if [ -z "$json" ]; then
+                  json="{\"target\":\"$t\"}"
+                else
+                  json+=",{\"target\":\"$t\"}"
+                fi
+              done
+              json="[$json]"
+            fi
+            echo "matrix=$json" >> "$GITHUB_OUTPUT"
+            echo "targets=$targets_str" >> "$GITHUB_OUTPUT"
+          fi
+
+
+  fuzz:
+    name: "Run fuzz target: ${{ matrix.target }}"
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: nightly
+
+      - name: Install cargo-fuzz
+        run: |
+          cargo install cargo-fuzz --version 0.13.1 --locked || true
+
+      - name: Build fuzz target
+        run: |
+          cargo fuzz build ${{ matrix.target }} || true
+
+      - name: Run fuzz target and collect artifacts
+        env:
+          RUNS: ${{ inputs.runs }}
+          MAX_TOTAL_TIME: ${{ inputs.max_total_time }}
+        run: |
+          set -euo pipefail
+          t=${{ matrix.target }}
+          args=()
+          if [ -n "$RUNS" ] && [ "$RUNS" != "0" ]; then
+            args+=("-runs=$RUNS")
+          fi
+          if [ -n "$MAX_TOTAL_TIME" ] && [ "$MAX_TOTAL_TIME" != "0" ]; then
+            args+=("-max_total_time=$MAX_TOTAL_TIME")
+          fi
+
+          mkdir -p artifacts
+          if cargo fuzz run "$t" -- "${args[@]}"; then
+            echo "Finished fuzz run for $t"
+          else
+            echo "Fuzz run for $t exited with non-zero status (continue)"
+          fi
+
+          if [ -d "fuzz/artifacts/$t" ]; then
+            tar -czf "artifacts/$t-artifacts.tar.gz" -C fuzz/artifacts "$t" || true
+            echo "Collected artifacts for $t"
+          else
+            echo "No artifacts produced for $t"
+          fi
+
+          if [ -d "fuzz/corpus/$t" ]; then
+            tar -czf "artifacts/$t-corpus.tar.gz" -C fuzz/corpus "$t" || true
+            echo "Collected corpus for $t"
+          fi
+
+      - name: Upload artifacts for this target
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: artifacts/*.tar.gz
+          if-no-files-found: ignore
+          retention-days: 7
+
+  summary:
+    name: Dump summary and list artifacts
+    needs: fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump note
+        run: |
+          echo "Fuzz jobs finished. Artifacts uploaded per-target."
