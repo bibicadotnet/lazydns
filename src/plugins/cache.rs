@@ -622,6 +622,10 @@ impl Plugin for CachePlugin {
             }
         };
 
+        // Check if cache was already checked in this request to avoid double-counting misses
+        // (e.g., when fallback retries the entire sequence)
+        let cache_already_checked = context.get_metadata::<bool>("cache_checked").is_some();
+
         // Check if response is already from cache (from a previous execution of this plugin)
         if context
             .get_metadata::<bool>("response_from_cache")
@@ -633,6 +637,9 @@ impl Plugin for CachePlugin {
 
         // Phase 1: Try to read from cache (only if no response yet)
         if context.response().is_none() {
+            // Mark that cache has been checked for this request (prevent duplicate miss counting)
+            context.set_metadata("cache_checked", true);
+
             // Skip cache logic for background lazy refresh to avoid recursion
             if context
                 .get_metadata::<bool>("background_lazy_refresh")
@@ -963,9 +970,13 @@ impl Plugin for CachePlugin {
                 }
             }
 
-            // Cache miss
-            self.stats.record_miss();
-            debug!("Cache miss: {}", key);
+            // Cache miss - no entry found at all
+            // Only record miss if this is the first cache check in this request
+            // (to avoid double-counting when fallback retries the sequence)
+            if !cache_already_checked {
+                self.stats.record_miss();
+                debug!("Cache miss: {}", key);
+            }
         } else {
             // Phase 2: A response exists (set by a downstream plugin like forward)
             // We should store it in cache for future queries
