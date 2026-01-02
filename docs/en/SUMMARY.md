@@ -6,7 +6,7 @@
 * [Configuration (Core)](04_CONFIGURATION.md)
   * [Server Settings](04_01_SERVER_SETTINGS.md)
     - [UDP/TCP Listener](04_01_01_LISTENER_UDP_TCP.md)
-    - [TLS Listener](04_01_02_LISTENER_TLS.md)
+    - [DNS over TLS (DoT) Listener](04_01_02_LISTENER_DOT.md)
     - [DNS over HTTPS (DoH) Listener](04_01_03_LISTENER_DOH.md)
     - [DNS over QUIC (DoQ) Listener](04_01_04_LISTENER_DOQ.md)
   * [Logging](04_02_LOGGING.md)

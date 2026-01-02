@@ -18,8 +18,7 @@ Each listener plugin can be configured with:
 
 ## See Also
 
-- [UDP and TCP Listeners](04_01_01_UDP_TCP_LISTENER.md)
-- [DNS over TLS Listener](04_01_02_LISTENER_TLS.md)
-- [DNS over HTTPS Listener](04_01_03_LISTENER_DOH.md)
-- [DNS over QUIC Listener](04_01_04_LISTENER_DOQ.md)
-- [Configuration Overview](../04_CONFIGURATION.md)
+- [UDP and TCP Listener](04_01_01_LISTENER_UDP_TCP.md)
+- [DNS over TLS (DoT) Listener](04_01_02_LISTENER_DOT.md)
+- [DNS over HTTPS (DoH) Listener](04_01_03_LISTENER_DOH.md)
+- [DNS over QUIC (DoQ) Listener](04_01_04_LISTENER_DOQ.md)

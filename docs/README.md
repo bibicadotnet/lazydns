@@ -16,7 +16,7 @@ Use the site sidebar (`en/SUMMARY.md`) or the quick links below to jump to commo
 * [Configuration (Core)](en/04_CONFIGURATION.md)
   * [Server Settings](en/04_01_SERVER_SETTINGS.md)
     - [UDP/TCP Listener](en/04_01_01_LISTENER_UDP_TCP.md)
-    - [TLS Listener](en/04_01_02_LISTENER_TLS.md)
+    - [DNS over TLS (DoT) Listener](en/04_01_02_LISTENER_DOT.md)
     - [DNS over HTTPS (DoH) Listener](en/04_01_03_LISTENER_DOH.md)
     - [DNS over QUIC (DoQ) Listener](en/04_01_04_LISTENER_DOQ.md)
   * [Logging](en/04_02_LOGGING.md)
