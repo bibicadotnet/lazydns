@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::debug;
 
+const PLUGIN_SLEEP_IDENTIFIER: &str = "sleep";
 // Auto-register using the exec register macro
 crate::register_exec_plugin_builder!(SleepPlugin);
 
@@ -66,7 +67,7 @@ impl fmt::Debug for SleepPlugin {
 #[async_trait]
 impl Plugin for SleepPlugin {
     fn name(&self) -> &str {
-        "sleep"
+        PLUGIN_SLEEP_IDENTIFIER
     }
 
     async fn execute(&self, _ctx: &mut Context) -> Result<()> {
@@ -75,8 +76,8 @@ impl Plugin for SleepPlugin {
         Ok(())
     }
 
-    fn aliases() -> Vec<&'static str> {
-        vec!["delay"]
+    fn aliases() -> &'static [&'static str] {
+        &["delay"]
     }
 }
 
@@ -86,10 +87,12 @@ impl ExecPlugin for SleepPlugin {
     /// Accepts duration strings like "100ms", "1s", "500ms"
     /// Examples: "100ms", "1s", "500ms"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
-        if prefix != "sleep" {
+        // Accept the main name and all aliases
+        if prefix != PLUGIN_SLEEP_IDENTIFIER && !Self::aliases().contains(&prefix) {
             return Err(crate::Error::Config(format!(
-                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'sleep'",
-                prefix
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected one of {:?}",
+                prefix,
+                Self::aliases()
             )));
         }
 

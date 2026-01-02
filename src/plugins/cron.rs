@@ -408,8 +408,8 @@ mod tests {
             fn plugin_type(&self) -> &'static str {
                 "testinvoke"
             }
-            fn aliases(&self) -> Vec<&'static str> {
-                Vec::new()
+            fn aliases(&self) -> &'static [&'static str] {
+                &[]
             }
         }
 

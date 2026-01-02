@@ -22,6 +22,8 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::info;
 
+const PLUGIN_NFTSET_IDENTIFIER: &str = "nftset";
+// Auto-register using the exec register macro
 crate::register_exec_plugin_builder!(NftSetPlugin);
 
 #[derive(Debug, Deserialize, Clone)]
@@ -139,12 +141,12 @@ impl fmt::Debug for NftSetPlugin {
 #[async_trait]
 impl Plugin for NftSetPlugin {
     fn name(&self) -> &str {
-        "nftset"
+        PLUGIN_NFTSET_IDENTIFIER
     }
 
-    fn aliases() -> Vec<&'static str> {
+    fn aliases() -> &'static [&'static str] {
         // allow "nftset" as the canonical name
-        vec!["nftset"]
+        &[PLUGIN_NFTSET_IDENTIFIER]
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
@@ -253,7 +255,7 @@ impl ExecPlugin for NftSetPlugin {
     /// The exec_str should be in the format: "`<family>,<table>,<set>,<addr_type>,<mask> ...`"
     /// Examples: "inet,my_table,my_set,ipv4_addr,24,inet,my_table,my_set6,ipv6_addr,48"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
-        if prefix != "nftset" {
+        if prefix != PLUGIN_NFTSET_IDENTIFIER {
             return Err(crate::Error::Config(format!(
                 "ExecPlugin quick_setup: unsupported prefix '{}', expected 'nftset'",
                 prefix

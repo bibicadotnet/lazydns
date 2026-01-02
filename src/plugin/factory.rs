@@ -38,15 +38,15 @@ use tracing::debug;
 ///         "my_plugin"
 ///     }
 ///
-///     fn aliases(&self) -> Vec<&'static str> {
-///         Vec::new()
+///     fn aliases(&self) -> &'static [&'static str] {
+///         &[]
 ///     }
 /// }
 /// ```
 pub trait PluginFactory: Send + Sync {
     fn create(&self, config: &PluginConfig) -> crate::Result<Arc<dyn Plugin>>;
     fn plugin_type(&self) -> &'static str;
-    fn aliases(&self) -> Vec<&'static str>;
+    fn aliases(&self) -> &'static [&'static str];
 }
 
 /// Exec plugin factory trait for exec plugins
@@ -55,7 +55,7 @@ pub trait PluginFactory: Send + Sync {
 pub trait ExecPluginFactory: Send + Sync {
     fn create(&self, prefix: &str, exec_str: &str) -> crate::Result<Arc<dyn Plugin>>;
     fn plugin_type(&self) -> &'static str;
-    fn aliases(&self) -> Vec<&'static str>;
+    fn aliases(&self) -> &'static [&'static str];
 }
 
 /// Global plugin factory registry
@@ -83,6 +83,11 @@ pub fn register_plugin_factory(factory: Arc<dyn PluginFactory>) {
 
     // Register aliases
     for alias in factory.aliases() {
+        let alias = *alias; // alias: &str (slice elements are &&str)
+        // Skip redundant alias identical to primary name
+        if alias == plugin_type {
+            continue;
+        }
         if factories.contains_key(alias) {
             panic!(
                 "Duplicate plugin factory alias: {} (for {})",
@@ -113,6 +118,11 @@ pub fn register_exec_plugin_factory(factory: Arc<dyn ExecPluginFactory>) {
 
     // Register aliases
     for alias in factory.aliases() {
+        let alias = *alias; // alias: &str (slice elements are &&str)
+        // Skip redundant alias identical to primary name
+        if alias == plugin_type {
+            continue;
+        }
         if factories.contains_key(alias) {
             panic!(
                 "Duplicate exec plugin factory alias: {} (for {})",
@@ -278,8 +288,8 @@ macro_rules! register_plugin_builder {
                     }
                 }
 
-                fn aliases(&self) -> Vec<&'static str> {
-                    Vec::new()
+                fn aliases(&self) -> &'static [&'static str] {
+                    &[]
                 }
             }
 
@@ -372,7 +382,7 @@ macro_rules! register_exec_plugin_builder {
                     }
                 }
 
-                fn aliases(&self) -> Vec<&'static str> {
+                fn aliases(&self) -> &'static [&'static str] {
                     // Get aliases from the Plugin trait implementation
                     <$plugin_type as $crate::plugin::Plugin>::aliases()
                 }

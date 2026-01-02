@@ -24,6 +24,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::info;
 
+const PLUGIN_IPSET_IDENTIFIER: &str = "ipset";
 crate::register_exec_plugin_builder!(IpSetPlugin);
 
 #[derive(Debug, Deserialize, Clone)]
@@ -149,12 +150,12 @@ impl fmt::Debug for IpSetPlugin {
 #[async_trait]
 impl Plugin for IpSetPlugin {
     fn name(&self) -> &str {
-        "ipset"
+        PLUGIN_IPSET_IDENTIFIER
     }
 
-    fn aliases() -> Vec<&'static str> {
+    fn aliases() -> &'static [&'static str] {
         // allow "ipset" as the canonical name
-        vec!["ipset"]
+        &[PLUGIN_IPSET_IDENTIFIER]
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
@@ -222,7 +223,7 @@ impl ExecPlugin for IpSetPlugin {
     /// The exec_str should be in the format: "`<set_name>,inet,<mask>,<set_name6>,inet6,<mask>`"
     /// Examples: "my_set,inet,24,my_set6,inet6,48"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
-        if prefix != "ipset" {
+        if prefix != PLUGIN_IPSET_IDENTIFIER {
             return Err(crate::Error::Config(format!(
                 "ExecPlugin quick_setup: unsupported prefix '{}', expected 'ipset'",
                 prefix

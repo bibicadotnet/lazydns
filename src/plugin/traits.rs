@@ -152,11 +152,22 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
     }
 
     /// Optional aliases for plugin type names.
-    fn aliases() -> Vec<&'static str>
+    ///
+    /// Returns a `'static` slice of alias names (for example `&["sinkhole", "black_hole"]`).
+    ///
+    /// These aliases are used by the plugin factory and exec-plugin registration
+    /// system: each alias is registered as an alternative canonical name that
+    /// can be used in configuration or quick-setup strings. For exec plugins,
+    /// the `quick_setup(prefix, exec_str)` implementation should accept either
+    /// the canonical name (`plugin_type()`) or any of the aliases returned by
+    /// this method.
+    ///
+    /// The default implementation returns an empty slice `&[]`.
+    fn aliases() -> &'static [&'static str]
     where
         Self: Sized,
     {
-        Vec::new()
+        &[]
     }
 }
 
