@@ -17,7 +17,7 @@ There are two common ways to invoke `goto` inside a sequence:
 - exec: goto special_handling
 ```
 
-- [TODO]: Explicit map form (equivalent, sometimes clearer in complex configs):
+- TODO: Explicit map form (equivalent, sometimes clearer in complex configs):
 
 ```yaml
 # sequence: main

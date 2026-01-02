@@ -17,7 +17,7 @@ Two common ways to invoke `jump` inside a sequence:
 - exec: jump audit_handler
 ```
 
-- [TODO]: Explicit map form (clearer when passing args):
+- TODO: Explicit map form (clearer when passing args):
 
 ```yaml
 # sequence: main
