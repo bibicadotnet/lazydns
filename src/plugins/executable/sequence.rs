@@ -177,6 +177,10 @@ impl Plugin for SequencePlugin {
         "sequence"
     }
 
+    fn tag(&self) -> Option<&str> {
+        self.tag.as_deref()
+    }
+
     fn init(config: &crate::config::PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
         // For now, implement a simple sequence that expects a "plugins" array
         // with plugin names. Full sequence parsing with conditions is complex
@@ -226,10 +230,6 @@ mod tests {
 
             fn name(&self) -> &str {
                 self.label
-            }
-
-            fn tag(&self) -> Option<&str> {
-                None
             }
         }
 
