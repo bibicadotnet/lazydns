@@ -104,24 +104,27 @@ impl RequestHandler for PluginHandler {
         );
         ctx.set_metadata("lazy_refresh_entry", self.entry.clone());
 
+        // Inject plugin registry into context for jump_target handling by SequencePlugin
+        ctx.set_metadata("__plugin_registry", Arc::clone(&self.registry));
+
         if let Some(plugin) = self.registry.get(&self.entry) {
             plugin.execute(&mut ctx).await?;
         }
 
-        // Handle jump targets set by plugins (jump should interrupt sequence)
-        // Execute jump targets in a loop in case of nested jumps.
-        while ctx.has_metadata("jump_target") {
-            if let Some(target) = ctx.get_metadata::<String>("jump_target").cloned() {
-                // Remove jump target metadata and return flag before executing target
-                ctx.remove_metadata("jump_target");
+        // Handle goto labels set by plugins (goto replaces the current sequence)
+        // Execute goto targets in a loop in case a goto target sets another goto.
+        while ctx.has_metadata("goto_label") {
+            if let Some(target) = ctx.get_metadata::<String>("goto_label").cloned() {
+                // Remove goto label metadata and return flag before executing target
+                ctx.remove_metadata("goto_label");
                 ctx.remove_metadata(RETURN_FLAG);
 
-                debug!(jump_target = %target, "Handling jump target: executing plugin");
+                debug!(goto_target = %target, "Handling goto target: replacing current sequence");
 
                 if let Some(plugin) = self.registry.get(&target) {
                     plugin.execute(&mut ctx).await?;
                 } else {
-                    warn!(jump_target = %target, "Jump target plugin not found");
+                    warn!(goto_target = %target, "Goto target plugin not found");
                     break;
                 }
             } else {
@@ -244,5 +247,213 @@ mod tests {
         ctx.set_metadata("key", "value".to_string());
         let value = ctx.get_metadata::<String>("key");
         assert_eq!(value, Some(&"value".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_goto_replaces_sequence_and_executes_target() {
+        use crate::server::Protocol;
+        use std::sync::Arc;
+
+        // Build a registry with an entry that sets goto_label and a target that sets a response
+        let mut registry = Registry::new();
+
+        #[derive(Debug)]
+        struct Entry;
+        #[async_trait::async_trait]
+        impl crate::plugin::Plugin for Entry {
+            async fn execute(&self, ctx: &mut Context) -> crate::Result<()> {
+                ctx.set_metadata("goto_label", "target".to_string());
+                ctx.set_metadata(RETURN_FLAG, true);
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                "entry"
+            }
+        }
+
+        #[derive(Debug)]
+        struct Target;
+        #[async_trait::async_trait]
+        impl crate::plugin::Plugin for Target {
+            async fn execute(&self, ctx: &mut Context) -> crate::Result<()> {
+                let mut r = Message::new();
+                r.set_response(true);
+                ctx.set_response(Some(r));
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                "target"
+            }
+        }
+
+        registry.register(Arc::new(Entry)).unwrap();
+        registry.register(Arc::new(Target)).unwrap();
+
+        let handler = PluginHandler {
+            registry: Arc::new(registry),
+            entry: "entry".to_string(),
+        };
+
+        let req = RequestContext::new(Message::new(), Protocol::Udp);
+        let resp = handler.handle(req).await.unwrap();
+
+        // The response should have been set by the target plugin executed via goto
+        assert!(resp.is_response());
+    }
+
+    #[tokio::test]
+    async fn test_jump_continues_after_target_execution() {
+        use crate::plugins::SequencePlugin;
+
+        // This test verifies jump's push/return semantics via SequencePlugin
+        let execution_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        #[derive(Debug, Clone)]
+        struct Recorder {
+            label: String,
+            order: Arc<std::sync::Mutex<Vec<String>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl crate::plugin::Plugin for Recorder {
+            async fn execute(&self, _ctx: &mut Context) -> crate::Result<()> {
+                self.order.lock().unwrap().push(self.label.clone());
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                &self.label
+            }
+        }
+
+        // Build a registry with target plugin
+        let mut registry = Registry::new();
+        registry
+            .register(Arc::new(Recorder {
+                label: "target".to_string(),
+                order: execution_order.clone(),
+            }))
+            .unwrap();
+
+        // Create sequence: plugin_a -> jump plugin -> plugin_b
+        // Expected: a -> (jump) -> target -> b (push/return semantics)
+        let seq = SequencePlugin::new(vec![
+            Arc::new(Recorder {
+                label: "a".to_string(),
+                order: execution_order.clone(),
+            }),
+            Arc::new({
+                #[derive(Debug)]
+                struct JumpPlugin {
+                    order: Arc<std::sync::Mutex<Vec<String>>>,
+                }
+
+                #[async_trait::async_trait]
+                impl crate::plugin::Plugin for JumpPlugin {
+                    async fn execute(&self, ctx: &mut Context) -> crate::Result<()> {
+                        self.order.lock().unwrap().push("jump".to_string());
+                        ctx.set_metadata("jump_target", "target".to_string());
+                        ctx.set_metadata(RETURN_FLAG, true);
+                        Ok(())
+                    }
+
+                    fn name(&self) -> &str {
+                        "jump_plugin"
+                    }
+                }
+
+                JumpPlugin {
+                    order: execution_order.clone(),
+                }
+            }),
+            Arc::new(Recorder {
+                label: "b".to_string(),
+                order: execution_order.clone(),
+            }),
+        ]);
+
+        let mut ctx = Context::new(Message::new());
+        ctx.set_metadata("__plugin_registry", Arc::new(registry));
+        seq.execute(&mut ctx).await.unwrap();
+
+        let logged = execution_order.lock().unwrap().clone();
+        // Verify that jump executed target but continued to b (push/return semantics)
+        assert_eq!(logged, vec!["a", "jump", "target", "b"]);
+    }
+
+    #[tokio::test]
+    async fn test_goto_stops_sequence_execution() {
+        use crate::plugins::SequencePlugin;
+
+        // Test that goto stops sequence execution without continuing to next step
+        let execution_order = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        #[derive(Debug, Clone)]
+        struct Recorder {
+            label: String,
+            order: Arc<std::sync::Mutex<Vec<String>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl crate::plugin::Plugin for Recorder {
+            async fn execute(&self, _ctx: &mut Context) -> crate::Result<()> {
+                self.order.lock().unwrap().push(self.label.clone());
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                &self.label
+            }
+        }
+
+        // Create sequence: plugin_a -> goto plugin -> plugin_b (should NOT execute)
+        let seq = SequencePlugin::new(vec![
+            Arc::new(Recorder {
+                label: "a".to_string(),
+                order: execution_order.clone(),
+            }),
+            Arc::new({
+                #[derive(Debug)]
+                struct GotoPlugin {
+                    order: Arc<std::sync::Mutex<Vec<String>>>,
+                }
+
+                #[async_trait::async_trait]
+                impl crate::plugin::Plugin for GotoPlugin {
+                    async fn execute(&self, ctx: &mut Context) -> crate::Result<()> {
+                        self.order.lock().unwrap().push("goto".to_string());
+                        ctx.set_metadata("goto_label", "alternative".to_string());
+                        ctx.set_metadata(RETURN_FLAG, true);
+                        Ok(())
+                    }
+
+                    fn name(&self) -> &str {
+                        "goto_plugin"
+                    }
+                }
+
+                GotoPlugin {
+                    order: execution_order.clone(),
+                }
+            }),
+            Arc::new(Recorder {
+                label: "b".to_string(),
+                order: execution_order.clone(),
+            }),
+        ]);
+
+        let mut ctx = Context::new(Message::new());
+        seq.execute(&mut ctx).await.unwrap();
+
+        let logged = execution_order.lock().unwrap().clone();
+        // Verify that goto stopped execution (b should NOT be in the list)
+        assert_eq!(logged, vec!["a", "goto"]);
+        // Verify that goto_label is still in context for PluginHandler to process
+        assert_eq!(
+            ctx.get_metadata::<String>("goto_label"),
+            Some(&"alternative".to_string())
+        );
     }
 }
