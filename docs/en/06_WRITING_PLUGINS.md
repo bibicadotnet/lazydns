@@ -114,6 +114,49 @@ mod tests {
 - `init`, `exec`, `shutdown`
 - Thread-safety and concurrency patterns
 
+### Shutdown and graceful cleanup
+
+Plugins that spawn background tasks, hold file-watcher handles, or manage other resources should implement graceful shutdown to avoid leaks and to enable the application to stop cleanly in tests and in production.
+
+1. Implement the `Shutdown` trait for cleanup logic:
+
+```rust
+use async_trait::async_trait;
+use crate::plugin::traits::Shutdown;
+
+#[async_trait]
+impl Shutdown for MyPlugin {
+	async fn shutdown(&self) -> crate::Result<()> {
+		// stop background tasks, close watchers, flush data, etc.
+		if let Some(h) = self.watcher.lock().take() {
+			h.stop().await;
+		}
+		Ok(())
+	}
+}
+```
+
+2. Expose the `Shutdown` implementation via the `Plugin` bridge so the shutdown coordinator can discover and call it. Override `as_shutdown` in your `Plugin` impl to return `Some(self)`:
+
+```rust
+impl crate::plugin::Plugin for MyPlugin {
+	fn name(&self) -> &str { "my_plugin" }
+
+	// other methods...
+
+	fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+		Some(self)
+	}
+}
+```
+
+3. Notes and best practices
+- Prefer letting the central shutdown path call `Plugin::shutdown()` (which delegates to your `Shutdown::shutdown` when `as_shutdown` returns `Some`).
+- Do not hold non-`Send` locks (e.g., `std::sync::MutexGuard`) across `.await`. Take/clone the handles out of the lock before awaiting their JoinHandles.
+- Keep shutdown fast and idempotent — it may be called during tests or on repeated reloads.
+
+Following this pattern makes plugins safe to use in the runtime and makes tests deterministic by allowing explicit cleanup of background work.
+
 ## Testing plugins
 - Unit tests, doc-tests, integration tests
 - Example test harness snippets

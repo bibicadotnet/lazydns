@@ -10,6 +10,7 @@ use serde_yaml::Value;
 use std::fmt::Debug;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+use crate::plugin::traits::Shutdown;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -255,15 +256,6 @@ impl Plugin for CronPlugin {
         false
     }
 
-    async fn shutdown(&self) -> Result<()> {
-        let _ = self.stop_tx.send(true);
-        let jobs = std::mem::take(&mut *self.jobs.lock().unwrap());
-        for j in jobs {
-            let _ = j.handle.await;
-        }
-        Ok(())
-    }
-
     fn init(config: &PluginConfig) -> Result<std::sync::Arc<dyn Plugin>> {
         let plugin = CronPlugin::new();
 
@@ -365,6 +357,26 @@ impl Plugin for CronPlugin {
 
         Ok(Arc::new(plugin))
     }
+
+    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl Shutdown for CronPlugin {
+    async fn shutdown(&self) -> Result<()> {
+        info!("CronPlugin shutting down, stopping all jobs");
+        let _ = self.stop_tx.send(true);
+        // Take the job handles out of the mutex so we don't hold the
+        // `MutexGuard` across an `.await` (the guard is not `Send`).
+        let jobs = std::mem::take(&mut *self.jobs.lock().unwrap());
+        for job in jobs {
+            let _ = job.handle.await;
+        }
+        info!("CronPlugin shutdown complete");
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -448,7 +460,9 @@ mod tests {
         // plugin spawned job; wait a bit
         tokio::time::sleep(Duration::from_millis(1500)).await;
         assert!(counter.load(Ordering::SeqCst) >= 1);
-        plugin.shutdown().await.unwrap();
+        if let Some(s) = plugin.as_ref().as_shutdown() {
+            s.shutdown().await.unwrap();
+        }
     }
 
     #[tokio::test]
@@ -501,7 +515,9 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(1500)).await;
 
-        plugin.shutdown().await.unwrap();
+        if let Some(s) = plugin.as_ref().as_shutdown() {
+            s.shutdown().await.unwrap();
+        }
         let _ = server.await;
     }
 
@@ -542,7 +558,9 @@ mod tests {
 
         let plugin = CronPlugin::init(&pconf).unwrap();
         tokio::time::sleep(Duration::from_millis(1500)).await;
-        plugin.shutdown().await.unwrap();
+        if let Some(s) = plugin.as_ref().as_shutdown() {
+            s.shutdown().await.unwrap();
+        }
 
         // file should exist
         assert!(path.exists());
