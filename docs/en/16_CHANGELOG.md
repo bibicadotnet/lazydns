@@ -2,6 +2,34 @@
 
 This file contains high-level release notes and migration guidance.
 
+## Release v0.2.60 - 2026-01-03
+
+Summary: feature and refactor release focused on plugin tagging, domain validation, cache improvements, fuzzing infrastructure, and developer tooling enhancements.
+
+Highlights
+- Domain Validator: added a new `domain-validator` plugin with LRU caching and metrics to validate domain labels and edge-cases (single-character labels) and included a demo configuration.
+- Plugins: added tag support configurable from YAML, improved plugin logging, and implemented `display_name` for clearer logs.
+- Graceful reloads & shutdown: file-watcher support for integrated a `Shutdown` trait for graceful plugin termination; added integration smoke tests for config reload and shutdown.
+- Cache internals: replaced `DashMap` with an LRU cache for improved memory management and eviction behavior; fixed double-counting of cache misses and reduced noisy log levels.
+- Fuzzing: added fuzz testing workflows and helper scripts (`fuzz/run_all.sh`) plus CI workflow improvements for fuzz target discovery and artifact collection.
+- Tooling & deps: bumped `lru` to 0.16.2 and other dependency updates; CI and workflow fixes for reproducible matrix generation.
+- Docs: updated server and logging documentations and improved developer contribution guidelines.
+
+Important notes & migration
+- The `domain-validator` plugin introduces new configuration and demo entries; review `examples/` and docs before enabling in production.
+- Some internal data-structure changes (LRU replacement) may change memory characteristics; monitor cache metrics after upgrading.
+
+
+## Release v0.2.52 - 2025-12-30
+
+- bugfix: logging to file with rotate with localtime, not UTC
+- chore(deps): bump reqwest from 0.11.27 to 0.12.28 by @dependabot[bot] in #12
+- chore(deps): bump base64 from 0.21.7 to 0.22.1 by @dependabot[bot] in #11
+- chore(deps): bump serde_json from 1.0.145 to 1.0.148 by @dependabot[bot] in #13
+- chore(deps): bump tracing from 0.1.43 to 0.1.44 by @dependabot[bot] in #14
+Highlights
+- Documentation: added Arch Linux installation instructions (AUR) and updated DNS-over-TLS and server settings documentation.
+
 ## Release v0.2.50 - 2025-12-28
 
 Summary: maintenance release with Prometheus crate upgrade, packaging/workflow improvements for cross-architecture .deb artifacts, several bug fixes, test hardening, and updated installation documentation.
@@ -25,6 +53,7 @@ Files/areas changed in this release (non-exhaustive):
 - `docs/en/03_INSTALLATION.md` (new installation instructions)
 
 For more details, see the individual commits and PRs included in this release.
+
 
 
 ## Key Features (v0.2.43)
