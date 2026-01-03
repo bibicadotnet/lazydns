@@ -694,6 +694,10 @@ impl Plugin for DomainSetPlugin {
 
         Ok(Arc::new(plugin))
     }
+
+    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+        Some(self)
+    }
 }
 
 impl Matcher for DomainSetPlugin {

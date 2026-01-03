@@ -418,6 +418,10 @@ impl Plugin for HostsPlugin {
 
         Ok(Arc::new(plugin))
     }
+
+    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+        Some(self)
+    }
 }
 
 // Tests preserved in dataset hosts module

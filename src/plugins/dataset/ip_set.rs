@@ -1,7 +1,7 @@
 use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::RData;
-use crate::plugin::traits::Shutdown;
+use crate::plugin::traits::{Matcher, Shutdown};
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use ipnet::IpNet;
@@ -358,9 +358,13 @@ impl Plugin for IpSetPlugin {
 
         Ok(Arc::new(plugin))
     }
+
+    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+        Some(self)
+    }
 }
 
-impl crate::plugin::traits::Matcher for IpSetPlugin {
+impl Matcher for IpSetPlugin {
     fn matches_context(&self, ctx: &crate::plugin::Context) -> bool {
         if let Some(response) = ctx.response() {
             for record in response.answers() {

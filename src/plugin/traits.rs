@@ -116,19 +116,6 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
         100
     }
 
-    /// Optional shutdown method for graceful cleanup
-    ///
-    /// Plugins can override this method to perform cleanup operations
-    /// when the application is shutting down. The default implementation
-    /// does nothing.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` on successful shutdown, or an error if cleanup fails.
-    async fn shutdown(&self) -> Result<()> {
-        Ok(())
-    }
-
     /// Get the plugin as Any for downcasting
     fn as_any(&self) -> &dyn Any {
         // This is a default implementation that won't work for downcasting
@@ -169,6 +156,17 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
     {
         &[]
     }
+
+    /// Bridge to `Shutdown` trait implementations.
+    ///
+    /// Plugins that implement `Shutdown` should override this to return
+    /// `Some(self)` so that the builder or shutdown coordinator can invoke
+    /// the concrete `Shutdown::shutdown` implementation. The default
+    /// implementation returns `None` indicating no shutdown work is required.
+    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+        None
+    }
+
 }
 
 /// Trait for executable plugins that support quick setup from strings

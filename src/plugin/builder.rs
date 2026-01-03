@@ -247,10 +247,12 @@ impl PluginBuilder {
     /// error encountered during shutdown.
     pub async fn shutdown_all(&self) -> Result<()> {
         for (name, plugin) in &self.plugins {
-            info!("Shutting down plugin: {}", name);
-            if let Err(e) = plugin.shutdown().await {
-                error!("Error shutting down plugin {}: {}", name, e);
-                return Err(e);
+            if let Some(sh) = plugin.as_shutdown() {
+                info!("Shutting down plugin: {}", name);
+                if let Err(e) = sh.shutdown().await {
+                    error!("Error shutting down plugin {}: {}", name, e);
+                    return Err(e);
+                }
             }
         }
         Ok(())
