@@ -197,21 +197,25 @@ pub fn initialize_exec_plugin_factories() {
     Lazy::force(&EXEC_PLUGIN_FACTORIES);
 }
 
-/// Macro to register a plugin factory
+/// Derive macro to auto-register a plugin factory
 ///
-/// This macro automatically creates a factory wrapper for types that
+/// This derive macro automatically creates a factory wrapper for types that
 /// implement `Plugin` with an `init` method and registers it.
+///
+/// The canonical plugin name is derived from the type name:
+/// - Use the last path segment (e.g., "ForwardPlugin" from "crate::plugins::forward::ForwardPlugin")
+/// - Strip the "Plugin" suffix if present
+/// - Convert PascalCase to snake_case
 ///
 /// # Example
 ///
 /// ```ignore
-/// use lazydns::register_plugin_builder;
+/// use lazydns::lazydns_macros::RegisterPlugin;
 /// use lazydns::plugin::Plugin;
 /// use lazydns::config::types::PluginConfig;
 /// use std::sync::Arc;
-/// use async_trait::async_trait;
 ///
-/// #[derive(Debug)]
+/// #[derive(Debug, RegisterPlugin)]
 /// struct MyPlugin;
 ///
 /// impl Plugin for MyPlugin {
@@ -227,96 +231,26 @@ pub fn initialize_exec_plugin_factories() {
 ///         Ok(Arc::new(Self))
 ///     }
 /// }
-///
-/// register_plugin_builder!(MyPlugin);
 /// ```
-#[macro_export]
-macro_rules! register_plugin_builder {
-    ($plugin_type:ty) => {
-        $crate::paste::paste! {
-            // Create an auto-generated factory wrapper
-            #[derive(Default)]
-            struct [<$plugin_type FactoryWrapper>];
-
-            impl $crate::plugin::factory::PluginFactory for [<$plugin_type FactoryWrapper>] {
-                fn create(&self, config: &$crate::config::types::PluginConfig)
-                    -> $crate::Result<std::sync::Arc<dyn $crate::plugin::Plugin>>
-                {
-                    <$plugin_type as $crate::plugin::Plugin>::init(config)
-                }
-
-                fn plugin_type(&self) -> &'static str {
-                    // Derive a canonical plugin name from the Rust type name and cache it as a
-                    // `'static` string so it can be used by the global registry.
-                    //
-                    // Name derivation rules:
-                    //  - Use the last path segment of the Rust type name (e.g. "crate::plugins::forward::ForwardPlugin" -> "ForwardPlugin").
-                    //  - If the last segment ends with the suffix "Plugin", strip that suffix ("ForwardPlugin" -> "Forward").
-                    //  - Convert PascalCase/CamelCase to snake_case by inserting '_' before uppercase
-                    //    letters (except the first character) and lowercasing ("DropResp" -> "drop_resp").
-                    //  - The computed `String` is stored in a `once_cell::sync::Lazy<&'static str>` and
-                    //    leaked to produce a `&'static str` on demand.
-                    //
-                    // Note: `register_plugin_factory` will panic if a duplicate canonical name is registered.
-                    //       That means two different Rust types that derive the same canonical name
-                    //       will cause a registration-time panic; the tests below check for accidental
-                    //       collisions among existing plugin types.
-                    $crate::paste::paste! {
-                        static [<$plugin_type:snake:upper _DERIVED>]: once_cell::sync::Lazy<&'static str> =
-                            once_cell::sync::Lazy::new(|| {
-                                let t = std::any::type_name::<$plugin_type>();
-                                let last = t.rsplit("::").next().unwrap_or(t);
-                                let base = last.strip_suffix("Plugin").unwrap_or(last);
-                                // PascalCase/CamelCase -> snake_case
-                                let mut s = String::new();
-                                for (i, ch) in base.chars().enumerate() {
-                                    if ch.is_uppercase() {
-                                        if i != 0 {
-                                            s.push('_');
-                                        }
-                                        for lc in ch.to_lowercase() {
-                                            s.push(lc);
-                                        }
-                                    } else {
-                                        s.push(ch);
-                                    }
-                                }
-                                Box::leak(s.into_boxed_str())
-                            });
-
-                        [<$plugin_type:snake:upper _DERIVED>].clone()
-                    }
-                }
-
-                fn aliases(&self) -> &'static [&'static str] {
-                    &[]
-                }
-            }
-
-            // Auto-register using lazy static
-            pub(crate) static [<$plugin_type:snake:upper _FACTORY>]: once_cell::sync::Lazy<()> =
-                once_cell::sync::Lazy::new(|| {
-                    $crate::plugin::factory::register_plugin_factory(
-                        std::sync::Arc::new([<$plugin_type FactoryWrapper>]::default())
-                    );
-                });
-        }
-    };
-}
-
-/// Macro to register an exec plugin factory
 ///
-/// This macro automatically creates a factory wrapper for types that
+/// Re-exported for backward compatibility and convenience.
+pub use lazydns_macros::RegisterPlugin;
+
+/// Derive macro to auto-register an exec plugin factory
+///
+/// This derive macro automatically creates a factory wrapper for types that
 /// implement `ExecPlugin` and registers it in the exec plugin registry.
+///
+/// The canonical plugin name is derived from the type name (same rules as `RegisterPlugin`).
 ///
 /// # Example
 ///
 /// ```ignore
-/// use lazydns::register_exec_plugin_builder;
+/// use lazydns::lazydns_macros::RegisterExecPlugin;
 /// use lazydns::plugin::{Plugin, ExecPlugin};
 /// use std::sync::Arc;
 ///
-/// #[derive(Debug)]
+/// #[derive(Debug, RegisterExecPlugin)]
 /// struct MyExecPlugin;
 ///
 /// impl Plugin for MyExecPlugin {
@@ -335,69 +269,10 @@ macro_rules! register_plugin_builder {
 ///         Ok(Arc::new(Self))
 ///     }
 /// }
-///
-/// register_exec_plugin_builder!(MyExecPlugin);
 /// ```
-#[macro_export]
-macro_rules! register_exec_plugin_builder {
-    ($plugin_type:ty) => {
-        $crate::paste::paste! {
-            // Create an auto-generated exec factory wrapper
-            #[derive(Default)]
-            struct [<$plugin_type ExecFactoryWrapper>];
-
-            impl $crate::plugin::factory::ExecPluginFactory for [<$plugin_type ExecFactoryWrapper>] {
-                fn create(&self, prefix: &str, exec_str: &str)
-                    -> $crate::Result<std::sync::Arc<dyn $crate::plugin::Plugin>>
-                {
-                    <$plugin_type as $crate::plugin::ExecPlugin>::quick_setup(prefix, exec_str)
-                }
-
-                fn plugin_type(&self) -> &'static str {
-                    // Use the same name derivation as regular plugins
-                    $crate::paste::paste! {
-                        static [<$plugin_type:snake:upper _DERIVED>]: once_cell::sync::Lazy<&'static str> =
-                            once_cell::sync::Lazy::new(|| {
-                                let t = std::any::type_name::<$plugin_type>();
-                                let last = t.rsplit("::").next().unwrap_or(t);
-                                let base = last.strip_suffix("Plugin").unwrap_or(last);
-                                // PascalCase/CamelCase -> snake_case
-                                let mut s = String::new();
-                                for (i, ch) in base.chars().enumerate() {
-                                    if ch.is_uppercase() {
-                                        if i != 0 {
-                                            s.push('_');
-                                        }
-                                        for lc in ch.to_lowercase() {
-                                            s.push(lc);
-                                        }
-                                    } else {
-                                        s.push(ch);
-                                    }
-                                }
-                                Box::leak(s.into_boxed_str())
-                            });
-
-                        [<$plugin_type:snake:upper _DERIVED>].clone()
-                    }
-                }
-
-                fn aliases(&self) -> &'static [&'static str] {
-                    // Get aliases from the Plugin trait implementation
-                    <$plugin_type as $crate::plugin::Plugin>::aliases()
-                }
-            }
-
-            // Auto-register using lazy static
-            pub static [<$plugin_type:snake:upper _EXEC_FACTORY>]: once_cell::sync::Lazy<()> =
-                once_cell::sync::Lazy::new(|| {
-                    $crate::plugin::factory::register_exec_plugin_factory(
-                        std::sync::Arc::new([<$plugin_type ExecFactoryWrapper>]::default())
-                    );
-                });
-        }
-    };
-}
+///
+/// Re-exported for backward compatibility and convenience.
+pub use lazydns_macros::RegisterExecPlugin;
 
 /// Initialize all plugin and exec plugin factories
 /// This function should be called early in program initialization.
@@ -438,7 +313,6 @@ pub fn initialize_all_plugin_factories() {
         Lazy::force(&crate::plugins::forward::FORWARD_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::hosts::HOSTS_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::acl::QUERY_ACL_PLUGIN_FACTORY);
-        Lazy::force(&crate::plugins::executable::mark::MARK_PLUGIN_FACTORY);
 
         Lazy::force(&crate::plugins::dataset::arbitrary::ARBITRARY_PLUGIN_FACTORY);
         Lazy::force(&crate::plugins::dataset::domain_set::DOMAIN_SET_PLUGIN_FACTORY);
@@ -520,4 +394,46 @@ pub fn initialize_all_exec_plugin_factories() {
             debug!("Initialized {} exec plugin factories: {:?}", count, types);
         }
     });
+}
+
+/// Backward compatibility macro for registering plugin factories
+///
+/// This macro is deprecated - use `#[derive(RegisterPlugin)]` instead.
+///
+/// # Example
+///
+/// ```ignore
+/// register_plugin_builder!(MyPlugin);
+/// // Equivalent to:
+/// #[derive(RegisterPlugin)]
+/// struct MyPlugin;
+/// ```
+#[macro_export]
+#[deprecated(since = "0.2.61", note = "Use #[derive(RegisterPlugin)] instead.")]
+macro_rules! register_plugin_builder {
+    ($plugin_type:ty) => {
+        compile_error!(
+            "register_plugin_builder! is deprecated. Use #[derive(RegisterPlugin)] instead."
+        );
+    };
+}
+
+/// Backward compatibility macro for registering exec plugin factories
+///
+/// This macro is deprecated - use `#[derive(RegisterExecPlugin)]` instead.
+///
+/// # Example
+///
+/// ```ignore
+/// register_exec_plugin_builder!(MyExecPlugin);
+/// // Equivalent to:
+/// #[derive(RegisterExecPlugin)]
+/// struct MyExecPlugin;
+/// ```
+#[macro_export]
+#[deprecated(since = "0.2.61", note = "Use #[derive(RegisterExecPlugin)] instead.")]
+macro_rules! register_exec_plugin_builder {
+    ($plugin_type:ty) => {
+        compile_error!("register_exec_plugin_builder! is deprecated. Use #[derive(RegisterExecPlugin)] instead.");
+    };
 }

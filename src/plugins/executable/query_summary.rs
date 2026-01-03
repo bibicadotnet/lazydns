@@ -1,10 +1,8 @@
-use crate::Result;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::info;
-
-crate::register_exec_plugin_builder!(QuerySummaryPlugin);
 
 /// Query summary plugin that records a concise summary of the request
 /// questions into the request `Context` metadata and emits a short
@@ -43,7 +41,7 @@ crate::register_exec_plugin_builder!(QuerySummaryPlugin);
 ///   in both production and test executor graphs.
 /// - Use a descriptive `metadata_key` when composing larger executor
 ///   pipelines to avoid metadata name collisions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, RegisterExecPlugin)]
 pub struct QuerySummaryPlugin {
     /// Metadata key used to store the generated summary string.
     metadata_key: String,

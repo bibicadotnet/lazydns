@@ -1,3 +1,4 @@
+use crate::RegisterPlugin;
 use crate::Result;
 use crate::config::types::PluginConfig;
 use crate::plugin::Context;
@@ -18,8 +19,6 @@ use tokio::process::Command;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
-
-crate::register_plugin_builder!(CronPlugin);
 
 /// Cron plugin: supports multiple jobs, cron expressions, HTTP actions, shell commands and invoking other plugins.
 ///
@@ -56,7 +55,7 @@ crate::register_plugin_builder!(CronPlugin);
 /// - "0 * * * *" = every hour at minute 0
 ///
 /// Field ranges: minute(0-59), hour(0-23), day(1-31), month(1-12), weekday(0-6)
-#[derive(Debug)]
+#[derive(Debug, RegisterPlugin)]
 pub struct CronPlugin {
     jobs: Mutex<Vec<JobHandle>>,
     stop_tx: watch::Sender<bool>,

@@ -2,6 +2,7 @@
 //!
 //! Adds a delay before processing continues
 
+use crate::RegisterExecPlugin;
 use crate::Result;
 use crate::plugin::{Context, ExecPlugin, Plugin};
 use async_trait::async_trait;
@@ -11,8 +12,6 @@ use std::time::Duration;
 use tracing::debug;
 
 const PLUGIN_SLEEP_IDENTIFIER: &str = "sleep";
-// Auto-register using the exec register macro
-crate::register_exec_plugin_builder!(SleepPlugin);
 
 /// Plugin that adds a delay to query processing
 ///
@@ -30,6 +29,7 @@ crate::register_exec_plugin_builder!(SleepPlugin);
 /// // Sleep for 1 second
 /// let plugin = SleepPlugin::from_secs(1);
 /// ```
+#[derive(RegisterExecPlugin)]
 pub struct SleepPlugin {
     /// Duration to sleep
     duration: Duration,

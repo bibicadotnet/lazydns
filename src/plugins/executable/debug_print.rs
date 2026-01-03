@@ -2,16 +2,14 @@
 //!
 //! Prints debug information about DNS queries and responses to the log
 
-use crate::Result;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
 use tracing::{debug, info};
 
 const PLUGIN_DEBUG_PRINT_IDENTIFIER: &str = "debug_print";
-// Auto-register using the exec register macro
-crate::register_exec_plugin_builder!(DebugPrintPlugin);
 
 /// Plugin that prints debug information about DNS queries and responses
 ///
@@ -29,6 +27,7 @@ crate::register_exec_plugin_builder!(DebugPrintPlugin);
 /// // Print both queries and responses
 /// let plugin = DebugPrintPlugin::new();
 /// ```
+#[derive(RegisterExecPlugin)]
 pub struct DebugPrintPlugin {
     /// Whether to print queries
     print_queries: bool,

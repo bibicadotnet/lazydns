@@ -1,12 +1,9 @@
-use crate::Result;
 use crate::plugin::{Context, ExecPlugin, Plugin, RETURN_FLAG};
+use crate::{RegisterExecPlugin, Result};
+use async_trait::async_trait;
 use std::sync::Arc;
 
-// Auto-register exec factory only (no init factory implementation provided)
-crate::register_exec_plugin_builder!(JumpPlugin);
-use async_trait::async_trait;
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, RegisterExecPlugin)]
 pub struct JumpPlugin {
     target: String,
 }

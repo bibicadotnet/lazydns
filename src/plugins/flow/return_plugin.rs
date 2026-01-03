@@ -1,10 +1,10 @@
 use crate::{
-    Result,
+    RegisterExecPlugin, Result,
     plugin::{Context, ExecPlugin, Plugin, RETURN_FLAG},
 };
 use async_trait::async_trait;
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, RegisterExecPlugin)]
 pub struct ReturnPlugin;
 
 impl ReturnPlugin {
@@ -49,9 +49,6 @@ impl ExecPlugin for ReturnPlugin {
         Ok(std::sync::Arc::new(ReturnPlugin::new()))
     }
 }
-
-// Auto-register exec plugin
-crate::register_exec_plugin_builder!(ReturnPlugin);
 
 #[cfg(test)]
 mod tests {

@@ -2,17 +2,12 @@
 //!
 //! Provides fallback mechanism for query processing
 
-use crate::Result;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, RegisterPlugin, Result};
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
-
-// Auto-register using the register macro
-crate::register_plugin_builder!(FallbackPlugin);
-// Auto-register using the exec register macro
-crate::register_exec_plugin_builder!(FallbackPlugin);
 
 /// Plugin that provides fallback to alternative plugins if primary fails
 ///
@@ -33,6 +28,7 @@ crate::register_exec_plugin_builder!(FallbackPlugin);
 /// ```
 use std::sync::RwLock;
 
+#[derive(RegisterPlugin, RegisterExecPlugin)]
 pub struct FallbackPlugin {
     /// List of resolved plugins to try in order
     plugins: RwLock<Vec<Arc<dyn Plugin>>>,

@@ -12,9 +12,9 @@
 //!
 //! Note: `SetArgs` contains optional table family and table names which
 //! are used when attempting to run `nft` with the configured parameters.
-use crate::Result;
 use crate::dns::RData;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
@@ -23,8 +23,6 @@ use std::sync::Arc;
 use tracing::info;
 
 const PLUGIN_NFTSET_IDENTIFIER: &str = "nftset";
-// Auto-register using the exec register macro
-crate::register_exec_plugin_builder!(NftSetPlugin);
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct NftSetArgs {
@@ -45,7 +43,7 @@ pub struct SetArgs {
     /// Prefix length mask to apply when synthesizing CIDRs.
     pub mask: Option<u8>,
 }
-
+#[derive(RegisterExecPlugin)]
 pub struct NftSetPlugin {
     args: NftSetArgs,
 }

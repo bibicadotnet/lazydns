@@ -7,8 +7,8 @@
 //! executable-style QuickSetup (registering with runtime) can be added
 //! separately where needed.
 
-use crate::Result;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 #[cfg(feature = "metrics")]
 use once_cell::sync::Lazy;
@@ -21,11 +21,6 @@ use std::sync::Arc;
 #[cfg(feature = "metrics")]
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-
-// Auto-register using the exec register macro
-crate::register_exec_plugin_builder!(MetricsCollectorPlugin);
-#[cfg(feature = "metrics")]
-crate::register_exec_plugin_builder!(PromMetricsCollectorPlugin);
 
 #[cfg(feature = "metrics")]
 /// Type alias for the metrics tuple to reduce type complexity
@@ -41,7 +36,7 @@ static METRICS_CACHE: Lazy<Mutex<HashMap<String, MetricsTuple>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Metrics collector plugin: counts queries and accumulates latency.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, RegisterExecPlugin)]
 pub struct MetricsCollectorPlugin {
     counter: Arc<AtomicUsize>,
     _start_time: std::time::Instant,
@@ -150,6 +145,7 @@ impl ExecPlugin for MetricsCollectorPlugin {
 }
 
 #[cfg(feature = "metrics")]
+#[derive(crate::RegisterExecPlugin)]
 /// Prometheus-backed metrics collector plugin.
 ///
 /// This plugin integrates with Prometheus to collect and expose DNS query metrics.

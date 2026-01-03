@@ -2,10 +2,10 @@
 //!
 //! Implements rate limiting to prevent DoS attacks and resource exhaustion.
 
-use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::ResponseCode;
 use crate::plugin::{Context, Plugin};
+use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::any::Any;
@@ -15,7 +15,6 @@ use std::time::{Duration, Instant};
 use tracing::warn;
 
 // Auto-register plugin builder
-crate::register_plugin_builder!(RateLimitPlugin);
 
 /// Rate limiter entry tracking request history
 #[derive(Debug)]
@@ -51,7 +50,7 @@ struct RateLimitEntry {
 /// let rate_limiter = RateLimitPlugin::new(100, 60);
 /// assert_eq!(rate_limiter.name(), "rate_limit");
 /// ```
-#[derive(Debug)]
+#[derive(Debug, RegisterPlugin)]
 pub struct RateLimitPlugin {
     /// Maximum queries per window
     max_queries: u32,

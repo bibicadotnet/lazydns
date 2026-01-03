@@ -34,12 +34,11 @@
 //! # }
 //! ```
 
-use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::{Message, Question, RData, RecordType, ResourceRecord};
 use crate::error::Error;
-use crate::plugin::traits::Shutdown;
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{Context, Plugin, traits::Shutdown};
+use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -51,7 +50,6 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 // Auto-register using the register macro
-crate::register_plugin_builder!(HostsPlugin);
 
 /// Core hosts parsing and lookup store
 ///
@@ -164,6 +162,7 @@ impl fmt::Debug for Hosts {
 }
 
 /// Hosts plugin wrapper: lifecycle, file watching and Plugin impl
+#[derive(RegisterPlugin)]
 pub struct HostsPlugin {
     hosts: Arc<Hosts>,
     files: Vec<PathBuf>,

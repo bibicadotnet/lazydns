@@ -22,8 +22,11 @@
 
 // #![warn(clippy::all)]
 
-// Re-export paste macro for register_plugin_builder!
-pub use paste;
+// Re-export proc_macro derives for plugin registration
+pub use lazydns_macros::{RegisterExecPlugin, RegisterPlugin};
+
+// Re-export the lazydns_macros crate itself for convenience
+pub use lazydns_macros;
 
 /// DNS protocol implementation
 ///
