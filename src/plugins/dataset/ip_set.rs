@@ -1,6 +1,7 @@
 use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::RData;
+use crate::plugin::traits::Shutdown;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use ipnet::IpNet;
@@ -11,7 +12,6 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, error, info};
-use crate::plugin::traits::Shutdown;
 
 /// IP set data provider plugin
 ///
