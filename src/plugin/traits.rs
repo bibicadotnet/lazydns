@@ -166,7 +166,6 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
     fn as_shutdown(&self) -> Option<&dyn Shutdown> {
         None
     }
-
 }
 
 /// Trait for executable plugins that support quick setup from strings
