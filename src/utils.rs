@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, mpsc, watch};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// Handle returned by `spawn_file_watcher` to allow graceful shutdown of the watcher task.
 pub struct FileWatcherHandle {
@@ -88,7 +88,6 @@ where
         }
 
         info!(name = %name, "file watcher started successfully");
-        debug!(name = %name, "file watcher loop started");
 
         loop {
             tokio::select! {
@@ -121,13 +120,13 @@ where
 
                                         // Handle file removal/rename immediately (attempt to re-watch)
                                         if matches!(event.kind, EventKind::Remove(_)) {
-                                            info!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
+                                            debug!(name = %name, file = file_name, "file removed or renamed, attempting to re-watch");
                                             tokio::time::sleep(Duration::from_millis(50)).await;
                                             if path.exists() {
                                                 if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
                                                     warn!(name = %name, file = file_name, error = %e, "failed to re-watch file");
                                                 } else {
-                                                    info!(name = %name, file = file_name, "successfully re-added file to watch list");
+                                                    debug!(name = %name, file = file_name, "successfully re-added file to watch list");
                                                 }
                                             }
                                         }
@@ -157,7 +156,7 @@ where
 
                                                             // Remove pending marker
                                                             guard.remove(&cp_clone);
-                                                            info!(name = %name_clone, file = ?path_clone, "scheduled reload: invoking callback (debounced)");
+                                                            debug!(name = %name_clone, file = ?path_clone, "scheduled reload: invoking callback (debounced)");
                                                             break;
                                                         } else {
                                                             // Not yet quiesced; loop and wait again
@@ -184,14 +183,14 @@ where
                 }
                 _ = stop_rx.changed() => {
                     if *stop_rx.borrow() {
-                        debug!(name = %name, "file watcher stop requested");
+                        trace!(name = %name, "file watcher stop requested");
                         break;
                     }
                 }
             }
         }
 
-        debug!(name = %name, "file watcher closed, exiting loop");
+        trace!(name = %name, "file watcher closed, exiting loop");
     });
 
     FileWatcherHandle { stop_tx, handle }
