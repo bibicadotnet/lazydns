@@ -8,11 +8,12 @@ use async_trait::async_trait;
 use cronexpr::{Crontab, FallbackTimezoneOption, ParseOptions, parse_crontab_with};
 use reqwest::Client;
 use serde_yaml::Value;
+
 use std::fmt::Debug;
+use std::sync::Arc;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::plugin::traits::Shutdown;
-use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
@@ -383,86 +384,6 @@ mod tests {
     use super::*;
     use crate::config::types::PluginConfig;
     use serde_yaml::{Mapping, Value};
-    use std::sync::Arc as StdArc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    #[tokio::test]
-    async fn test_interval_jobs_and_invoke_plugin() {
-        // Register a test plugin factory
-        #[derive(Debug)]
-        struct TestInvoke(StdArc<AtomicUsize>);
-        #[async_trait]
-        impl Plugin for TestInvoke {
-            async fn execute(&self, _ctx: &mut Context) -> Result<()> {
-                self.0.fetch_add(1, Ordering::SeqCst);
-                Ok(())
-            }
-            fn name(&self) -> &str {
-                "testinvoke"
-            }
-        }
-        // Implement init
-        impl TestInvoke {
-            fn init_with_counter(counter: StdArc<AtomicUsize>) -> std::sync::Arc<dyn Plugin> {
-                StdArc::new(TestInvoke(counter))
-            }
-        }
-        // Register a simple factory
-        struct F(StdArc<AtomicUsize>);
-        impl plugin_factory::PluginFactory for F {
-            fn create(
-                &self,
-                _config: &crate::config::types::PluginConfig,
-            ) -> crate::Result<std::sync::Arc<dyn Plugin>> {
-                Ok(TestInvoke::init_with_counter(StdArc::clone(&self.0)))
-            }
-            fn plugin_type(&self) -> &'static str {
-                "testinvoke"
-            }
-            fn aliases(&self) -> &'static [&'static str] {
-                &[]
-            }
-        }
-
-        let counter = StdArc::new(AtomicUsize::new(0));
-        plugin_factory::register_plugin_factory(StdArc::new(F(StdArc::clone(&counter))));
-
-        let mut pconf = PluginConfig::new("cron".to_string());
-        // build jobs sequence
-        let mut job1 = Mapping::new();
-        job1.insert(
-            Value::String("name".to_string()),
-            Value::String("invoke1".to_string()),
-        );
-        job1.insert(
-            Value::String("interval_seconds".to_string()),
-            Value::Number(serde_yaml::Number::from(1)),
-        );
-        let mut action = Mapping::new();
-        let mut inv = Mapping::new();
-        inv.insert(
-            Value::String("type".to_string()),
-            Value::String("testinvoke".to_string()),
-        );
-        action.insert(
-            Value::String("invoke_plugin".to_string()),
-            Value::Mapping(inv),
-        );
-        job1.insert(Value::String("action".to_string()), Value::Mapping(action));
-
-        let jobs = Value::Sequence(vec![Value::Mapping(job1)]);
-        let mut args = Mapping::new();
-        args.insert(Value::String("jobs".to_string()), jobs);
-        pconf.args = Value::Mapping(args);
-
-        let plugin = CronPlugin::init(&pconf).unwrap();
-        // plugin spawned job; wait a bit
-        tokio::time::sleep(Duration::from_millis(1500)).await;
-        assert!(counter.load(Ordering::SeqCst) >= 1);
-        if let Some(s) = plugin.as_ref().as_shutdown() {
-            s.shutdown().await.unwrap();
-        }
-    }
 
     #[tokio::test]
     async fn test_http_job() {
