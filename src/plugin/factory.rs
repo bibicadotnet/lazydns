@@ -237,3 +237,185 @@ macro_rules! register_exec_plugin_builder {
         compile_error!("register_exec_plugin_builder! is deprecated. Use #[derive(RegisterExecPlugin)] instead.");
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::types::PluginConfig;
+    use crate::plugin::Context;
+    use crate::{RegisterExecPlugin, RegisterPlugin};
+    use async_trait::async_trait;
+    use std::sync::Arc;
+
+    // Test that plugins deriving #[derive(RegisterPlugin)] are discoverable
+    #[test]
+    fn test_derive_register_plugin_discovery() {
+        // Define a test plugin type and derive registration
+        #[derive(Debug, RegisterPlugin)]
+        struct MyMacroPlugin;
+
+        #[async_trait]
+        impl crate::plugin::traits::Plugin for MyMacroPlugin {
+            async fn execute(&self, _ctx: &mut Context) -> crate::Result<()> {
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                "my_macro_plugin"
+            }
+
+            fn init(_config: &PluginConfig) -> crate::Result<Arc<dyn crate::plugin::Plugin>> {
+                Ok(Arc::new(MyMacroPlugin))
+            }
+        }
+
+        // Initialize factories and verify discovery
+        initialize_all_plugin_factories();
+        let types = get_all_plugin_types();
+        // Derived name from `MyMacroPlugin` -> `my_macro`
+        assert!(
+            types.iter().any(|t| t == "my_macro"),
+            "Expected derived factory name 'my_macro' present"
+        );
+        assert!(
+            get_plugin_factory("my_macro").is_some(),
+            "Factory for 'my_macro' should be found"
+        );
+
+        // Ensure factory can create an instance
+        let factory = get_plugin_factory("my_macro").unwrap();
+        let plugin = factory
+            .create(&PluginConfig::new("my_macro".to_string()))
+            .unwrap();
+        assert_eq!(plugin.name(), "my_macro_plugin");
+    }
+
+    // Test that exec plugins deriving #[derive(RegisterExecPlugin)] are discoverable
+    #[test]
+    fn test_derive_register_exec_plugin_discovery() {
+        #[derive(Debug, RegisterExecPlugin)]
+        struct MyExecPlugin;
+
+        impl crate::plugin::traits::ExecPlugin for MyExecPlugin {
+            fn quick_setup(
+                _prefix: &str,
+                _exec_str: &str,
+            ) -> crate::Result<Arc<dyn crate::plugin::Plugin>> {
+                Ok(Arc::new(MyExecPlugin))
+            }
+        }
+
+        #[async_trait]
+        impl crate::plugin::traits::Plugin for MyExecPlugin {
+            async fn execute(&self, _ctx: &mut Context) -> crate::Result<()> {
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                "my_exec_plugin"
+            }
+
+            fn init(_config: &PluginConfig) -> crate::Result<Arc<dyn crate::plugin::Plugin>> {
+                // Not used for exec quick_setup
+                Err(crate::Error::Config("not supported".to_string()))
+            }
+
+            fn aliases() -> &'static [&'static str] {
+                &[]
+            }
+        }
+
+        initialize_all_exec_plugin_factories();
+        let exec_types = get_all_exec_plugin_types();
+        // Derived name: MyExecPlugin -> strip suffix -> MyExec -> my_exec
+        assert!(
+            exec_types.iter().any(|t| t == "my_exec"),
+            "Expected exec factory name 'my_exec' present"
+        );
+        assert!(
+            get_exec_plugin_factory("my_exec").is_some(),
+            "Exec factory for 'my_exec' should be found"
+        );
+
+        let exec_factory = get_exec_plugin_factory("my_exec").unwrap();
+        let plugin = exec_factory.create("my_exec", "arg").unwrap();
+        assert_eq!(plugin.name(), "my_exec_plugin");
+    }
+
+    #[test]
+    fn test_alias_matching_plugin_factory() {
+        #[derive(Debug, RegisterPlugin)]
+        struct MyAliasPlugin;
+
+        #[async_trait]
+        impl crate::plugin::traits::Plugin for MyAliasPlugin {
+            async fn execute(&self, _ctx: &mut Context) -> crate::Result<()> {
+                Ok(())
+            }
+
+            fn name(&self) -> &str {
+                "my_alias_plugin"
+            }
+
+            fn init(_config: &PluginConfig) -> crate::Result<Arc<dyn crate::plugin::Plugin>> {
+                Ok(Arc::new(MyAliasPlugin))
+            }
+
+            fn aliases() -> &'static [&'static str] {
+                &["alias_one", "other"]
+            }
+        }
+
+        initialize_all_plugin_factories();
+        // Derived canonical name
+        assert!(get_plugin_factory("my_alias").is_some());
+        // Aliases should resolve to the same factory
+        assert!(get_plugin_factory("alias_one").is_some());
+        assert!(get_plugin_factory("other").is_some());
+
+        let f1 = get_plugin_factory("alias_one").unwrap();
+        let inst = f1
+            .create(&PluginConfig::new("alias_one".to_string()))
+            .unwrap();
+        assert_eq!(inst.name(), "my_alias_plugin");
+    }
+
+    #[test]
+    fn test_alias_matching_exec_plugin_factory() {
+        #[derive(Debug, RegisterExecPlugin)]
+        struct MyAliasExecPlugin;
+
+        impl crate::plugin::traits::ExecPlugin for MyAliasExecPlugin {
+            fn quick_setup(
+                _prefix: &str,
+                _exec_str: &str,
+            ) -> crate::Result<Arc<dyn crate::plugin::Plugin>> {
+                Ok(Arc::new(MyAliasExecPlugin))
+            }
+        }
+
+        #[async_trait]
+        impl crate::plugin::traits::Plugin for MyAliasExecPlugin {
+            async fn execute(&self, _ctx: &mut Context) -> crate::Result<()> {
+                Ok(())
+            }
+            fn name(&self) -> &str {
+                "my_alias_exec_plugin"
+            }
+            fn init(_config: &PluginConfig) -> crate::Result<Arc<dyn crate::plugin::Plugin>> {
+                Err(crate::Error::Config("not supported".to_string()))
+            }
+            fn aliases() -> &'static [&'static str] {
+                &["alias_exec"]
+            }
+        }
+
+        initialize_all_exec_plugin_factories();
+        assert!(get_exec_plugin_factory("my_alias_exec").is_some());
+        assert!(get_exec_plugin_factory("alias_exec").is_some());
+
+        let f = get_exec_plugin_factory("alias_exec").unwrap();
+        let p = f.create("alias_exec", "x").unwrap();
+        assert_eq!(p.name(), "my_alias_exec_plugin");
+    }
+}

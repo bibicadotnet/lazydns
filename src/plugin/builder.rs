@@ -987,36 +987,52 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Control-flow plugins does not registered via factory yet"]
-    fn test_build_control_flow_plugins() {
-        let mut builder = PluginBuilder::new();
-
-        // Test accept
-        let config = PluginConfig::new("accept".to_string());
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "accept");
-
-        // Test reject
-        let config = PluginConfig::new("reject".to_string());
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "reject");
-
-        // Test prefer_ipv4
-        let config = PluginConfig::new("prefer_ipv4".to_string());
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "prefer_ipv4");
-    }
-
-    #[test]
     fn test_derived_plugin_type_names() {
         // Ensure the macro-based derivation registers canonical names derived from type names
         crate::plugin::factory::init();
         let types = crate::plugin::factory::get_all_plugin_types();
+
+        assert!(types.contains(&"query_acl".to_string()));
+        assert!(types.contains(&"cache".to_string()));
+        #[cfg(feature = "cron")]
+        assert!(types.contains(&"cron".to_string()));
+        assert!(types.contains(&"domain_validator".to_string()));
         assert!(types.contains(&"forward".to_string()));
+        assert!(types.contains(&"geo_ip".to_string()));
+        assert!(types.contains(&"geo_site".to_string()));
+        assert!(types.contains(&"arbitrary".to_string()));
+        assert!(types.contains(&"hosts".to_string()));
+        assert!(types.contains(&"domain_set".to_string()));
+        assert!(types.contains(&"ip_set".to_string()));
+
+        assert!(types.contains(&"dual_selector".to_string()));
+        assert!(types.contains(&"edns0_opt".to_string()));
+        assert!(types.contains(&"rate_limit".to_string()));
+        assert!(types.contains(&"redirect".to_string()));
+        assert!(types.contains(&"reverse_lookup".to_string()));
+        assert!(types.contains(&"ros_addrlist".to_string()));
+        assert!(types.contains(&"blackhole".to_string()));
+
         let types = crate::plugin::factory::get_all_exec_plugin_types();
+
+        assert!(types.contains(&"blackhole".to_string()));
+        assert!(types.contains(&"debug_print".to_string()));
         assert!(types.contains(&"drop_resp".to_string()));
-        assert!(crate::plugin::factory::get_exec_plugin_factory("drop_resp").is_some());
-        assert!(crate::plugin::factory::get_plugin_factory("forward").is_some());
+        assert!(types.contains(&"ecs".to_string()));
+        assert!(types.contains(&"fallback".to_string()));
+        assert!(types.contains(&"ipset".to_string()));
+        assert!(types.contains(&"mark".to_string()));
+        assert!(types.contains(&"nftset".to_string()));
+        assert!(types.contains(&"query_summary".to_string()));
+        assert!(types.contains(&"sleep".to_string()));
+        assert!(types.contains(&"ttl".to_string()));
+        assert!(types.contains(&"prefer_ipv4".to_string()));
+        assert!(types.contains(&"prefer_ipv6".to_string()));
+        #[cfg(feature = "metrics")]
+        {
+            assert!(types.contains(&"prom_metrics_collector".to_string()));
+            assert!(types.contains(&"metrics_collector".to_string()));
+        }
     }
 
     #[test]

@@ -97,7 +97,7 @@ impl fmt::Debug for Edns0OptPlugin {
 #[async_trait]
 impl Plugin for Edns0OptPlugin {
     fn name(&self) -> &str {
-        "edns0opt"
+        "edns0_opt"
     }
 
     fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {

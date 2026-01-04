@@ -186,4 +186,32 @@ mod tests {
         let names = registry.builder_names();
         assert!(names.contains(&"test_condition"));
     }
+
+    #[test]
+    fn test_default_builders_registered() {
+        // Ensure the global registry is initialized and contains built-in builders
+        init_condition_builders();
+        let registry = get_condition_builder_registry();
+        let names = registry.builder_names();
+
+        let expected = [
+            "has_resp",
+            "resp_ip",
+            "!resp_ip",
+            "qname",
+            "!qname",
+            "qtype",
+            "qclass",
+            "rcode",
+            "has_cname",
+        ];
+
+        for &n in expected.iter() {
+            assert!(
+                names.contains(&n),
+                "Expected condition builder '{}' to be registered",
+                n
+            );
+        }
+    }
 }

@@ -22,7 +22,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::info;
 
-const PLUGIN_NFTSET_IDENTIFIER: &str = "nftset";
+const PLUGIN_NFTSET_IDENTIFIER: &str = "nft_set";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct NftSetArgs {
@@ -144,7 +144,7 @@ impl Plugin for NftSetPlugin {
 
     fn aliases() -> &'static [&'static str] {
         // allow "nftset" as the canonical name
-        &[PLUGIN_NFTSET_IDENTIFIER]
+        &["nftset"]
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {

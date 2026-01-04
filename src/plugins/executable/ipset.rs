@@ -24,7 +24,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::info;
 
-const PLUGIN_IPSET_IDENTIFIER: &str = "ipset";
+const PLUGIN_IPSET_IDENTIFIER: &str = "ip_set";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct IpSetArgs {
@@ -155,7 +155,7 @@ impl Plugin for IpSetPlugin {
 
     fn aliases() -> &'static [&'static str] {
         // allow "ipset" as the canonical name
-        &[PLUGIN_IPSET_IDENTIFIER]
+        &["ipset"]
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {

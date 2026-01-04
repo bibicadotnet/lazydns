@@ -107,7 +107,7 @@ tempfile = "3.24"
 rcgen = "0.14"
 
 [features]
-default = ["log-ansi", "cron"]
+default = ["log-ansi"]
 # Enable cron expression parsing for cron plugin
 cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
 # Enable structured  JSON logging output with time stamps
