@@ -1,7 +1,6 @@
-use crate::Result;
-use crate::config::PluginConfig;
-use crate::dns::RData;
+use crate::plugin::traits::{Matcher, Shutdown};
 use crate::plugin::{Context, Plugin};
+use crate::{RegisterPlugin, Result, config::PluginConfig, dns::RData};
 use async_trait::async_trait;
 use ipnet::IpNet;
 use parking_lot::RwLock;
@@ -26,7 +25,7 @@ use tracing::{debug, error, info};
 ///     .with_files(vec!["china-ip-list.txt".to_string()])
 ///     .with_auto_reload(true);
 /// ```
-#[derive(Clone)]
+#[derive(Clone, RegisterPlugin)]
 pub struct IpSetPlugin {
     /// Name/tag for this IP set
     name: String,
@@ -40,6 +39,8 @@ pub struct IpSetPlugin {
     networks: Arc<RwLock<Vec<IpNet>>>,
     /// Plugin tag from YAML configuration
     tag: Option<String>,
+    /// Optional file watcher handle for auto-reload
+    watcher: Arc<parking_lot::Mutex<Option<crate::utils::FileWatcherHandle>>>,
 }
 
 impl IpSetPlugin {
@@ -52,6 +53,7 @@ impl IpSetPlugin {
             auto_reload: false,
             networks: Arc::new(RwLock::new(Vec::new())),
             tag: None,
+            watcher: Arc::new(parking_lot::Mutex::new(None)),
         }
     }
 
@@ -92,7 +94,7 @@ impl IpSetPlugin {
 
         const DEBOUNCE_MS: u64 = 200;
 
-        crate::utils::spawn_file_watcher(
+        let handle = crate::utils::spawn_file_watcher(
             name.clone(),
             files.clone(),
             DEBOUNCE_MS,
@@ -151,6 +153,10 @@ impl IpSetPlugin {
                 info!(name = %name, filename = file_name, duration = ?duration, "scheduled auto-reload completed");
             },
         );
+
+        // Store handle so we can stop it on shutdown
+        let mut guard = self.watcher.lock();
+        *guard = Some(handle);
     }
 
     /// Load IP networks from all configured files
@@ -350,9 +356,13 @@ impl Plugin for IpSetPlugin {
 
         Ok(Arc::new(plugin))
     }
+
+    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+        Some(self)
+    }
 }
 
-impl crate::plugin::traits::Matcher for IpSetPlugin {
+impl Matcher for IpSetPlugin {
     fn matches_context(&self, ctx: &crate::plugin::Context) -> bool {
         if let Some(response) = ctx.response() {
             for record in response.answers() {
@@ -370,6 +380,20 @@ impl crate::plugin::traits::Matcher for IpSetPlugin {
             }
         }
         false
+    }
+}
+
+#[async_trait]
+impl Shutdown for IpSetPlugin {
+    async fn shutdown(&self) -> Result<()> {
+        let handle = {
+            let mut guard = self.watcher.lock();
+            guard.take()
+        };
+        if let Some(h) = handle {
+            h.stop().await;
+        }
+        Ok(())
     }
 }
 
@@ -502,5 +526,3 @@ mod tests {
         assert!(!plugin.matches(&"192.168.1.1".parse().unwrap()));
     }
 }
-
-crate::register_plugin_builder!(IpSetPlugin);

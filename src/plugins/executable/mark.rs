@@ -2,9 +2,9 @@
 //!
 //! Generic marking/tagging plugin for labeling queries and responses
 
-use crate::Result;
 use crate::config::PluginConfig;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
@@ -26,6 +26,7 @@ use tracing::debug;
 /// // Set a mark with a value
 /// let plugin = MarkPlugin::with_value("priority", "100");
 /// ```
+#[derive(RegisterExecPlugin)]
 pub struct MarkPlugin {
     /// Mark name/key
     mark_name: String,
@@ -122,7 +123,6 @@ impl Plugin for MarkPlugin {
 }
 
 // Auto-register using the register macro
-crate::register_plugin_builder!(MarkPlugin);
 
 #[async_trait]
 impl ExecPlugin for MarkPlugin {
@@ -163,9 +163,6 @@ impl ExecPlugin for MarkPlugin {
         Ok(Arc::new(plugin))
     }
 }
-
-// Auto-register exec plugin
-crate::register_exec_plugin_builder!(MarkPlugin);
 
 #[cfg(test)]
 mod tests {

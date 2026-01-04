@@ -1,15 +1,12 @@
 use crate::{
-    Result,
+    RegisterExecPlugin, Result,
     plugin::{Context, ExecPlugin, Plugin, RETURN_FLAG},
 };
 use async_trait::async_trait;
 use std::sync::Arc;
 
-// Auto-register exec factory only (no init factory implementation provided)
-crate::register_exec_plugin_builder!(AcceptPlugin);
-
 /// Accept plugin - accepts the current response and stops execution
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, RegisterExecPlugin)]
 pub struct AcceptPlugin;
 
 impl AcceptPlugin {

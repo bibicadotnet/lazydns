@@ -41,8 +41,12 @@ impl Plugin for EchoPlugin {
 	}
 }
 
-// Register the plugin builder so configuration can reference `type: echo`.
-crate::register_plugin_builder!(EchoPlugin);
+// Preferred: derive registration so the factory is registered automatically.
+// The derive macro generates a factory wrapper, derives a canonical plugin name
+// from the type (PascalCase -> snake_case, strip trailing "Plugin" suffix),
+// and registers the factory via `linkme` so it is discoverable at runtime.
+#[derive(RegisterPlugin)]
+pub struct EchoPlugin;
 ```
 
 ## Exec-style quick setup
@@ -53,6 +57,10 @@ If your plugin should support compact `exec:` configuration, implement `ExecPlug
 use crate::plugin::ExecPlugin;
 use std::sync::Arc;
 
+#[derive(RegisterExecPlugin)]
+pub struct EchoPlugin;
+
+#[async_trait]
 impl ExecPlugin for EchoPlugin {
 	fn quick_setup(prefix: &str, exec_str: &str) -> crate::Result<Arc<dyn Plugin>> {
 		if prefix != "echo" {
@@ -107,12 +115,65 @@ mod tests {
 - `PluginConfig` and builder pattern
 
 ## Builder & Factory
-- Using `register_plugin_builder!`
+- Automatic registration via `#[derive(RegisterPlugin)]` (preferred)
 - `PluginFactory` lifecycle
+
+### Automatic registration via derive macros 🔧
+The project now prefers using derive macros to register plugin factories automatically.
+
+- Use `#[derive(RegisterPlugin)]` on your plugin type to generate and register a factory at compile time.
+- The derived canonical plugin type name is produced by stripping a trailing `Plugin` suffix (if present) and converting PascalCase to snake_case, e.g. `MyCachePlugin` -> `my_cache`.
+- The macro submits the factory into the `linkme` distributed slice; the runtime can then discover it with `crate::plugin::factory::get_plugin_factory("type_name")`.
+- For exec-style plugins, use `#[derive(RegisterExecPlugin)]` which behaves the same but registers into the exec-factory slice.
+
+Note: The old `crate::register_plugin_builder!(Type)` macro is still available for backward compatibility but is deprecated; prefer `#[derive(RegisterPlugin)]` for new code.
 
 ## Plugin Lifecycle
 - `init`, `exec`, `shutdown`
 - Thread-safety and concurrency patterns
+
+### Shutdown and graceful cleanup
+
+Plugins that spawn background tasks, hold file-watcher handles, or manage other resources should implement graceful shutdown to avoid leaks and to enable the application to stop cleanly in tests and in production.
+
+1. Implement the `Shutdown` trait for cleanup logic:
+
+```rust
+use async_trait::async_trait;
+use crate::plugin::traits::Shutdown;
+
+#[async_trait]
+impl Shutdown for MyPlugin {
+	async fn shutdown(&self) -> crate::Result<()> {
+		// stop background tasks, close watchers, flush data, etc.
+		if let Some(h) = self.watcher.lock().take() {
+			h.stop().await;
+		}
+		Ok(())
+	}
+}
+```
+
+2. Expose the `Shutdown` implementation via the `Plugin` bridge so the shutdown coordinator can discover and call it. Override `as_shutdown` in your `Plugin` impl to return `Some(self)`:
+
+```rust
+impl crate::plugin::Plugin for MyPlugin {
+	fn name(&self) -> &str { "my_plugin" }
+
+	// other methods...
+
+	fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+		Some(self)
+	}
+}
+```
+
+3. Notes and best practices
+- Prefer letting the central shutdown path call `Plugin::shutdown()` (which delegates to your `Shutdown::shutdown` when `as_shutdown` returns `Some`).
+- Do not hold non-`Send` locks (e.g., `std::sync::MutexGuard`) across `.await`. Take/clone the handles out of the lock before awaiting their JoinHandles.
+- Keep shutdown fast and idempotent — it may be called during tests or on repeated reloads.
+
+Following this pattern makes plugins safe to use in the runtime and makes tests deterministic by allowing explicit cleanup of background work.
 
 ## Testing plugins
 - Unit tests, doc-tests, integration tests

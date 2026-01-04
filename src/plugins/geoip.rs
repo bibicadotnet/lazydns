@@ -29,6 +29,7 @@
 //! # }
 //! ```
 
+use crate::RegisterPlugin;
 use crate::config::types::PluginConfig;
 use crate::dns::RData;
 use crate::error::Error;
@@ -42,13 +43,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::debug;
 
-// Auto-register the GeoIP plugin so it is available as type `geoip` in configs
-crate::register_plugin_builder!(GeoIpPlugin);
-
 /// GeoIP plugin for geographic IP matching
 ///
 /// Matches IP addresses to countries and sets metadata for routing decisions.
-#[derive(Clone)]
+#[derive(Clone, RegisterPlugin)]
 pub struct GeoIpPlugin {
     /// Metadata key to store country code
     metadata_key: String,

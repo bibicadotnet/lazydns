@@ -116,19 +116,6 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
         100
     }
 
-    /// Optional shutdown method for graceful cleanup
-    ///
-    /// Plugins can override this method to perform cleanup operations
-    /// when the application is shutting down. The default implementation
-    /// does nothing.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` on successful shutdown, or an error if cleanup fails.
-    async fn shutdown(&self) -> Result<()> {
-        Ok(())
-    }
-
     /// Get the plugin as Any for downcasting
     fn as_any(&self) -> &dyn Any {
         // This is a default implementation that won't work for downcasting
@@ -152,11 +139,32 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
     }
 
     /// Optional aliases for plugin type names.
-    fn aliases() -> Vec<&'static str>
+    ///
+    /// Returns a `'static` slice of alias names (for example `&["sinkhole", "black_hole"]`).
+    ///
+    /// These aliases are used by the plugin factory and exec-plugin registration
+    /// system: each alias is registered as an alternative canonical name that
+    /// can be used in configuration or quick-setup strings. For exec plugins,
+    /// the `quick_setup(prefix, exec_str)` implementation should accept either
+    /// the canonical name (`plugin_type()`) or any of the aliases returned by
+    /// this method.
+    ///
+    /// The default implementation returns an empty slice `&[]`.
+    fn aliases() -> &'static [&'static str]
     where
         Self: Sized,
     {
-        Vec::new()
+        &[]
+    }
+
+    /// Bridge to `Shutdown` trait implementations.
+    ///
+    /// Plugins that implement `Shutdown` should override this to return
+    /// `Some(self)` so that the builder or shutdown coordinator can invoke
+    /// the concrete `Shutdown::shutdown` implementation. The default
+    /// implementation returns `None` indicating no shutdown work is required.
+    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+        None
     }
 }
 

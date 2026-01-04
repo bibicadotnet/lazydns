@@ -1,7 +1,6 @@
 //! Executable plugins for DNS query processing
 //!
 //! This module contains plugins that perform actions on DNS queries and responses.
-pub mod arbitrary;
 pub mod black_hole;
 pub mod collector;
 pub mod debug_print;
@@ -46,7 +45,3 @@ pub use sequence::SequencePlugin;
 pub use sequence::SequenceStep;
 pub use sleep::SleepPlugin;
 pub use ttl::TtlPlugin;
-
-// Re-export builder initialization statics
-#[allow(unused_imports)]
-pub(crate) use crate::plugins::forward::FORWARD_PLUGIN_FACTORY;

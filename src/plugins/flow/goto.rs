@@ -1,11 +1,9 @@
+use crate::RegisterExecPlugin;
 use crate::plugin::{ExecPlugin, Plugin};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-// Auto-register exec factory only (no init factory implementation provided)
-crate::register_exec_plugin_builder!(GotoPlugin);
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, RegisterExecPlugin)]
 pub struct GotoPlugin {
     label: String,
 }

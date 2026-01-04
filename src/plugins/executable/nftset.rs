@@ -12,9 +12,9 @@
 //!
 //! Note: `SetArgs` contains optional table family and table names which
 //! are used when attempting to run `nft` with the configured parameters.
-use crate::Result;
 use crate::dns::RData;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
@@ -22,7 +22,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::info;
 
-crate::register_exec_plugin_builder!(NftSetPlugin);
+const PLUGIN_NFTSET_IDENTIFIER: &str = "nftset";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct NftSetArgs {
@@ -43,7 +43,7 @@ pub struct SetArgs {
     /// Prefix length mask to apply when synthesizing CIDRs.
     pub mask: Option<u8>,
 }
-
+#[derive(RegisterExecPlugin)]
 pub struct NftSetPlugin {
     args: NftSetArgs,
 }
@@ -139,12 +139,12 @@ impl fmt::Debug for NftSetPlugin {
 #[async_trait]
 impl Plugin for NftSetPlugin {
     fn name(&self) -> &str {
-        "nftset"
+        PLUGIN_NFTSET_IDENTIFIER
     }
 
-    fn aliases() -> Vec<&'static str> {
+    fn aliases() -> &'static [&'static str] {
         // allow "nftset" as the canonical name
-        vec!["nftset"]
+        &[PLUGIN_NFTSET_IDENTIFIER]
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
@@ -253,7 +253,7 @@ impl ExecPlugin for NftSetPlugin {
     /// The exec_str should be in the format: "`<family>,<table>,<set>,<addr_type>,<mask> ...`"
     /// Examples: "inet,my_table,my_set,ipv4_addr,24,inet,my_table,my_set6,ipv6_addr,48"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
-        if prefix != "nftset" {
+        if prefix != PLUGIN_NFTSET_IDENTIFIER {
             return Err(crate::Error::Config(format!(
                 "ExecPlugin quick_setup: unsupported prefix '{}', expected 'nftset'",
                 prefix

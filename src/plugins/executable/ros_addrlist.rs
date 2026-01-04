@@ -2,9 +2,9 @@
 //!
 //! Adds matched IPs to RouterOS address lists (stub implementation)
 
-use crate::Result;
 use crate::config::PluginConfig;
 use crate::plugin::{Context, Plugin};
+use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -16,7 +16,6 @@ use std::time::Duration;
 use tracing::{debug, warn};
 
 // Auto-register using the register macro
-crate::register_plugin_builder!(RosAddrlistPlugin);
 
 /// Plugin that manages RouterOS address lists
 ///
@@ -30,6 +29,7 @@ crate::register_plugin_builder!(RosAddrlistPlugin);
 ///
 /// let plugin = RosAddrlistPlugin::new("blocked_ips");
 /// ```
+#[derive(RegisterPlugin)]
 pub struct RosAddrlistPlugin {
     /// Address list name in RouterOS
     list_name: String,

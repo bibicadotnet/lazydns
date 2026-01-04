@@ -14,9 +14,9 @@
 //!
 //! Note: this file contains only the executable wrapper; logic is small
 //! and intended to be fast and dependency-free.
-use crate::Result;
 use crate::dns::RData;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
@@ -24,7 +24,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::info;
 
-crate::register_exec_plugin_builder!(IpSetPlugin);
+const PLUGIN_IPSET_IDENTIFIER: &str = "ipset";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct IpSetArgs {
@@ -51,6 +51,7 @@ impl Default for IpSetArgs {
     }
 }
 
+#[derive(RegisterExecPlugin)]
 pub struct IpSetPlugin {
     args: IpSetArgs,
 }
@@ -149,12 +150,12 @@ impl fmt::Debug for IpSetPlugin {
 #[async_trait]
 impl Plugin for IpSetPlugin {
     fn name(&self) -> &str {
-        "ipset"
+        PLUGIN_IPSET_IDENTIFIER
     }
 
-    fn aliases() -> Vec<&'static str> {
+    fn aliases() -> &'static [&'static str] {
         // allow "ipset" as the canonical name
-        vec!["ipset"]
+        &[PLUGIN_IPSET_IDENTIFIER]
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
@@ -222,7 +223,7 @@ impl ExecPlugin for IpSetPlugin {
     /// The exec_str should be in the format: "`<set_name>,inet,<mask>,<set_name6>,inet6,<mask>`"
     /// Examples: "my_set,inet,24,my_set6,inet6,48"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
-        if prefix != "ipset" {
+        if prefix != PLUGIN_IPSET_IDENTIFIER {
             return Err(crate::Error::Config(format!(
                 "ExecPlugin quick_setup: unsupported prefix '{}', expected 'ipset'",
                 prefix

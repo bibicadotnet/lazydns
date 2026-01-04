@@ -1,13 +1,11 @@
+use crate::RegisterExecPlugin;
 use crate::Result;
 use crate::dns::{Message, ResponseCode};
 use crate::plugin::{Context, ExecPlugin, Plugin};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-// Auto-register exec factory only (no init factory implementation provided)
-crate::register_exec_plugin_builder!(RejectPlugin);
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, RegisterExecPlugin)]
 pub struct RejectPlugin {
     rcode: u8,
 }

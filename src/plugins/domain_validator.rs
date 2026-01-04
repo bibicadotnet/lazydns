@@ -2,6 +2,7 @@
 //!
 //! Validates DNS query domain names for RFC compliance and filters invalid/malicious queries.
 
+use crate::RegisterPlugin;
 use crate::Result;
 use crate::dns::ResponseCode;
 use crate::plugin::{Context, Plugin};
@@ -24,7 +25,7 @@ pub enum ValidationResult {
 }
 
 /// Domain validator plugin
-#[derive(Debug)]
+#[derive(Debug, RegisterPlugin)]
 pub struct DomainValidatorPlugin {
     /// Enable strict RFC compliance mode
     strict_mode: bool,
@@ -526,5 +527,3 @@ mod tests {
         assert_eq!(plugin.validate_domain(""), ValidationResult::InvalidLength);
     }
 }
-
-crate::register_plugin_builder!(DomainValidatorPlugin);

@@ -1,20 +1,15 @@
-use crate::Result;
 use crate::config::PluginConfig;
-/// TTL plugin: fix or clamp TTLs on responses.
-///
+use crate::plugin::{Context, ExecPlugin, Plugin};
 /// This plugin can either set a fixed TTL for all response records,
 /// or enforce a minimum/maximum TTL range. Use `fix` to set all TTLs to
 /// an exact value (>0); otherwise `min` and/or `max` are applied.
 ///
 /// Quick setup strings are supported via `quick_setup`, e.g. "60" (fix=60)
 /// or "30-300" (min=30, max=300).
-use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
-
-// Auto-register using the exec register macro
-crate::register_exec_plugin_builder!(TtlPlugin);
 
 /// TTL plugin: fix or clamp TTLs on responses
 /// TTL plugin configuration.
@@ -23,6 +18,7 @@ crate::register_exec_plugin_builder!(TtlPlugin);
 /// - `fix`: If >0, all record TTLs will be set to this value.
 /// - `min`: Minimum TTL to enforce when `fix == 0`.
 /// - `max`: Maximum TTL to enforce when `fix == 0`.
+#[derive(RegisterExecPlugin)]
 pub struct TtlPlugin {
     fix: u32,
     min: u32,

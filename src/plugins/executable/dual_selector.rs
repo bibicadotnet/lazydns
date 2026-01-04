@@ -2,16 +2,15 @@
 //!
 //! Selects between IPv4 and IPv6 responses based on preference
 
-use crate::Result;
 use crate::dns::types::RecordType;
 use crate::plugin::{Context, Plugin};
+use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
 use tracing::debug;
 
 // Auto-register using the register macro
-crate::register_plugin_builder!(DualSelectorPlugin);
 
 /// IP version preference for dual selector
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +40,7 @@ pub enum IpPreference {
 /// // Prefer IPv6 with IPv4 fallback
 /// let plugin = DualSelectorPlugin::new(IpPreference::IPv6PreferIPv4Fallback);
 /// ```
+#[derive(RegisterPlugin)]
 pub struct DualSelectorPlugin {
     /// IP version preference
     preference: IpPreference,

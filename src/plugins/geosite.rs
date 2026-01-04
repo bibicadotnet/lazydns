@@ -31,6 +31,7 @@
 //! # }
 //! ```
 
+use crate::RegisterPlugin;
 use crate::dns::RecordType;
 use crate::error::Error;
 use crate::plugin::{Context, Plugin};
@@ -40,12 +41,10 @@ use std::fmt;
 use std::path::PathBuf;
 use tracing::debug;
 
-// Auto-register the GeoSite plugin so it is available as type `geo_site` in configs
-crate::register_plugin_builder!(GeoSitePlugin);
-
 /// GeoSite plugin for geographic domain matching
 ///
 /// Matches domains to categories (countries/regions) and sets metadata for routing.
+#[derive(RegisterPlugin)]
 pub struct GeoSitePlugin {
     /// Metadata key to store category
     metadata_key: String,

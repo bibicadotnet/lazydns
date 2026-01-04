@@ -1,13 +1,10 @@
-use crate::Result;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
 use std::net::IpAddr;
 use std::sync::Arc;
-
-// Auto-register using the exec register macro
-crate::register_exec_plugin_builder!(EcsPlugin);
 
 /// Arguments for the ECS handler.
 ///
@@ -98,7 +95,7 @@ pub struct EcsArgs {
 ///       preset: "192.0.2.1"
 ///       mask4: 24
 /// ```
-#[derive(Clone)]
+#[derive(Clone, RegisterExecPlugin)]
 pub struct EcsPlugin {
     /// Whether to forward client EDNS0 options
     forward: bool,

@@ -1,18 +1,16 @@
-use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::{Message, RData, ResourceRecord};
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, RegisterPlugin, Result};
 use async_trait::async_trait;
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 
-// Auto-register using the register macro for Plugin factory
-crate::register_plugin_builder!(BlackholePlugin);
-// Auto-register using the exec register macro (now supports aliases)
-crate::register_exec_plugin_builder!(BlackholePlugin);
+const PLUGIN_BLACKHOLE_IDENTIFIER: &str = "blackhole";
 
 /// Black hole plugin: returns configured A/AAAA answers for a query
+#[derive(RegisterPlugin, RegisterExecPlugin)]
 pub struct BlackholePlugin {
     ipv4: Vec<Ipv4Addr>,
     ipv6: Vec<Ipv6Addr>,
@@ -101,7 +99,7 @@ impl fmt::Debug for BlackholePlugin {
 #[async_trait]
 impl Plugin for BlackholePlugin {
     fn name(&self) -> &str {
-        "blackhole"
+        PLUGIN_BLACKHOLE_IDENTIFIER
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
@@ -132,8 +130,8 @@ impl Plugin for BlackholePlugin {
         Ok(Arc::new(plugin))
     }
 
-    fn aliases() -> Vec<&'static str> {
-        vec!["sinkhole", "black_hole", "null_dns"]
+    fn aliases() -> &'static [&'static str] {
+        &["sinkhole", "black_hole", "null_dns"]
     }
 }
 
@@ -144,23 +142,23 @@ impl ExecPlugin for BlackholePlugin {
     /// Examples: "192.0.2.1", "192.0.2.1,2001:db8::1", "0.0.0.0"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
         // Accept the main name and all aliases
-        match prefix {
-            "blackhole" | "black_hole" | "sinkhole" | "null_dns" => {
-                // Parse comma-separated IP addresses
-                let ips: Vec<String> = exec_str
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-
-                let plugin = BlackholePlugin::new_from_strs(ips)?;
-                Ok(Arc::new(plugin))
-            }
-            _ => Err(crate::Error::Config(format!(
-                "ExecPlugin quick_setup: unsupported prefix '{}', expected 'blackhole', 'black_hole', 'sinkhole', or 'null_dns'",
-                prefix
-            ))),
+        if prefix != PLUGIN_BLACKHOLE_IDENTIFIER && !Self::aliases().contains(&prefix) {
+            return Err(crate::Error::Config(format!(
+                "ExecPlugin quick_setup: unsupported prefix '{}', expected one of {:?}",
+                prefix,
+                Self::aliases()
+            )));
         }
+
+        // Parse comma-separated IP addresses
+        let ips: Vec<String> = exec_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let plugin = BlackholePlugin::new_from_strs(ips)?;
+        Ok(Arc::new(plugin))
     }
 }
 

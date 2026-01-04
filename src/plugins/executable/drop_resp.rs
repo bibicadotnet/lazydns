@@ -1,11 +1,8 @@
 use std::sync::Arc;
 
-use crate::Result;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
-
-// Auto-register using the exec register macro
-crate::register_exec_plugin_builder!(DropRespPlugin);
 
 /// Plugin that clears any existing response from the execution `Context`.
 ///
@@ -22,7 +19,7 @@ crate::register_exec_plugin_builder!(DropRespPlugin);
 /// let plugin = DropRespPlugin::new();
 /// // in executor: plugin.execute(&mut ctx).await? will clear ctx.response()
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug, Default, RegisterExecPlugin)]
 pub struct DropRespPlugin;
 
 impl DropRespPlugin {

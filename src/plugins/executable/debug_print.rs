@@ -2,15 +2,14 @@
 //!
 //! Prints debug information about DNS queries and responses to the log
 
-use crate::Result;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
 use tracing::{debug, info};
 
-// Auto-register using the exec register macro
-crate::register_exec_plugin_builder!(DebugPrintPlugin);
+const PLUGIN_DEBUG_PRINT_IDENTIFIER: &str = "debug_print";
 
 /// Plugin that prints debug information about DNS queries and responses
 ///
@@ -28,6 +27,7 @@ crate::register_exec_plugin_builder!(DebugPrintPlugin);
 /// // Print both queries and responses
 /// let plugin = DebugPrintPlugin::new();
 /// ```
+#[derive(RegisterExecPlugin)]
 pub struct DebugPrintPlugin {
     /// Whether to print queries
     print_queries: bool,
@@ -91,7 +91,7 @@ impl fmt::Debug for DebugPrintPlugin {
 #[async_trait]
 impl Plugin for DebugPrintPlugin {
     fn name(&self) -> &str {
-        "debug_print"
+        PLUGIN_DEBUG_PRINT_IDENTIFIER
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
@@ -136,8 +136,8 @@ impl Plugin for DebugPrintPlugin {
         Ok(())
     }
 
-    fn aliases() -> Vec<&'static str> {
-        vec!["debug", "print", "dbg"]
+    fn aliases() -> &'static [&'static str] {
+        &["debug", "print", "dbg"]
     }
 }
 
@@ -147,14 +147,14 @@ impl ExecPlugin for DebugPrintPlugin {
     /// Accepts comma-separated options: "queries", "responses", and "prefix=VALUE"
     /// Examples: "queries,responses", "queries,prefix=TEST", "responses"
     fn quick_setup(prefix: &str, exec_str: &str) -> Result<Arc<dyn Plugin>> {
-        if !DebugPrintPlugin::aliases().contains(&prefix) && prefix != "debug_print" {
+        // Accept the main name and all aliases
+        if prefix != PLUGIN_DEBUG_PRINT_IDENTIFIER && !Self::aliases().contains(&prefix) {
             return Err(crate::Error::Config(format!(
                 "ExecPlugin quick_setup: unsupported prefix '{}', expected one of {:?}",
                 prefix,
-                DebugPrintPlugin::aliases()
+                Self::aliases()
             )));
         }
-
         let mut print_queries = false;
         let mut print_responses = false;
         let mut prefix_str = "DNS".to_string();
