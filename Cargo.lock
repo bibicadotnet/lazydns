@@ -1037,7 +1037,6 @@ dependencies = [
 name = "lazydns-macros"
 version = "0.2.61"
 dependencies = [
- "linkme",
  "quote",
  "syn",
 ]

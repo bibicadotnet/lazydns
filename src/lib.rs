@@ -1,7 +1,6 @@
 //! lazydns - A DNS server implementation in Rust
 //!
-//! This crate provides a complete DNS server implementation inspired by mosdns,
-//! with 100% feature parity or better.
+//! This crate provides a complete DNS server implementation
 //!
 //! # Architecture
 //!
@@ -14,19 +13,11 @@
 //! - `config`: Configuration loading and validation
 //! - `error`: Error types and handling
 //!
-//! # Example
-//!
-//! ```rust,no_run
-//! # fn main() { let _ = (); }
-//! ```
 
 // #![warn(clippy::all)]
 
 // Re-export proc_macro derives for plugin registration
 pub use lazydns_macros::{RegisterExecPlugin, RegisterPlugin};
-
-// Re-export the lazydns_macros crate itself for convenience
-pub use lazydns_macros;
 
 /// DNS protocol implementation
 ///
@@ -99,9 +90,6 @@ pub mod error {
     /// Result type for lazydns operations
     pub type Result<T> = std::result::Result<T, Error>;
 }
-
-/// Common types and utilities used across modules
-pub mod common {}
 
 // Re-export commonly used types
 pub use error::{Error, Result};
