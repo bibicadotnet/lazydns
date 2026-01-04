@@ -7,7 +7,7 @@ use syn::{DeriveInput, parse_macro_input};
 /// This macro:
 /// 1. Generates a factory wrapper struct
 /// 2. Derives the canonical plugin name from the type name (PascalCase -> snake_case, strip "Plugin" suffix)
-/// 3. Creates a lazy static factory registration
+/// 3. Adds the factory to the distributed slice for automatic registration
 ///
 /// # Example
 ///
@@ -30,18 +30,9 @@ pub fn derive_register_plugin(input: TokenStream) -> TokenStream {
 
     // Generate identifiers
     let factory_wrapper = format_ident!("{}FactoryWrapper", plugin_type);
+    let register_fn = format_ident!("__register_plugin_factory_{}", plugin_type_string);
 
-    // Convert PluginName to PLUGIN_NAME format
-    let mut upper_name = String::new();
-    for (i, ch) in plugin_type_string.chars().enumerate() {
-        if ch.is_uppercase() && i != 0 {
-            upper_name.push('_');
-        }
-        upper_name.push(ch.to_ascii_uppercase());
-    }
-    let factory_static = format_ident!("{}_FACTORY", upper_name);
-
-    // Generate the factory wrapper and registration code
+    // Generate the factory wrapper and distributed slice submission
     let expanded = quote! {
         // Factory wrapper struct
         #[derive(Default)]
@@ -87,13 +78,11 @@ pub fn derive_register_plugin(input: TokenStream) -> TokenStream {
             }
         }
 
-        // Auto-register using lazy static
-        pub(crate) static #factory_static: once_cell::sync::Lazy<()> =
-            once_cell::sync::Lazy::new(|| {
-                crate::plugin::factory::register_plugin_factory(
-                    std::sync::Arc::new(#factory_wrapper::default()),
-                );
-            });
+        // Submit factory constructor to distributed slice
+        #[linkme::distributed_slice(crate::plugin::factory::PLUGIN_FACTORIES_SLICE)]
+        fn #register_fn() -> std::sync::Arc<dyn crate::plugin::factory::PluginFactory> {
+            std::sync::Arc::new(#factory_wrapper::default())
+        }
     };
 
     TokenStream::from(expanded)
@@ -126,18 +115,9 @@ pub fn derive_register_exec_plugin(input: TokenStream) -> TokenStream {
 
     // Generate identifiers
     let factory_wrapper = format_ident!("{}ExecFactoryWrapper", plugin_type);
+    let register_fn = format_ident!("__register_exec_plugin_factory_{}", plugin_type_string);
 
-    // Convert PluginName to PLUGIN_NAME format
-    let mut upper_name = String::new();
-    for (i, ch) in plugin_type_string.chars().enumerate() {
-        if ch.is_uppercase() && i != 0 {
-            upper_name.push('_');
-        }
-        upper_name.push(ch.to_ascii_uppercase());
-    }
-    let exec_factory_static = format_ident!("{}_EXEC_FACTORY", upper_name);
-
-    // Generate the exec factory wrapper and registration code
+    // Generate the exec factory wrapper and distributed slice submission
     let expanded = quote! {
         // Exec factory wrapper struct
         #[derive(Default)]
@@ -185,13 +165,11 @@ pub fn derive_register_exec_plugin(input: TokenStream) -> TokenStream {
             }
         }
 
-        // Auto-register using lazy static
-        pub static #exec_factory_static: once_cell::sync::Lazy<()> =
-            once_cell::sync::Lazy::new(|| {
-                crate::plugin::factory::register_exec_plugin_factory(
-                    std::sync::Arc::new(#factory_wrapper::default()),
-                );
-            });
+        // Submit exec factory constructor to distributed slice
+        #[linkme::distributed_slice(crate::plugin::factory::EXEC_PLUGIN_FACTORIES_SLICE)]
+        fn #register_fn() -> std::sync::Arc<dyn crate::plugin::factory::ExecPluginFactory> {
+            std::sync::Arc::new(#factory_wrapper::default())
+        }
     };
 
     TokenStream::from(expanded)
