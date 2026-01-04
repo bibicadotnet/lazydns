@@ -16,7 +16,6 @@ fn test_create_cache_plugin_from_builder() {
         tag: Some("test_cache".to_string()),
         plugin_type: "cache".to_string(),
         args: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-        name: Some("test_cache".to_string()),
         priority: 100,
         config: config_map,
     };
@@ -48,7 +47,6 @@ fn test_create_forward_plugin_from_builder() {
         tag: Some("test_forward".to_string()),
         plugin_type: "forward".to_string(),
         args: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-        name: Some("test_forward".to_string()),
         priority: 100,
         config: config_map,
     };
@@ -172,7 +170,6 @@ fn test_acl_plugin_from_builder() {
         tag: Some("test_acl".to_string()),
         plugin_type: "query_acl".to_string(),
         args: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-        name: Some("test_acl".to_string()),
         priority: 100,
         config: config_map,
     };

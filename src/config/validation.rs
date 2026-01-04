@@ -129,8 +129,8 @@ mod tests {
     #[test]
     fn test_validate_plugins_duplicate_names() {
         let plugins = vec![
-            PluginConfig::new("forward".to_string()).with_name("test".to_string()),
-            PluginConfig::new("cache".to_string()).with_name("test".to_string()),
+            PluginConfig::new("forward".to_string()),
+            PluginConfig::new("cache".to_string()),
         ];
 
         let result = validate_plugins(&plugins);

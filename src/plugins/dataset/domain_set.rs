@@ -984,7 +984,6 @@ mod tests {
             tag: Some("test".to_string()),
             plugin_type: "domain_set".to_string(),
             args: Value::Mapping(config_args),
-            name: None,
             priority: 100,
             config: std::collections::HashMap::new(),
         };
@@ -1025,7 +1024,6 @@ mod tests {
             tag: Some("test".to_string()),
             plugin_type: "domain_set".to_string(),
             args: Value::Mapping(config_args),
-            name: None,
             priority: 100,
             config: std::collections::HashMap::new(),
         };

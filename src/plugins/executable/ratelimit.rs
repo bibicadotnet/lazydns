@@ -333,7 +333,6 @@ mod builder_init_tests {
             tag: None,
             plugin_type: "rate_limit".to_string(),
             args: Value::Mapping(args_map),
-            name: None,
             priority: 100,
             config: std::collections::HashMap::new(),
         };

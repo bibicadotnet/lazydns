@@ -416,7 +416,6 @@ mod tests {
             tag: Some("test_acl".to_string()),
             plugin_type: "query_acl".to_string(),
             args: Value::Mapping(args),
-            name: Some("test_acl".to_string()),
             priority: 100,
             config: std::collections::HashMap::new(),
         };
@@ -462,7 +461,6 @@ mod tests {
             tag: Some("test_acl".to_string()),
             plugin_type: "query_acl".to_string(),
             args: Value::Mapping(args),
-            name: Some("test_acl".to_string()),
             priority: 100,
             config: std::collections::HashMap::new(),
         };

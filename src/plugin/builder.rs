@@ -748,7 +748,6 @@ mod tests {
             tag: Some("my_cache".to_string()),
             plugin_type: "cache".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: Some("my_cache".to_string()),
             priority: 100,
             config: config_map,
         };
@@ -772,7 +771,6 @@ mod tests {
             tag: None,
             plugin_type: "forward".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: None,
             priority: 100,
             config: config_map,
         };
@@ -793,7 +791,6 @@ mod tests {
             tag: None,
             plugin_type: "forward".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: None,
             priority: 100,
             config: config_map,
         };
@@ -1145,7 +1142,6 @@ mod tests {
             tag: Some("redirect_str".to_string()),
             plugin_type: "redirect".to_string(),
             args: Value::Mapping(args_map),
-            name: None,
             priority: 100,
             config: HashMap::new(),
         };
@@ -1198,7 +1194,6 @@ mod tests {
             tag: Some("redirect_map".to_string()),
             plugin_type: "redirect".to_string(),
             args: Value::Mapping(args_map),
-            name: None,
             priority: 100,
             config: HashMap::new(),
         };
@@ -1240,7 +1235,6 @@ mod tests {
             tag: Some("redirect_upper".to_string()),
             plugin_type: "Redirect".to_string(),
             args: Value::Mapping(args_map),
-            name: None,
             priority: 100,
             config: HashMap::new(),
         };
@@ -1270,7 +1264,6 @@ mod tests {
             tag: None,
             plugin_type: "accept".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: Some("primary".to_string()),
             priority: 100,
             config: HashMap::new(),
         };
@@ -1278,7 +1271,6 @@ mod tests {
             tag: None,
             plugin_type: "accept".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: Some("secondary".to_string()),
             priority: 100,
             config: HashMap::new(),
         };
@@ -1298,7 +1290,6 @@ mod tests {
             tag: None,
             plugin_type: "fallback".to_string(),
             args: Value::Mapping(args_map),
-            name: Some("my_fallback".to_string()),
             priority: 100,
             config: HashMap::new(),
         };
