@@ -22,7 +22,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::info;
 
-const PLUGIN_NFTSET_IDENTIFIER: &str = "nft_set";
+const PLUGIN_NFTSET_IDENTIFIER: &str = "nftset";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct NftSetArgs {

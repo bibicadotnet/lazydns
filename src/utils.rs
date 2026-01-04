@@ -7,6 +7,24 @@ use tokio::sync::{Mutex, mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
 
+/// Macro to generate a match statement for DNS type name to numeric value mapping.
+/// Supports fallback to parsing as numeric value if name is not recognized.
+/// Returns Result<T, ParseIntError> where T is the numeric type.
+///
+/// # Example
+/// ```
+/// let val = dns_type_match!(input, u16, "IN" | "INTERNET" => 1u16, "CH" => 3u16).map_err(|_| ...)?;
+/// ```
+#[macro_export]
+macro_rules! dns_type_match {
+    ($input:expr, $ty:ty, $($($name:literal)|+ => $val:expr),* $(,)?) => {
+        match $input.to_uppercase().as_str() {
+            $($($name)|+ => Ok($val),)*
+            _ => $input.parse::<$ty>(),
+        }
+    };
+}
+
 /// Handle returned by `spawn_file_watcher` to allow graceful shutdown of the watcher task.
 pub struct FileWatcherHandle {
     stop_tx: watch::Sender<bool>,

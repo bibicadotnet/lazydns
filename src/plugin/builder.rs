@@ -6,6 +6,7 @@
 use crate::Error;
 use crate::Result;
 use crate::config::types::PluginConfig;
+use crate::dns_type_match;
 use crate::plugin::traits::Matcher;
 use crate::plugin::{Context, Plugin};
 use crate::plugins::executable::SequenceStep;
@@ -524,23 +525,14 @@ fn legacy_parse_condition(
 
         // Parse space-separated class names
         for class_part in class_str.split_whitespace() {
-            let class_val = match class_part.to_uppercase().as_str() {
-                "IN" => 1u16,
-                "CH" => 3u16,
-                "HS" => 4u16,
-                _ => {
-                    // Try parsing as numeric value
-                    match class_part.parse::<u16>() {
-                        Ok(num) => num,
-                        Err(_) => {
-                            return Err(Error::Config(format!(
-                                "Invalid query class '{}': {}",
-                                class_part, condition_str
-                            )));
-                        }
-                    }
-                }
-            };
+            let class_val =
+                dns_type_match!(class_part, u16, "IN" => 1u16, "CH" => 3u16, "HS" => 4u16)
+                    .map_err(|_| {
+                        Error::Config(format!(
+                            "Invalid query class '{}': {}",
+                            class_part, condition_str
+                        ))
+                    })?;
             qclasses.push(class_val);
         }
 
@@ -566,7 +558,7 @@ fn legacy_parse_condition(
 
         // Parse space-separated response code names
         for rcode_part in rcode_str.split_whitespace() {
-            let rcode_val = match rcode_part.to_uppercase().as_str() {
+            let rcode_val = dns_type_match!(rcode_part, u8,
                 "NOERROR" => 0u8,
                 "FORMERR" | "FORMDERR" => 1u8,
                 "SERVFAIL" => 2u8,
@@ -577,20 +569,14 @@ fn legacy_parse_condition(
                 "YXRRSET" => 7u8,
                 "NXRRSET" => 8u8,
                 "NOTAUTH" | "NOTAUTHZ" => 9u8,
-                "NOTZONE" => 10u8,
-                _ => {
-                    // Try parsing as numeric value
-                    match rcode_part.parse::<u8>() {
-                        Ok(num) => num,
-                        Err(_) => {
-                            return Err(Error::Config(format!(
-                                "Invalid response code '{}': {}",
-                                rcode_part, condition_str
-                            )));
-                        }
-                    }
-                }
-            };
+                "NOTZONE" => 10u8
+            )
+            .map_err(|_| {
+                Error::Config(format!(
+                    "Invalid response code '{}': {}",
+                    rcode_part, condition_str
+                ))
+            })?;
             rcodes.push(rcode_val);
         }
 

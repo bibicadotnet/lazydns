@@ -24,7 +24,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::info;
 
-const PLUGIN_IPSET_IDENTIFIER: &str = "ip_set";
+const PLUGIN_IPSET_IDENTIFIER: &str = "ipset";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct IpSetArgs {
