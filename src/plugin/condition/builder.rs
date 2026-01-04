@@ -13,7 +13,7 @@ use crate::Result;
 use crate::plugin::{Context, builder::PluginBuilder};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Type alias for a condition closure
 /// A condition is a function that takes a Context and returns a boolean result
@@ -67,7 +67,7 @@ impl ConditionBuilderRegistry {
         if self.builders.insert(name.clone(), builder).is_some() {
             warn!("Overwriting existing condition builder: {}", name);
         } else {
-            info!("Registered condition builder: {}", name);
+            debug!("Registered condition builder: {}", name);
         }
     }
 
