@@ -1005,6 +1005,7 @@ dependencies = [
  "dashmap",
  "hickory-proto",
  "ipnet",
+ "lazydns-macros",
  "linkme",
  "lru",
  "notify",
