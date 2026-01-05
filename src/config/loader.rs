@@ -4,12 +4,19 @@
 
 use crate::config::Config;
 use crate::{Error, Result};
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::info;
+
+// Compile-once Regex instances to avoid repeated compilation at runtime/tests
+static RE_ENV: Lazy<Regex> = Lazy::new(|| Regex::new(r"\$\{([A-Z0-9_]+)(?::-([^}]+))?\}").unwrap());
+static RE_INCLUDE: Lazy<Regex> = Lazy::new(|| Regex::new(r"!include\s+([^\s\n]+)").unwrap());
+static RE_PLUGIN_ARGS: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^PLUGINS_([A-Z0-9_]+)_ARGS_(.+)$").unwrap());
 
 /// Load configuration from a YAML file
 ///
@@ -59,10 +66,9 @@ fn load_from_file_internal(path: &Path, visited: &mut HashSet<PathBuf>) -> Resul
 ///
 /// Supports ${VAR_NAME} and ${VAR_NAME:-default_value}
 fn substitute_env_vars(content: &str) -> Result<String> {
-    let re = Regex::new(r"\$\{([A-Z0-9_]+)(?::-([^}]+))?\}").unwrap();
     let mut result = content.to_string();
 
-    for cap in re.captures_iter(content) {
+    for cap in RE_ENV.captures_iter(content) {
         let full_match = cap.get(0).unwrap().as_str();
         let var_name = cap.get(1).unwrap().as_str();
         let default_value = cap.get(2).map(|m| m.as_str());
@@ -95,10 +101,9 @@ fn process_includes(
     base_dir: Option<&Path>,
     _visited: &mut HashSet<PathBuf>,
 ) -> Result<String> {
-    let re = Regex::new(r"!include\s+([^\s\n]+)").unwrap();
     let mut result = content.to_string();
 
-    for cap in re.captures_iter(content) {
+    for cap in RE_INCLUDE.captures_iter(content) {
         let full_match = cap.get(0).unwrap().as_str();
         let include_path = cap.get(1).unwrap().as_str();
 
@@ -210,8 +215,6 @@ pub(crate) fn apply_env_overrides_from_snapshot(
     // Examples supported:
     //   PLUGINS_MYTAG_ARGS_SIZE=2048
     //   PLUGINS_MYTAG_ARGS_JOBS_0_CRON="0 */6 * * *"
-    let plugin_pattern = Regex::new(r"^PLUGINS_([A-Z0-9_]+)_ARGS_(.+)$")
-        .map_err(|e| Error::Config(format!("Regex error: {}", e)))?;
 
     for (key, value_str) in env_snapshot {
         // Handle top-level environment variables
@@ -282,7 +285,7 @@ pub(crate) fn apply_env_overrides_from_snapshot(
         }
 
         // Handle plugin args: PLUGINS_<TAG>_ARGS_<KEYPATH>=value
-        if let Some(caps) = plugin_pattern.captures(key) {
+        if let Some(caps) = RE_PLUGIN_ARGS.captures(key) {
             let tag_raw = &caps[1];
             let key_path_raw = &caps[2];
 

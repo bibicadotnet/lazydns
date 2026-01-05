@@ -5,69 +5,6 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 use std::collections::HashMap;
-use std::net::SocketAddr;
-
-/// Listener configuration
-///
-/// Defines a network listener for the DNS server.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ListenerConfig {
-    /// Protocol (udp or tcp)
-    pub protocol: String,
-
-    /// Listen address
-    pub addr: SocketAddr,
-}
-
-impl ListenerConfig {
-    /// Create a new listener configuration
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use lazydns::config::types::ListenerConfig;
-    /// use std::net::SocketAddr;
-    ///
-    /// let addr: SocketAddr = "127.0.0.1:53".parse().unwrap();
-    /// let config = ListenerConfig::new("udp".to_string(), addr);
-    /// assert_eq!(config.protocol, "udp");
-    /// ```
-    pub fn new(protocol: String, addr: SocketAddr) -> Self {
-        Self { protocol, addr }
-    }
-
-    /// Create a UDP listener configuration
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use lazydns::config::types::ListenerConfig;
-    /// use std::net::SocketAddr;
-    ///
-    /// let addr: SocketAddr = "127.0.0.1:53".parse().unwrap();
-    /// let config = ListenerConfig::udp(addr);
-    /// assert_eq!(config.protocol, "udp");
-    /// ```
-    pub fn udp(addr: SocketAddr) -> Self {
-        Self::new("udp".to_string(), addr)
-    }
-
-    /// Create a TCP listener configuration
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use lazydns::config::types::ListenerConfig;
-    /// use std::net::SocketAddr;
-    ///
-    /// let addr: SocketAddr = "127.0.0.1:53".parse().unwrap();
-    /// let config = ListenerConfig::tcp(addr);
-    /// assert_eq!(config.protocol, "tcp");
-    /// ```
-    pub fn tcp(addr: SocketAddr) -> Self {
-        Self::new("tcp".to_string(), addr)
-    }
-}
 
 /// Plugin configuration
 ///
@@ -237,24 +174,6 @@ impl PluginConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
-
-    #[test]
-    fn test_listener_config() {
-        let addr = SocketAddr::from_str("127.0.0.1:53").unwrap();
-        let config = ListenerConfig::udp(addr);
-
-        assert_eq!(config.protocol, "udp");
-        assert_eq!(config.addr, addr);
-    }
-
-    #[test]
-    fn test_listener_tcp() {
-        let addr = SocketAddr::from_str("127.0.0.1:53").unwrap();
-        let config = ListenerConfig::tcp(addr);
-
-        assert_eq!(config.protocol, "tcp");
-    }
 
     #[test]
     fn test_plugin_config_creation() {
