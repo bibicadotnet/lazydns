@@ -41,8 +41,12 @@ impl Plugin for EchoPlugin {
 	}
 }
 
-// Register the plugin builder so configuration can reference `type: echo`.
-crate::register_plugin_builder!(EchoPlugin);
+// Preferred: derive registration so the factory is registered automatically.
+// The derive macro generates a factory wrapper, derives a canonical plugin name
+// from the type (PascalCase -> snake_case, strip trailing "Plugin" suffix),
+// and registers the factory via `linkme` so it is discoverable at runtime.
+#[derive(RegisterPlugin)]
+pub struct EchoPlugin;
 ```
 
 ## Exec-style quick setup
@@ -53,6 +57,10 @@ If your plugin should support compact `exec:` configuration, implement `ExecPlug
 use crate::plugin::ExecPlugin;
 use std::sync::Arc;
 
+#[derive(RegisterExecPlugin)]
+pub struct EchoPlugin;
+
+#[async_trait]
 impl ExecPlugin for EchoPlugin {
 	fn quick_setup(prefix: &str, exec_str: &str) -> crate::Result<Arc<dyn Plugin>> {
 		if prefix != "echo" {
@@ -107,8 +115,18 @@ mod tests {
 - `PluginConfig` and builder pattern
 
 ## Builder & Factory
-- Using `register_plugin_builder!`
+- Automatic registration via `#[derive(RegisterPlugin)]` (preferred)
 - `PluginFactory` lifecycle
+
+### Automatic registration via derive macros 🔧
+The project now prefers using derive macros to register plugin factories automatically.
+
+- Use `#[derive(RegisterPlugin)]` on your plugin type to generate and register a factory at compile time.
+- The derived canonical plugin type name is produced by stripping a trailing `Plugin` suffix (if present) and converting PascalCase to snake_case, e.g. `MyCachePlugin` -> `my_cache`.
+- The macro submits the factory into the `linkme` distributed slice; the runtime can then discover it with `crate::plugin::factory::get_plugin_factory("type_name")`.
+- For exec-style plugins, use `#[derive(RegisterExecPlugin)]` which behaves the same but registers into the exec-factory slice.
+
+Note: The old `crate::register_plugin_builder!(Type)` macro is still available for backward compatibility but is deprecated; prefer `#[derive(RegisterPlugin)]` for new code.
 
 ## Plugin Lifecycle
 - `init`, `exec`, `shutdown`

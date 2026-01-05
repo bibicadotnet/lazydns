@@ -4,6 +4,7 @@
 //! within the plugin chain. It supports multiple upstreams with various load
 //! balancing strategies, health checks, failover, and concurrent queries.
 
+use crate::RegisterPlugin;
 use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::Message;
@@ -571,7 +572,7 @@ impl Default for ForwardBuilder {
 /// // Build a simple forward plugin that contacts two upstreams
 /// let plugin = ForwardPlugin::new(vec!["8.8.8.8:53".into(), "1.1.1.1:53".into()]);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, RegisterPlugin)]
 pub struct ForwardPlugin {
     /// Core forwarding logic
     core: Forward,
@@ -946,9 +947,6 @@ impl Plugin for ForwardPlugin {
         self
     }
 }
-
-// Auto-register the plugin using macro
-crate::register_plugin_builder!(ForwardPlugin);
 
 #[cfg(test)]
 mod tests {

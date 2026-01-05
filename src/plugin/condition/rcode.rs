@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::dns_type_match;
 use crate::plugin::Context;
 use crate::plugin::builder::PluginBuilder;
 use crate::plugin::condition::builder::{Condition, ConditionBuilder};
@@ -18,7 +19,7 @@ impl ConditionBuilder for RcodeBuilder {
 
         let mut rcodes = Vec::new();
         for rcode_part in rcode_str.split_whitespace() {
-            let rcode_val = match rcode_part.to_uppercase().as_str() {
+            let rcode_val = dns_type_match!(rcode_part, u8,
                 "NOERROR" => 0u8,
                 "FORMERR" | "FORMDERR" => 1u8,
                 "SERVFAIL" => 2u8,
@@ -29,17 +30,14 @@ impl ConditionBuilder for RcodeBuilder {
                 "YXRRSET" => 7u8,
                 "NXRRSET" => 8u8,
                 "NOTAUTH" | "NOTAUTHZ" => 9u8,
-                "NOTZONE" => 10u8,
-                _ => match rcode_part.parse::<u8>() {
-                    Ok(num) => num,
-                    Err(_) => {
-                        return Err(crate::Error::Config(format!(
-                            "Invalid response code '{}': {}",
-                            rcode_part, condition_str
-                        )));
-                    }
-                },
-            };
+                "NOTZONE" => 10u8
+            )
+            .map_err(|_| {
+                crate::Error::Config(format!(
+                    "Invalid response code '{}': {}",
+                    rcode_part, condition_str
+                ))
+            })?;
             rcodes.push(rcode_val);
         }
 

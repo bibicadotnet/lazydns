@@ -2,6 +2,7 @@
 //!
 //! Provides IP-based access control for DNS queries.
 
+use crate::RegisterPlugin;
 use crate::Result;
 use crate::dns::ResponseCode;
 use crate::plugin::{Context, Plugin};
@@ -54,7 +55,7 @@ impl AclRule {
 /// acl.add_rule("192.168.0.0/16".parse().unwrap(), AclAction::Allow);
 /// acl.add_rule("10.0.0.0/8".parse().unwrap(), AclAction::Allow);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, RegisterPlugin)]
 pub struct QueryAclPlugin {
     /// List of ACL rules (evaluated in order)
     rules: Vec<AclRule>,
@@ -272,7 +273,6 @@ impl Plugin for QueryAclPlugin {
 }
 
 // Auto-register using the register macro
-crate::register_plugin_builder!(QueryAclPlugin);
 
 #[cfg(test)]
 mod tests {
@@ -416,7 +416,6 @@ mod tests {
             tag: Some("test_acl".to_string()),
             plugin_type: "query_acl".to_string(),
             args: Value::Mapping(args),
-            name: Some("test_acl".to_string()),
             priority: 100,
             config: std::collections::HashMap::new(),
         };
@@ -462,7 +461,6 @@ mod tests {
             tag: Some("test_acl".to_string()),
             plugin_type: "query_acl".to_string(),
             args: Value::Mapping(args),
-            name: Some("test_acl".to_string()),
             priority: 100,
             config: std::collections::HashMap::new(),
         };

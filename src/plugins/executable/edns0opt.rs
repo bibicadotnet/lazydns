@@ -2,9 +2,9 @@
 //!
 //! Adds custom EDNS0 options to DNS queries
 
-use crate::Result;
 use crate::config::PluginConfig;
 use crate::plugin::{Context, Plugin};
+use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use serde_yaml::Value;
 use std::fmt;
@@ -12,7 +12,6 @@ use std::sync::Arc;
 use tracing::{debug, trace};
 
 // Auto-register using the exec register macro
-crate::register_plugin_builder!(Edns0OptPlugin);
 
 /// EDNS0 option code and data
 #[derive(Debug, Clone)]
@@ -50,6 +49,7 @@ impl Edns0Option {
 ///     .add_option(Edns0Option::new(8, ecs_data.clone()))
 ///     .add_option(Edns0Option::new(10, vec![1, 2, 3, 4])); // DNS Cookie
 /// ```
+#[derive(RegisterPlugin)]
 pub struct Edns0OptPlugin {
     /// EDNS0 options to add
     options: Vec<Edns0Option>,
@@ -97,7 +97,7 @@ impl fmt::Debug for Edns0OptPlugin {
 #[async_trait]
 impl Plugin for Edns0OptPlugin {
     fn name(&self) -> &str {
-        "edns0opt"
+        "edns0_opt"
     }
 
     fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {

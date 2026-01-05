@@ -40,6 +40,7 @@
 
 #![allow(dead_code)]
 
+use crate::RegisterPlugin;
 use crate::Result;
 use crate::config::types::PluginConfig;
 use crate::plugin::{Context, Plugin};
@@ -58,7 +59,7 @@ pub(crate) struct FileDownloadSpec {
 }
 
 /// Downloader plugin for downloading and updating files
-#[derive(Debug)]
+#[derive(Debug, RegisterPlugin)]
 pub struct DownloaderPlugin {
     files: Vec<FileDownloadSpec>,
     timeout_secs: u64,
@@ -412,8 +413,6 @@ impl Plugin for DownloaderPlugin {
         )))
     }
 }
-
-crate::register_plugin_builder!(DownloaderPlugin);
 
 #[cfg(test)]
 mod tests {

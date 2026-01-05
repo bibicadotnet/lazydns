@@ -13,7 +13,7 @@ use crate::Result;
 use crate::plugin::{Context, builder::PluginBuilder};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Type alias for a condition closure
 /// A condition is a function that takes a Context and returns a boolean result
@@ -67,7 +67,7 @@ impl ConditionBuilderRegistry {
         if self.builders.insert(name.clone(), builder).is_some() {
             warn!("Overwriting existing condition builder: {}", name);
         } else {
-            info!("Registered condition builder: {}", name);
+            debug!("Registered condition builder: {}", name);
         }
     }
 
@@ -185,5 +185,33 @@ mod tests {
 
         let names = registry.builder_names();
         assert!(names.contains(&"test_condition"));
+    }
+
+    #[test]
+    fn test_default_builders_registered() {
+        // Ensure the global registry is initialized and contains built-in builders
+        init_condition_builders();
+        let registry = get_condition_builder_registry();
+        let names = registry.builder_names();
+
+        let expected = [
+            "has_resp",
+            "resp_ip",
+            "!resp_ip",
+            "qname",
+            "!qname",
+            "qtype",
+            "qclass",
+            "rcode",
+            "has_cname",
+        ];
+
+        for &n in expected.iter() {
+            assert!(
+                names.contains(&n),
+                "Expected condition builder '{}' to be registered",
+                n
+            );
+        }
     }
 }

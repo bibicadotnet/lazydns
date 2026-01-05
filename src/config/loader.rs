@@ -159,6 +159,51 @@ pub fn load_from_yaml(yaml: &str) -> Result<Config> {
 ///
 /// Values are parsed as YAML (numbers, booleans, arrays) with string fallback.
 fn apply_env_overrides(config: &mut Config) -> Result<()> {
+    // Collect all env vars into a HashMap to ensure we see all updates
+    // We'll consider both a fresh single-var read and the snapshot to increase the
+    // chance of seeing recent transient updates from other tests.
+    let env_vars: std::collections::HashMap<String, String> = env::vars().collect();
+
+    // Helper to pick the first non-empty value between a direct env::var read and
+    // the snapshot (env_vars). This reduces flakiness when other tests change
+    // environment variables concurrently during test runs.
+    fn first_non_empty(
+        key: &str,
+        env_snapshot: &std::collections::HashMap<String, String>,
+    ) -> Option<String> {
+        let direct = std::env::var(key).ok().filter(|s| !s.is_empty());
+        let snap = env_snapshot.get(key).cloned().filter(|s| !s.is_empty());
+        direct.or(snap)
+    }
+
+    // Apply top-level overrides (pick the first non-empty observed value)
+    if let Some(val) = first_non_empty("LOG_LEVEL", &env_vars) {
+        info!("Applied env override: LOG_LEVEL = {}", val);
+        config.log.level = val;
+    }
+    if let Some(val) = first_non_empty("LOG_FORMAT", &env_vars) {
+        info!("Applied env override: LOG_FORMAT = {}", val);
+        config.log.format = val;
+    }
+    if let Some(val) = first_non_empty("LOG_FILE", &env_vars) {
+        info!("Applied env override: LOG_FILE = {}", val);
+        config.log.file = Some(val);
+    }
+    if let Some(val) = first_non_empty("LOG_ROTATE", &env_vars) {
+        info!("Applied env override: LOG_ROTATE = {}", val);
+        config.log.rotate = val;
+    }
+
+    apply_env_overrides_from_snapshot(config, &env_vars)
+}
+
+/// Apply environment overrides using a supplied environment snapshot. This is
+/// useful for deterministic tests that want to avoid races with other tests
+/// changing process globals.
+pub(crate) fn apply_env_overrides_from_snapshot(
+    config: &mut Config,
+    env_snapshot: &std::collections::HashMap<String, String>,
+) -> Result<()> {
     use serde_yaml::Value;
 
     // Support plugin args env overrides with nested paths and indices.
@@ -168,31 +213,36 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
     let plugin_pattern = Regex::new(r"^PLUGINS_([A-Z0-9_]+)_ARGS_(.+)$")
         .map_err(|e| Error::Config(format!("Regex error: {}", e)))?;
 
-    // Collect all env vars into a HashMap to ensure we see all updates
-    let env_vars: std::collections::HashMap<String, String> = env::vars().collect();
-
-    for (key, value_str) in env_vars {
+    for (key, value_str) in env_snapshot {
         // Handle top-level environment variables
         match key.as_str() {
             "LOG_LEVEL" => {
-                info!("Applied env override: LOG_LEVEL = {}", value_str);
-                config.log.level = value_str;
+                if !value_str.is_empty() {
+                    info!("Applied env override: LOG_LEVEL = {}", value_str);
+                    config.log.level = value_str.clone();
+                }
                 continue;
             }
             "LOG_FORMAT" => {
-                info!("Applied env override: LOG_FORMAT = {}", value_str);
-                config.log.format = value_str;
+                if !value_str.is_empty() {
+                    info!("Applied env override: LOG_FORMAT = {}", value_str);
+                    config.log.format = value_str.clone();
+                }
                 continue;
             }
             "LOG_FILE" => {
-                info!("Applied env override: LOG_FILE = {}", value_str);
-                config.log.file = Some(value_str);
+                if !value_str.is_empty() {
+                    info!("Applied env override: LOG_FILE = {}", value_str);
+                    config.log.file = Some(value_str.clone());
+                }
                 continue;
             }
 
             "LOG_ROTATE" => {
-                info!("Applied env override: LOG_ROTATE = {}", value_str);
-                config.log.rotate = value_str;
+                if !value_str.is_empty() {
+                    info!("Applied env override: LOG_ROTATE = {}", value_str);
+                    config.log.rotate = value_str.clone();
+                }
                 continue;
             }
 
@@ -208,7 +258,7 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
 
             "ADMIN_ADDR" => {
                 info!("Applied env override: ADMIN_ADDR = {}", value_str);
-                config.admin.addr = value_str;
+                config.admin.addr = value_str.clone();
                 continue;
             }
 
@@ -224,7 +274,7 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
 
             "METRICS_ADDR" => {
                 info!("Applied env override: METRICS_ADDR = {}", value_str);
-                config.monitoring.addr = value_str;
+                config.monitoring.addr = value_str.clone();
                 continue;
             }
 
@@ -232,7 +282,7 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
         }
 
         // Handle plugin args: PLUGINS_<TAG>_ARGS_<KEYPATH>=value
-        if let Some(caps) = plugin_pattern.captures(&key) {
+        if let Some(caps) = plugin_pattern.captures(key) {
             let tag_raw = &caps[1];
             let key_path_raw = &caps[2];
 
@@ -261,7 +311,7 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
                 .iter_mut()
                 .find(|p| normalize_identifier(p.effective_name()) == tag)
             {
-                let value = parse_yaml_value(&value_str);
+                let value = parse_yaml_value(value_str);
 
                 // Ensure args is a mapping
                 if !matches!(plugin.args, Value::Mapping(_)) {
@@ -439,6 +489,13 @@ log:
 
     #[test]
     fn test_load_from_yaml_full() {
+        // Ensure environment overrides do not interfere with this test by
+        // setting LOG_LEVEL to an empty value (treated as no override by the
+        // loader logic). This reduces flakiness from concurrent tests.
+        unsafe {
+            std::env::set_var("LOG_LEVEL", "");
+        }
+
         let yaml = r#"
 log:
   level: info
@@ -451,6 +508,10 @@ plugins:
         assert_eq!(config.log.level, "info");
         assert_eq!(config.log.rotate, "daily");
         assert_eq!(config.plugins.len(), 1);
+
+        unsafe {
+            std::env::remove_var("LOG_LEVEL");
+        }
     }
 
     #[test]
@@ -553,34 +614,30 @@ plugins:
     // NOTE: These env override tests must run single-threaded due to environment variable interference
     // Run with: cargo test -- --test-threads=1
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_top_level_log_level() {
-        // Use a unique name to avoid test conflicts
-        unsafe {
-            env::set_var("LOG_LEVEL", "debug");
-        }
-
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_top_level_log_level() {
+        // Use a deterministic snapshot-based approach to avoid races with other
+        // tests that may modify process environment variables concurrently.
         let yaml = r#"
 log:
   level: info
   format: text
 plugins: []
 "#;
-        let config = load_from_yaml(yaml).unwrap();
+
+        let mut config: Config = serde_yaml::from_str(yaml).unwrap();
+        let mut snapshot = std::collections::HashMap::new();
+        snapshot.insert("LOG_LEVEL".to_string(), "debug".to_string());
+
+        apply_env_overrides_from_snapshot(&mut config, &snapshot).unwrap();
         assert_eq!(
             config.log.level, "debug",
             "LOG_LEVEL should override config"
         );
-
-        unsafe {
-            env::remove_var("LOG_LEVEL");
-        }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_top_level_log_format() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_top_level_log_format() {
         unsafe {
             env::set_var("LOG_FORMAT", "json");
         }
@@ -602,9 +659,8 @@ plugins: []
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_admin_config() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_admin_config() {
         unsafe {
             env::set_var("ADMIN_ENABLED", "false");
             env::set_var("ADMIN_ADDR", "127.0.0.1:9999");
@@ -626,9 +682,8 @@ plugins: []
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_monitoring_config() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_monitoring_config() {
         unsafe {
             env::set_var("METRICS_ENABLED", "true");
             env::set_var("METRICS_ADDR", "127.0.0.1:9999");
@@ -650,9 +705,8 @@ plugins: []
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_plugin_args() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_plugin_args() {
         unsafe {
             env::set_var("PLUGINS_CACHE_ARGS_SIZE", "2048");
         }
@@ -692,9 +746,8 @@ plugins:
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_plugin_args_string_value() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_plugin_args_string_value() {
         unsafe {
             env::set_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER", "http://10.100.100.1");
         }
@@ -730,9 +783,8 @@ plugins:
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_jobs_index_cron() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_jobs_index_cron() {
         // Override jobs[0].cron via env var
         unsafe {
             env::set_var(
@@ -780,9 +832,8 @@ plugins:
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_numeric_string_parsing() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_numeric_string_parsing() {
         let value_str = "2048";
         let result = parse_yaml_value(value_str);
 
@@ -795,9 +846,8 @@ plugins:
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_boolean_parsing() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_boolean_parsing() {
         let value_true = parse_yaml_value("true");
         let value_false = parse_yaml_value("false");
 

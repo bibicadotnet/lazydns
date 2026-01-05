@@ -1,12 +1,10 @@
+use crate::RegisterExecPlugin;
 use crate::dns::RecordType;
 use crate::plugin::{ExecPlugin, Plugin};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-// Auto-register exec factory only (no init factory implementation provided)
-crate::register_exec_plugin_builder!(PreferIpv6Plugin);
-
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, RegisterExecPlugin)]
 pub struct PreferIpv6Plugin;
 
 impl PreferIpv6Plugin {

@@ -29,7 +29,9 @@ for p in files:
 plugin_files = sorted((SRC / 'plugins').rglob('*.rs'))
 
 pub_re = re.compile(r"pub\s+(?:struct|enum)\s+(\w+)")
-register_macro_re = re.compile(r"register_(?:plugin_builder|exec_plugin_builder)!\(")
+# Detect derives like #[derive(RegisterPlugin)] (may include other derives in the list)
+derive_re = re.compile(r"derive\s*\(\s*[^)]*\bRegisterPlugin\b[^)]*\)")
+exec_derive_re = re.compile(r"derive\s*\(\s*[^)]*\bRegisterExecPlugin\b[^)]*\)")
 factory_force_re = re.compile(r"Lazy::force\(&crate::plugins::([\w:]+)::([A-Z0-9_]+)\)")
 
 # helper to classify file path string -> category
@@ -55,9 +57,10 @@ for pf in plugin_files:
     text = content.get(rel, '')
     exports = pub_re.findall(text)
 
-    # registered? scan for register macro in file or factory Lazy::force referring this module
+    # registered? scan for register macro, derive macros, or factory Lazy::force referring this module
     registered = False
-    if register_macro_re.search(text):
+    # detect derive-based registration introduced by the macros
+    if derive_re.search(text) or exec_derive_re.search(text):
         registered = True
     # check factory lazy force
     module_path = str(pf.relative_to(SRC)).replace('.rs','').replace(os.sep, '::')

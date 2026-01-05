@@ -1,8 +1,6 @@
-use crate::Result;
-use crate::config::PluginConfig;
-use crate::dns::RData;
 use crate::plugin::traits::{Matcher, Shutdown};
 use crate::plugin::{Context, Plugin};
+use crate::{RegisterPlugin, Result, config::PluginConfig, dns::RData};
 use async_trait::async_trait;
 use ipnet::IpNet;
 use parking_lot::RwLock;
@@ -27,7 +25,7 @@ use tracing::{debug, error, info};
 ///     .with_files(vec!["china-ip-list.txt".to_string()])
 ///     .with_auto_reload(true);
 /// ```
-#[derive(Clone)]
+#[derive(Clone, RegisterPlugin)]
 pub struct IpSetPlugin {
     /// Name/tag for this IP set
     name: String,
@@ -385,6 +383,20 @@ impl Matcher for IpSetPlugin {
     }
 }
 
+#[async_trait]
+impl Shutdown for IpSetPlugin {
+    async fn shutdown(&self) -> Result<()> {
+        let handle = {
+            let mut guard = self.watcher.lock();
+            guard.take()
+        };
+        if let Some(h) = handle {
+            h.stop().await;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,7 +481,6 @@ mod tests {
             tag: Some("test".to_string()),
             plugin_type: "ip_set".to_string(),
             args: Value::Mapping(config_args),
-            name: None,
             priority: 100,
             config: std::collections::HashMap::new(),
         };
@@ -502,7 +513,6 @@ mod tests {
             tag: Some("test".to_string()),
             plugin_type: "ip_set".to_string(),
             args: Value::Mapping(config_args),
-            name: None,
             priority: 100,
             config: std::collections::HashMap::new(),
         };
@@ -514,19 +524,3 @@ mod tests {
         assert!(!plugin.matches(&"192.168.1.1".parse().unwrap()));
     }
 }
-
-#[async_trait]
-impl Shutdown for IpSetPlugin {
-    async fn shutdown(&self) -> Result<()> {
-        let handle = {
-            let mut guard = self.watcher.lock();
-            guard.take()
-        };
-        if let Some(h) = handle {
-            h.stop().await;
-        }
-        Ok(())
-    }
-}
-
-crate::register_plugin_builder!(IpSetPlugin);

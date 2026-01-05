@@ -6,6 +6,7 @@
 use crate::Error;
 use crate::Result;
 use crate::config::types::PluginConfig;
+use crate::dns_type_match;
 use crate::plugin::traits::Matcher;
 use crate::plugin::{Context, Plugin};
 use crate::plugins::executable::SequenceStep;
@@ -524,23 +525,14 @@ fn legacy_parse_condition(
 
         // Parse space-separated class names
         for class_part in class_str.split_whitespace() {
-            let class_val = match class_part.to_uppercase().as_str() {
-                "IN" => 1u16,
-                "CH" => 3u16,
-                "HS" => 4u16,
-                _ => {
-                    // Try parsing as numeric value
-                    match class_part.parse::<u16>() {
-                        Ok(num) => num,
-                        Err(_) => {
-                            return Err(Error::Config(format!(
-                                "Invalid query class '{}': {}",
-                                class_part, condition_str
-                            )));
-                        }
-                    }
-                }
-            };
+            let class_val =
+                dns_type_match!(class_part, u16, "IN" => 1u16, "CH" => 3u16, "HS" => 4u16)
+                    .map_err(|_| {
+                        Error::Config(format!(
+                            "Invalid query class '{}': {}",
+                            class_part, condition_str
+                        ))
+                    })?;
             qclasses.push(class_val);
         }
 
@@ -566,7 +558,7 @@ fn legacy_parse_condition(
 
         // Parse space-separated response code names
         for rcode_part in rcode_str.split_whitespace() {
-            let rcode_val = match rcode_part.to_uppercase().as_str() {
+            let rcode_val = dns_type_match!(rcode_part, u8,
                 "NOERROR" => 0u8,
                 "FORMERR" | "FORMDERR" => 1u8,
                 "SERVFAIL" => 2u8,
@@ -577,20 +569,14 @@ fn legacy_parse_condition(
                 "YXRRSET" => 7u8,
                 "NXRRSET" => 8u8,
                 "NOTAUTH" | "NOTAUTHZ" => 9u8,
-                "NOTZONE" => 10u8,
-                _ => {
-                    // Try parsing as numeric value
-                    match rcode_part.parse::<u8>() {
-                        Ok(num) => num,
-                        Err(_) => {
-                            return Err(Error::Config(format!(
-                                "Invalid response code '{}': {}",
-                                rcode_part, condition_str
-                            )));
-                        }
-                    }
-                }
-            };
+                "NOTZONE" => 10u8
+            )
+            .map_err(|_| {
+                Error::Config(format!(
+                    "Invalid response code '{}': {}",
+                    rcode_part, condition_str
+                ))
+            })?;
             rcodes.push(rcode_val);
         }
 
@@ -762,7 +748,6 @@ mod tests {
             tag: Some("my_cache".to_string()),
             plugin_type: "cache".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: Some("my_cache".to_string()),
             priority: 100,
             config: config_map,
         };
@@ -786,7 +771,6 @@ mod tests {
             tag: None,
             plugin_type: "forward".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: None,
             priority: 100,
             config: config_map,
         };
@@ -807,7 +791,6 @@ mod tests {
             tag: None,
             plugin_type: "forward".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: None,
             priority: 100,
             config: config_map,
         };
@@ -987,36 +970,52 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO: Control-flow plugins does not registered via factory yet"]
-    fn test_build_control_flow_plugins() {
-        let mut builder = PluginBuilder::new();
-
-        // Test accept
-        let config = PluginConfig::new("accept".to_string());
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "accept");
-
-        // Test reject
-        let config = PluginConfig::new("reject".to_string());
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "reject");
-
-        // Test prefer_ipv4
-        let config = PluginConfig::new("prefer_ipv4".to_string());
-        let plugin = builder.build(&config).unwrap();
-        assert_eq!(plugin.name(), "prefer_ipv4");
-    }
-
-    #[test]
     fn test_derived_plugin_type_names() {
         // Ensure the macro-based derivation registers canonical names derived from type names
         crate::plugin::factory::init();
         let types = crate::plugin::factory::get_all_plugin_types();
+
+        assert!(types.contains(&"query_acl".to_string()));
+        assert!(types.contains(&"cache".to_string()));
+        #[cfg(feature = "cron")]
+        assert!(types.contains(&"cron".to_string()));
+        assert!(types.contains(&"domain_validator".to_string()));
         assert!(types.contains(&"forward".to_string()));
+        assert!(types.contains(&"geo_ip".to_string()));
+        assert!(types.contains(&"geo_site".to_string()));
+        assert!(types.contains(&"arbitrary".to_string()));
+        assert!(types.contains(&"hosts".to_string()));
+        assert!(types.contains(&"domain_set".to_string()));
+        assert!(types.contains(&"ip_set".to_string()));
+
+        assert!(types.contains(&"dual_selector".to_string()));
+        assert!(types.contains(&"edns0_opt".to_string()));
+        assert!(types.contains(&"rate_limit".to_string()));
+        assert!(types.contains(&"redirect".to_string()));
+        assert!(types.contains(&"reverse_lookup".to_string()));
+        assert!(types.contains(&"ros_addrlist".to_string()));
+        assert!(types.contains(&"blackhole".to_string()));
+
         let types = crate::plugin::factory::get_all_exec_plugin_types();
+
+        assert!(types.contains(&"blackhole".to_string()));
+        assert!(types.contains(&"debug_print".to_string()));
         assert!(types.contains(&"drop_resp".to_string()));
-        assert!(crate::plugin::factory::get_exec_plugin_factory("drop_resp").is_some());
-        assert!(crate::plugin::factory::get_plugin_factory("forward").is_some());
+        assert!(types.contains(&"ecs".to_string()));
+        assert!(types.contains(&"fallback".to_string()));
+        assert!(types.contains(&"ipset".to_string()));
+        assert!(types.contains(&"mark".to_string()));
+        assert!(types.contains(&"nftset".to_string()));
+        assert!(types.contains(&"query_summary".to_string()));
+        assert!(types.contains(&"sleep".to_string()));
+        assert!(types.contains(&"ttl".to_string()));
+        assert!(types.contains(&"prefer_ipv4".to_string()));
+        assert!(types.contains(&"prefer_ipv6".to_string()));
+        #[cfg(feature = "metrics")]
+        {
+            assert!(types.contains(&"prom_metrics_collector".to_string()));
+            assert!(types.contains(&"metrics_collector".to_string()));
+        }
     }
 
     #[test]
@@ -1143,7 +1142,6 @@ mod tests {
             tag: Some("redirect_str".to_string()),
             plugin_type: "redirect".to_string(),
             args: Value::Mapping(args_map),
-            name: None,
             priority: 100,
             config: HashMap::new(),
         };
@@ -1196,7 +1194,6 @@ mod tests {
             tag: Some("redirect_map".to_string()),
             plugin_type: "redirect".to_string(),
             args: Value::Mapping(args_map),
-            name: None,
             priority: 100,
             config: HashMap::new(),
         };
@@ -1238,7 +1235,6 @@ mod tests {
             tag: Some("redirect_upper".to_string()),
             plugin_type: "Redirect".to_string(),
             args: Value::Mapping(args_map),
-            name: None,
             priority: 100,
             config: HashMap::new(),
         };
@@ -1268,7 +1264,6 @@ mod tests {
             tag: None,
             plugin_type: "accept".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: Some("primary".to_string()),
             priority: 100,
             config: HashMap::new(),
         };
@@ -1276,7 +1271,6 @@ mod tests {
             tag: None,
             plugin_type: "accept".to_string(),
             args: Value::Mapping(Mapping::new()),
-            name: Some("secondary".to_string()),
             priority: 100,
             config: HashMap::new(),
         };
@@ -1296,7 +1290,6 @@ mod tests {
             tag: None,
             plugin_type: "fallback".to_string(),
             args: Value::Mapping(args_map),
-            name: Some("my_fallback".to_string()),
             priority: 100,
             config: HashMap::new(),
         };
@@ -1310,7 +1303,7 @@ mod tests {
 
         // Verify fallback has resolved children
         let plugin = builder
-            .get_plugin("my_fallback")
+            .get_plugin("fallback")
             .expect("fallback plugin present");
         if let Some(fp) = plugin
             .as_ref()

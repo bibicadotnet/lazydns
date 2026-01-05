@@ -2,14 +2,13 @@
 //!
 //! Redirects DNS queries to a different domain
 
-use crate::Result;
 use crate::plugin::{Context, Plugin};
+use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use std::fmt;
 use tracing::debug;
 
 // Auto-register using the register macro
-crate::register_plugin_builder!(RedirectPlugin);
 
 /// Plugin that redirects queries from one domain to another
 ///
@@ -24,6 +23,7 @@ crate::register_plugin_builder!(RedirectPlugin);
 /// // Redirect with wildcard
 /// let mut plugin = RedirectPlugin::new("*.old.com", "*.new.com");
 /// ```
+#[derive(RegisterPlugin)]
 pub struct RedirectPlugin {
     /// Source domain pattern
     from_domain: String,

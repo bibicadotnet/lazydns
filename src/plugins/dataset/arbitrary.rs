@@ -1,6 +1,7 @@
 // Arbitrary plugin moved under plugins::dataset
 // (content copied from src/plugins/executable/arbitrary.rs)
 
+use crate::RegisterPlugin;
 use crate::Result;
 use crate::dns::{Message, RData, ResourceRecord};
 use crate::plugin::{Context, Plugin};
@@ -13,14 +14,13 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 use std::sync::Arc;
 
-crate::register_plugin_builder!(ArbitraryPlugin);
-
 #[derive(Debug, Deserialize, Clone)]
 pub struct ArbitraryArgs {
     pub rules: Option<Vec<String>>,
     pub files: Option<Vec<String>>,
 }
 
+#[derive(RegisterPlugin)]
 pub struct ArbitraryPlugin {
     map: HashMap<String, Vec<ResourceRecord>>,
 }

@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::dns_type_match;
 use crate::plugin::Context;
 use crate::plugin::builder::PluginBuilder;
 use crate::plugin::condition::builder::{Condition, ConditionBuilder};
@@ -18,20 +19,14 @@ impl ConditionBuilder for QclassBuilder {
 
         let mut qclasses = Vec::new();
         for class_part in class_str.split_whitespace() {
-            let class_val = match class_part.to_uppercase().as_str() {
-                "IN" => 1u16,
-                "CH" => 3u16,
-                "HS" => 4u16,
-                _ => match class_part.parse::<u16>() {
-                    Ok(num) => num,
-                    Err(_) => {
-                        return Err(crate::Error::Config(format!(
+            let class_val =
+                dns_type_match!(class_part, u16, "IN" => 1u16, "CH" => 3u16, "HS" => 4u16)
+                    .map_err(|_| {
+                        crate::Error::Config(format!(
                             "Invalid query class '{}': {}",
                             class_part, condition_str
-                        )));
-                    }
-                },
-            };
+                        ))
+                    })?;
             qclasses.push(class_val);
         }
 

@@ -50,11 +50,6 @@ pub const RETURN_FLAG: &str = "__return_flag";
 pub use builder::PluginBuilder;
 pub use context::Context;
 pub use executor::Executor;
-pub use factory::{
-    get_all_exec_plugin_types, get_all_plugin_types, get_exec_plugin_factory, get_plugin_factory,
-    initialize_all_exec_plugin_factories, initialize_all_plugin_factories,
-    initialize_plugin_factories,
-};
 pub use registry::Registry;
 pub use traits::{ExecPlugin, Plugin};
 

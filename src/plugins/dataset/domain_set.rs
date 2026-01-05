@@ -1,8 +1,7 @@
-use crate::Result;
 use crate::config::PluginConfig;
-use crate::plugin::traits::Matcher;
-use crate::plugin::traits::Shutdown;
+use crate::plugin::traits::{Matcher, Shutdown};
 use crate::plugin::{Context, Plugin};
+use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use regex::Regex;
@@ -382,7 +381,7 @@ pub struct DomainRulesStats {
 ///     .with_auto_reload(true)
 ///     .with_default_match_type(MatchType::Domain);
 /// ```
-#[derive(Clone)]
+#[derive(Clone, RegisterPlugin)]
 pub struct DomainSetPlugin {
     /// Name/tag for this domain set
     name: String,
@@ -985,7 +984,6 @@ mod tests {
             tag: Some("test".to_string()),
             plugin_type: "domain_set".to_string(),
             args: Value::Mapping(config_args),
-            name: None,
             priority: 100,
             config: std::collections::HashMap::new(),
         };
@@ -1026,7 +1024,6 @@ mod tests {
             tag: Some("test".to_string()),
             plugin_type: "domain_set".to_string(),
             args: Value::Mapping(config_args),
-            name: None,
             priority: 100,
             config: std::collections::HashMap::new(),
         };
@@ -1043,5 +1040,3 @@ mod tests {
         assert!(plugin.matches("sub.example.com"));
     }
 }
-
-crate::register_plugin_builder!(DomainSetPlugin);

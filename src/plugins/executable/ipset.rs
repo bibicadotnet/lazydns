@@ -14,9 +14,9 @@
 //!
 //! Note: this file contains only the executable wrapper; logic is small
 //! and intended to be fast and dependency-free.
-use crate::Result;
 use crate::dns::RData;
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fmt;
@@ -25,7 +25,6 @@ use std::sync::Arc;
 use tracing::info;
 
 const PLUGIN_IPSET_IDENTIFIER: &str = "ipset";
-crate::register_exec_plugin_builder!(IpSetPlugin);
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct IpSetArgs {
@@ -52,6 +51,7 @@ impl Default for IpSetArgs {
     }
 }
 
+#[derive(RegisterExecPlugin)]
 pub struct IpSetPlugin {
     args: IpSetArgs,
 }
@@ -155,7 +155,7 @@ impl Plugin for IpSetPlugin {
 
     fn aliases() -> &'static [&'static str] {
         // allow "ipset" as the canonical name
-        &[PLUGIN_IPSET_IDENTIFIER]
+        &["ipset"]
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {

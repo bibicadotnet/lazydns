@@ -57,6 +57,7 @@
 //! - CachePlugin automatically handles both cache reads (before sequence) and
 //!   cache writes (after sequence completes), eliminating the need for a separate
 //!   store plugin.
+use crate::RegisterPlugin;
 use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::Message;
@@ -77,9 +78,6 @@ use tracing::{debug, trace};
 
 /// TTL used when serving stale responses during cache_ttl window
 const STALE_RESPONSE_TTL_SECS: u32 = 5;
-
-// Auto-register using the register macro
-crate::register_plugin_builder!(CachePlugin);
 
 /// Cache entry storing a DNS response with metadata
 #[derive(Clone)]
@@ -328,6 +326,7 @@ impl fmt::Display for LazyCacheStats {
 /// When enabled, if a cached entry's TTL drops below the threshold (e.g., 10%),
 /// the entry is marked for lazy refresh. A background task or next access
 /// will trigger a refresh query to keep the cache warm.
+#[derive(RegisterPlugin)]
 pub struct CachePlugin {
     /// The cache storage (domain name -> cache entry)
     cache: Arc<parking_lot::RwLock<LruCache<String, CacheEntry>>>,

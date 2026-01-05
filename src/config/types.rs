@@ -86,11 +86,6 @@ pub struct PluginConfig {
     #[serde(default)]
     pub args: serde_yaml::Value,
 
-    // Legacy fields for backward compatibility
-    /// Plugin instance name (legacy, use tag instead)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
     /// Plugin priority (lower executes first)
     #[serde(
         default = "default_priority",
@@ -128,7 +123,6 @@ impl PluginConfig {
             tag: None,
             plugin_type,
             args: Value::Mapping(Mapping::new()),
-            name: None,
             priority: default_priority(),
             config: HashMap::new(),
         }
@@ -147,22 +141,6 @@ impl PluginConfig {
     /// ```
     pub fn with_tag(mut self, tag: String) -> Self {
         self.tag = Some(tag);
-        self
-    }
-
-    /// Set the plugin name (legacy method, use with_tag instead)
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use lazydns::config::types::PluginConfig;
-    ///
-    /// let config = PluginConfig::new("forward".to_string())
-    ///     .with_name("my_forward".to_string());
-    /// assert_eq!(config.effective_name(), "my_forward");
-    /// ```
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = Some(name);
         self
     }
 
@@ -236,10 +214,7 @@ impl PluginConfig {
     /// assert_eq!(config2.effective_name(), "my_forward");
     /// ```
     pub fn effective_name(&self) -> &str {
-        self.tag
-            .as_deref()
-            .or(self.name.as_deref())
-            .unwrap_or(&self.plugin_type)
+        self.tag.as_deref().unwrap_or(&self.plugin_type)
     }
 
     /// Get the effective args (merges args and config for backward compatibility)
@@ -287,13 +262,12 @@ mod tests {
 
         assert_eq!(config.plugin_type, "forward");
         assert_eq!(config.priority, 100);
-        assert!(config.name.is_none());
     }
 
     #[test]
     fn test_plugin_config_builder() {
         let config = PluginConfig::new("forward".to_string())
-            .with_name("my_forward".to_string())
+            .with_tag("my_forward".to_string())
             .with_priority(50);
 
         assert_eq!(config.effective_name(), "my_forward");
@@ -302,10 +276,10 @@ mod tests {
 
     #[test]
     fn test_plugin_effective_name() {
-        let config1 = PluginConfig::new("forward".to_string());
+        let config1 = PluginConfig::new("forward".to_string()).with_tag("forward".to_string());
         assert_eq!(config1.effective_name(), "forward");
 
-        let config2 = PluginConfig::new("forward".to_string()).with_name("my_forward".to_string());
+        let config2 = PluginConfig::new("forward".to_string()).with_tag("my_forward".to_string());
         assert_eq!(config2.effective_name(), "my_forward");
     }
 

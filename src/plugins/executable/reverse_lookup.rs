@@ -1,7 +1,7 @@
-use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::{Message, RData, ResourceRecord};
 use crate::plugin::{Context, Plugin};
+use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use serde_yaml::Value;
@@ -46,13 +46,13 @@ type Entry = (String, Instant);
 /// query is received and `handle_ptr` is enabled, the plugin will attempt to
 /// translate the reverse name into an IP and reply from the cache if a valid
 /// (non-expired) entry exists.
+#[derive(RegisterPlugin)]
 pub struct ReverseLookupPlugin {
     cache: Arc<DashMap<String, Entry>>,
     args: ReverseLookupArgs,
 }
 
 // Auto-register plugin builder for config-based construction
-crate::register_plugin_builder!(ReverseLookupPlugin);
 
 impl ReverseLookupPlugin {
     pub fn new(args: ReverseLookupArgs) -> Self {

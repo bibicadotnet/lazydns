@@ -1,19 +1,16 @@
-use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::{Message, RData, ResourceRecord};
 use crate::plugin::{Context, ExecPlugin, Plugin};
+use crate::{RegisterExecPlugin, RegisterPlugin, Result};
 use async_trait::async_trait;
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 
 const PLUGIN_BLACKHOLE_IDENTIFIER: &str = "blackhole";
-// Auto-register using the register macro for Plugin factory
-crate::register_plugin_builder!(BlackholePlugin);
-// Auto-register using the exec register macro (now supports aliases)
-crate::register_exec_plugin_builder!(BlackholePlugin);
 
 /// Black hole plugin: returns configured A/AAAA answers for a query
+#[derive(RegisterPlugin, RegisterExecPlugin)]
 pub struct BlackholePlugin {
     ipv4: Vec<Ipv4Addr>,
     ipv6: Vec<Ipv6Addr>,
