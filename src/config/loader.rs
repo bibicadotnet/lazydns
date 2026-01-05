@@ -553,9 +553,8 @@ plugins:
     // NOTE: These env override tests must run single-threaded due to environment variable interference
     // Run with: cargo test -- --test-threads=1
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_top_level_log_level() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_top_level_log_level() {
         // Use a unique name to avoid test conflicts
         unsafe {
             env::set_var("LOG_LEVEL", "debug");
@@ -578,9 +577,8 @@ plugins: []
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_top_level_log_format() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_top_level_log_format() {
         unsafe {
             env::set_var("LOG_FORMAT", "json");
         }
@@ -602,9 +600,8 @@ plugins: []
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_admin_config() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_admin_config() {
         unsafe {
             env::set_var("ADMIN_ENABLED", "false");
             env::set_var("ADMIN_ADDR", "127.0.0.1:9999");
@@ -626,9 +623,8 @@ plugins: []
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_monitoring_config() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_monitoring_config() {
         unsafe {
             env::set_var("METRICS_ENABLED", "true");
             env::set_var("METRICS_ADDR", "127.0.0.1:9999");
@@ -650,9 +646,8 @@ plugins: []
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_plugin_args() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_plugin_args() {
         unsafe {
             env::set_var("PLUGINS_CACHE_ARGS_SIZE", "2048");
         }
@@ -692,9 +687,8 @@ plugins:
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_plugin_args_string_value() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_plugin_args_string_value() {
         unsafe {
             env::set_var("PLUGINS_ADD_GFWLIST_ARGS_SERVER", "http://10.100.100.1");
         }
@@ -730,9 +724,8 @@ plugins:
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_jobs_index_cron() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_jobs_index_cron() {
         // Override jobs[0].cron via env var
         unsafe {
             env::set_var(
@@ -780,9 +773,8 @@ plugins:
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_numeric_string_parsing() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_numeric_string_parsing() {
         let value_str = "2048";
         let result = parse_yaml_value(value_str);
 
@@ -795,9 +787,8 @@ plugins:
         }
     }
 
-    #[test]
-    #[ignore = "cargo test --lib config::loader -- --test-threads=1"]
-    fn test_apply_env_overrides_boolean_parsing() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_apply_env_overrides_boolean_parsing() {
         let value_true = parse_yaml_value("true");
         let value_false = parse_yaml_value("false");
 
