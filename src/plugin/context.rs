@@ -6,6 +6,7 @@
 use crate::dns::Message;
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Plugin execution context
 ///
@@ -35,8 +36,9 @@ pub struct Context {
     /// The original DNS query
     request: Message,
 
-    /// The DNS response (if set by a plugin)
-    response: Option<Message>,
+    /// The DNS response (if set by a plugin). Stored as Arc<Message> to enable
+    /// sharing without deep cloning; mutation is done via `Arc::make_mut`.
+    response: Option<Arc<Message>>,
 
     /// Metadata for inter-plugin communication
     metadata: HashMap<String, Box<dyn Any + Send + Sync>>,
@@ -68,26 +70,32 @@ impl Context {
 
     /// Get a reference to the DNS response
     pub fn response(&self) -> Option<&Message> {
-        self.response.as_ref()
+        self.response.as_deref()
     }
 
-    /// Get a mutable reference to the DNS response
+    /// Get a mutable reference to the DNS response. This will perform copy-on-write
+    /// via `Arc::make_mut` if the response is shared by other owners.
     pub fn response_mut(&mut self) -> Option<&mut Message> {
-        self.response.as_mut()
+        self.response.as_mut().map(Arc::make_mut)
     }
 
-    /// Set the DNS response
-    ///
-    /// # Arguments
-    ///
-    /// * `response` - The DNS response message
+    /// Set the DNS response from an owned `Message` (wraps in Arc)
     pub fn set_response(&mut self, response: Option<Message>) {
+        self.response = response.map(Arc::new);
+    }
+
+    /// Set the DNS response from an `Arc<Message>` directly
+    pub fn set_response_arc(&mut self, response: Option<Arc<Message>>) {
         self.response = response;
     }
 
-    /// Take the DNS response, leaving None in its place
+    /// Take the DNS response, leaving None in its place. Attempts to avoid cloning
+    /// when the Arc is uniquely owned; otherwise returns a cloned Message.
     pub fn take_response(&mut self) -> Option<Message> {
-        self.response.take()
+        self.response.take().map(|arc| match Arc::try_unwrap(arc) {
+            Ok(msg) => msg,
+            Err(shared) => (*shared).clone(),
+        })
     }
 
     /// Check if a response has been set

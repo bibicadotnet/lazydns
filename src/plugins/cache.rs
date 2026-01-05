@@ -82,8 +82,8 @@ const STALE_RESPONSE_TTL_SECS: u32 = 5;
 /// Cache entry storing a DNS response with metadata
 #[derive(Clone)]
 struct CacheEntry {
-    /// Cached DNS response message
-    response: Message,
+    /// Cached DNS response message (shared)
+    response: Arc<Message>,
     /// When this entry was created
     cached_at: Instant,
     /// Time-to-live for this entry (message TTL in seconds)
@@ -101,7 +101,7 @@ impl CacheEntry {
     fn new(response: Message, ttl: u32, cache_ttl: u32) -> Self {
         let now = Instant::now();
         Self {
-            response,
+            response: Arc::new(response),
             cached_at: now,
             ttl,
             cache_ttl,
@@ -689,10 +689,12 @@ impl Plugin for CachePlugin {
                         );
 
                         // Return stale response with a small TTL while refreshing in background
-                        let mut response = entry.response.clone();
-                        Self::update_ttls(&mut response, STALE_RESPONSE_TTL_SECS); // stale response TTL is fixed to 5s (matches upstream)
-                        response.set_id(context.request().id());
-                        context.set_response(Some(response));
+                        // Prefer copy-on-write via Arc::make_mut to avoid deep cloning when unnecessary
+                        let mut response_arc = Arc::clone(&entry.response);
+                        let response_ref = Arc::make_mut(&mut response_arc);
+                        Self::update_ttls(response_ref, STALE_RESPONSE_TTL_SECS); // stale response TTL is fixed to 5s (matches upstream)
+                        response_ref.set_id(context.request().id());
+                        context.set_response_arc(Some(response_arc));
 
                         // Mark that response came from cache to prevent Phase 2 re-execution
                         context.set_metadata("response_from_cache", true);
@@ -841,10 +843,12 @@ impl Plugin for CachePlugin {
 
                 if should_lazy_refresh {
                     // LazyCache: return cached response immediately, spawn background refresh
-                    let mut response = entry.response.clone();
-                    Self::update_ttls(&mut response, remaining_ttl);
-                    response.set_id(context.request().id());
-                    context.set_response(Some(response));
+                    // Prefer copy-on-write via Arc::make_mut to avoid deep cloning when unnecessary
+                    let mut response_arc = Arc::clone(&entry.response);
+                    let response_ref = Arc::make_mut(&mut response_arc);
+                    Self::update_ttls(response_ref, remaining_ttl);
+                    response_ref.set_id(context.request().id());
+                    context.set_response_arc(Some(response_arc));
 
                     // Mark that response came from cache to prevent Phase 2 re-execution
                     context.set_metadata("response_from_cache", true);
@@ -952,10 +956,13 @@ impl Plugin for CachePlugin {
                         // Don't return cached response, let downstream execute to get fresh data
                         return Ok(());
                     } else {
-                        let mut response = entry.response.clone();
-                        Self::update_ttls(&mut response, remaining_ttl);
-                        response.set_id(context.request().id());
-                        context.set_response(Some(response));
+                        // Normal cache hit: clone the inner Message from the Arc so we can mutate it
+                        // Normal cache hit: prefer copy-on-write via Arc::make_mut
+                        let mut response_arc = Arc::clone(&entry.response);
+                        let response_ref = Arc::make_mut(&mut response_arc);
+                        Self::update_ttls(response_ref, remaining_ttl);
+                        response_ref.set_id(context.request().id());
+                        context.set_response_arc(Some(response_arc));
 
                         // Mark that response came from cache to prevent Phase 2 re-execution
                         context.set_metadata("response_from_cache", true);
