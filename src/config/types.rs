@@ -266,7 +266,9 @@ mod tests {
 
     #[test]
     fn test_plugin_config_builder() {
-        let config = PluginConfig::new("forward".to_string()).with_priority(50);
+        let config = PluginConfig::new("forward".to_string())
+            .with_tag("my_forward".to_string())
+            .with_priority(50);
 
         assert_eq!(config.effective_name(), "my_forward");
         assert_eq!(config.priority, 50);
@@ -274,10 +276,10 @@ mod tests {
 
     #[test]
     fn test_plugin_effective_name() {
-        let config1 = PluginConfig::new("forward".to_string());
+        let config1 = PluginConfig::new("forward".to_string()).with_tag("forward".to_string());
         assert_eq!(config1.effective_name(), "forward");
 
-        let config2 = PluginConfig::new("forward".to_string());
+        let config2 = PluginConfig::new("forward".to_string()).with_tag("my_forward".to_string());
         assert_eq!(config2.effective_name(), "my_forward");
     }
 

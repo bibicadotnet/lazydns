@@ -128,9 +128,10 @@ mod tests {
 
     #[test]
     fn test_validate_plugins_duplicate_names() {
+        // Duplicate names should fail: two forward plugins is a duplicate
         let plugins = vec![
             PluginConfig::new("forward".to_string()),
-            PluginConfig::new("cache".to_string()),
+            PluginConfig::new("forward".to_string()),
         ];
 
         let result = validate_plugins(&plugins);

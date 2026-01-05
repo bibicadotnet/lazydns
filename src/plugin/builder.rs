@@ -1303,7 +1303,7 @@ mod tests {
 
         // Verify fallback has resolved children
         let plugin = builder
-            .get_plugin("my_fallback")
+            .get_plugin("fallback")
             .expect("fallback plugin present");
         if let Some(fp) = plugin
             .as_ref()

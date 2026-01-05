@@ -395,10 +395,11 @@ mod tests {
 
     #[test]
     fn cfg_level_used_when_no_rust_log() {
-        // Preserve and remove RUST_LOG to ensure the default is used.
+        // Preserve and set RUST_LOG to an empty value to ensure the default is used
+        // (using an empty value avoids races with other tests that may set RUST_LOG).
         let prev = std::env::var("RUST_LOG").ok();
         unsafe {
-            std::env::remove_var("RUST_LOG");
+            std::env::set_var("RUST_LOG", "");
         }
         let cfg = LogConfig {
             level: "warn".to_string(),
