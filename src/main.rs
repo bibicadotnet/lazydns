@@ -161,6 +161,9 @@ async fn main() -> anyhow::Result<()> {
     // Give async server tasks a moment to start and output their listening messages
     tokio::time::sleep(Duration::from_millis(50)).await;
 
+    // Start background tasks for plugins that need them
+    let _background_tasks = builder.start_background_tasks();
+
     info!("lazydns initialized successfully");
 
     // Wait for shutdown signal (Ctrl-C, SIGTERM, SIGHUP)
