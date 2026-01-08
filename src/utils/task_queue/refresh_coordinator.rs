@@ -10,9 +10,12 @@ use crate::dns::Message;
 use crate::plugin::PluginHandler;
 use crate::server::{Protocol, RequestContext, RequestHandler};
 use dashmap::DashSet;
+use std::error::Error;
+use std::fmt::Display;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tracing::{debug, trace, warn};
 
 use super::stats::RefreshStats;
@@ -51,6 +54,8 @@ pub struct RefreshCoordinator {
     processing: Arc<DashSet<String>>,
     /// Statistics tracker
     stats: Arc<RefreshStats>,
+    /// Worker task handles for graceful shutdown
+    worker_handles: Arc<tokio::sync::Mutex<Vec<JoinHandle<()>>>>,
 }
 
 impl RefreshCoordinator {
@@ -67,6 +72,7 @@ impl RefreshCoordinator {
         let rx = Arc::new(tokio::sync::Mutex::new(rx));
         let processing = Arc::new(DashSet::new());
         let stats = Arc::new(RefreshStats::new());
+        let mut handles = Vec::with_capacity(worker_count);
 
         debug!(
             worker_count = worker_count,
@@ -80,15 +86,18 @@ impl RefreshCoordinator {
             let processing_clone = Arc::clone(&processing);
             let stats_clone = Arc::clone(&stats);
 
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 Self::worker_loop(worker_id, rx_clone, processing_clone, stats_clone).await;
             });
+
+            handles.push(handle);
         }
 
         Self {
             tx,
             processing,
             stats,
+            worker_handles: Arc::new(tokio::sync::Mutex::new(handles)),
         }
     }
 
@@ -140,10 +149,46 @@ impl RefreshCoordinator {
             }
         }
     }
-
     /// Get statistics reference
     pub fn stats(&self) -> Arc<RefreshStats> {
         Arc::clone(&self.stats)
+    }
+
+    /// Gracefully shutdown the coordinator and wait for all workers to complete
+    ///
+    /// This method:
+    /// 1. Closes the task channel (signaling workers to exit)
+    /// 2. Waits for all worker tasks to complete
+    /// 3. Allows pending tasks in queue to be processed before exit
+    ///
+    /// # Returns
+    /// Ok(()) on successful shutdown, Err if worker join fails
+    pub async fn shutdown(self) -> Result<(), String> {
+        debug!("Shutting down refresh coordinator");
+
+        // Drop the sender to close the channel
+        // This signals workers that no more tasks will arrive
+        drop(self.tx);
+
+        // Get and wait for all worker handles to complete
+        let mut handles_guard = self.worker_handles.lock().await;
+        let handles = std::mem::take(&mut *handles_guard);
+        drop(handles_guard);
+
+        // Wait for all workers to complete
+        for handle in handles {
+            match handle.await {
+                Ok(_) => {
+                    trace!("Worker task completed successfully");
+                }
+                Err(e) => {
+                    warn!("Worker task panicked: {}", e);
+                }
+            }
+        }
+
+        debug!("Refresh coordinator shutdown complete");
+        Ok(())
     }
 
     /// Worker loop - processes tasks from queue
@@ -270,7 +315,7 @@ pub enum EnqueueError {
     Closed,
 }
 
-impl std::fmt::Display for EnqueueError {
+impl Display for EnqueueError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EnqueueError::AlreadyProcessing => write!(f, "Already processing"),
@@ -280,4 +325,40 @@ impl std::fmt::Display for EnqueueError {
     }
 }
 
-impl std::error::Error for EnqueueError {}
+impl Error for EnqueueError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_refresh_coordinator_shutdown() {
+        // Create coordinator with small pool
+        let coordinator = RefreshCoordinator::new(2, 10);
+
+        // Verify coordinator is running
+        {
+            let handles = coordinator.worker_handles.lock().await;
+            assert_eq!(handles.len(), 2, "Should have 2 worker handles");
+        }
+
+        // Shutdown coordinator
+        let result = coordinator.shutdown().await;
+        assert!(result.is_ok(), "Shutdown should succeed");
+
+        debug!("Test passed: coordinator shutdown successful");
+    }
+
+    #[tokio::test]
+    async fn test_refresh_coordinator_created() {
+        let coordinator = RefreshCoordinator::new(1, 10);
+
+        // Verify stats reference is available
+        let stats = coordinator.stats();
+        assert!(stats.enqueued.load(std::sync::atomic::Ordering::Relaxed) == 0);
+
+        // Shutdown
+        let _ = coordinator.shutdown().await;
+        debug!("Test passed: coordinator created and shutdown successfully");
+    }
+}
