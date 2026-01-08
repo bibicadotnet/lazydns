@@ -135,7 +135,12 @@ impl Hosts {
             }
         }
 
-        *self.hosts.write() = new_hosts;
+        // Replace old hosts and explicitly drop old value to free memory immediately
+        {
+            let mut writer = self.hosts.write();
+            let _ = std::mem::replace(&mut *writer, new_hosts);
+            // Explicitly drop the old hosts when writer scope ends
+        }
         Ok(())
     }
 
@@ -205,6 +210,8 @@ impl HostsPlugin {
 
         if !combined.is_empty() {
             self.hosts.load_from_string(&combined)?;
+            // Release unused memory back to the OS after initial load (platform guarded)
+            crate::utils::malloc_trim_hint();
         }
 
         info!(
@@ -221,7 +228,7 @@ impl HostsPlugin {
         }
 
         let files = self.files.clone();
-        let hosts = Arc::clone(&self.hosts);
+        let hosts_weak = Arc::downgrade(&self.hosts);
 
         debug!(auto_reload = true, files = ?files, "file auto-reload status");
 
@@ -250,10 +257,19 @@ impl HostsPlugin {
                     }
                 }
 
-                if !combined.is_empty()
-                    && let Err(e) = hosts.load_from_string(&combined)
-                {
-                    warn!(error = %e, "Failed to parse hosts file during auto-reload");
+                // Upgrade weak reference to Arc, if plugin still exists
+                if let Some(hosts) = hosts_weak.upgrade() {
+                    if !combined.is_empty() {
+                        if let Err(e) = hosts.load_from_string(&combined) {
+                            warn!(error = %e, "Failed to parse hosts file during auto-reload");
+                        } else {
+                            // Release unused memory back to the OS after reload (platform guarded)
+                            crate::utils::malloc_trim_hint();
+                        }
+                    }
+                } else {
+                    warn!("hosts plugin dropped, skipping reload");
+                    return;
                 }
 
                 let duration = start.elapsed();

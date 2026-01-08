@@ -1175,6 +1175,7 @@ dependencies = [
  "hickory-proto",
  "ipnet",
  "lazydns-macros",
+ "libc",
  "linkme",
  "lru",
  "notify",

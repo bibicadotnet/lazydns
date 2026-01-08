@@ -33,3 +33,5 @@ config.local.yaml
 # Temporary files
 /tmp/
 *.tar
+
+heaptrack.*

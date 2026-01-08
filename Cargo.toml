@@ -98,6 +98,7 @@ linkme = "0.3"
 regex = "1.10"
 ipnet = "2.9"
 rand = "0.9"
+libc = "0.2"
 
 # Optional TLS-enabled HTTP server for DoH production deployments.
 axum-server = { version = "0.8", optional = true, package = "axum-server", default-features = false, features = [
