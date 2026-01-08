@@ -65,7 +65,7 @@ use crate::error::Error;
 #[cfg(feature = "metrics")]
 use crate::metrics;
 use crate::plugin::{Context, Plugin, PluginHandler, RETURN_FLAG};
-use crate::server::{Protocol, RequestContext, RequestHandler};
+use crate::utils::task_queue::{RefreshCoordinator, RefreshTask};
 use async_trait::async_trait;
 use dashmap::DashSet;
 use lru::LruCache;
@@ -356,6 +356,8 @@ pub struct CachePlugin {
     refreshing_keys: Arc<DashSet<String>>,
     /// Plugin tag from YAML configuration
     tag: Option<String>,
+    /// Refresh coordinator for background cache refresh operations
+    refresh_coordinator: Option<Arc<RefreshCoordinator>>,
 }
 
 impl CachePlugin {
@@ -389,6 +391,7 @@ impl CachePlugin {
             lazycache_threshold_dynamic: Arc::new(tokio::sync::RwLock::new(0.05)),
             refreshing_keys: Arc::new(DashSet::new()),
             tag: None,
+            refresh_coordinator: None,
         }
     }
 
@@ -425,6 +428,10 @@ impl CachePlugin {
     pub fn with_lazycache(mut self, threshold: f32) -> Self {
         self.enable_lazycache = true;
         self.lazycache_threshold = threshold.clamp(0.0, 1.0);
+        // Initialize coordinator if not already present
+        if self.refresh_coordinator.is_none() {
+            self.refresh_coordinator = Some(Arc::new(RefreshCoordinator::new(4, 1000)));
+        }
         self
     }
 
@@ -432,6 +439,10 @@ impl CachePlugin {
     pub fn with_cache_ttl(mut self, ttl_secs: u32) -> Self {
         if ttl_secs > 0 {
             self.cache_ttl = Some(ttl_secs);
+            // Initialize coordinator if not already present
+            if self.refresh_coordinator.is_none() {
+                self.refresh_coordinator = Some(Arc::new(RefreshCoordinator::new(4, 1000)));
+            }
         }
         self
     }
@@ -701,9 +712,10 @@ impl Plugin for CachePlugin {
                         if self.refreshing_keys.insert(key.clone()) {
                             self.lazycache_stats.record_refresh();
 
-                            if let (Some(handler), Some(entry_name)) = (
+                            if let (Some(handler), Some(entry_name), Some(coordinator)) = (
                                 context.get_metadata::<Arc<PluginHandler>>("lazy_refresh_handler"),
                                 context.get_metadata::<String>("lazy_refresh_entry"),
+                                &self.refresh_coordinator,
                             ) {
                                 let background_handler = Arc::new(PluginHandler {
                                     registry: Arc::clone(&handler.registry),
@@ -713,48 +725,41 @@ impl Plugin for CachePlugin {
                                 let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
                                 let mut request_clone = context.request().clone();
                                 let key_clone = key.clone();
+                                let coordinator_clone = Arc::clone(coordinator);
 
                                 // Mark as background refresh
                                 request_clone.set_id(0xFFFF);
 
-                                tokio::spawn(async move {
-                                    debug!(
-                                        "Background stale-serving TTL refresh: starting fresh query for {}",
-                                        key_clone
-                                    );
+                                // Enqueue refresh task instead of spawning thread
+                                let task = RefreshTask {
+                                    key: key_clone.clone(),
+                                    message: request_clone,
+                                    handler: background_handler,
+                                    entry_name: entry_name.clone(),
+                                    created_at: Instant::now(),
+                                };
 
-                                    let ctx = RequestContext::new(request_clone, Protocol::Udp);
-                                    match background_handler.handle(ctx).await {
-                                        Ok(response) => {
+                                tokio::spawn(async move {
+                                    match coordinator_clone.enqueue(task).await {
+                                        Ok(_) => {
                                             debug!(
-                                                "Background stale-serving TTL refresh successful for {}: {}",
-                                                key_clone,
-                                                if response.response_code()
-                                                    == crate::dns::ResponseCode::NoError
-                                                {
-                                                    "NoError"
-                                                } else {
-                                                    "Error"
-                                                }
+                                                "Background stale-serving TTL refresh enqueued for {}",
+                                                key_clone
                                             );
                                         }
                                         Err(e) => {
                                             debug!(
-                                                "Background stale-serving TTL refresh failed for {}: {}",
+                                                "Failed to enqueue stale-serving TTL refresh for {}: {}",
                                                 key_clone, e
                                             );
+                                            // Remove from refreshing set if enqueue failed
+                                            refreshing_keys_clone.remove(&key_clone);
                                         }
                                     }
-
-                                    refreshing_keys_clone.remove(&key_clone);
-                                    debug!(
-                                        "Background stale-serving TTL refresh completed for {}",
-                                        key_clone
-                                    );
                                 });
                             } else {
                                 debug!(
-                                    "Stale-serving TTL: handler metadata missing, falling back to invalidate stale entry"
+                                    "Stale-serving TTL: handler metadata missing or coordinator not initialized, falling back to invalidate stale entry"
                                 );
                                 let cache_clone = Arc::clone(&self.cache);
                                 let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
@@ -860,9 +865,10 @@ impl Plugin for CachePlugin {
                         self.lazycache_stats.record_refresh();
 
                         // Get lazy refresh handler from metadata
-                        if let (Some(handler), Some(entry_name)) = (
+                        if let (Some(handler), Some(entry_name), Some(coordinator)) = (
                             context.get_metadata::<Arc<PluginHandler>>("lazy_refresh_handler"),
                             context.get_metadata::<String>("lazy_refresh_entry"),
+                            &self.refresh_coordinator,
                         ) {
                             // Create a new handler instance for background refresh
                             let background_handler = Arc::new(PluginHandler {
@@ -873,48 +879,41 @@ impl Plugin for CachePlugin {
                             let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
                             let mut request_clone = context.request().clone();
                             let key_clone = key.clone();
+                            let coordinator_clone = Arc::clone(coordinator);
 
                             // Mark this as a background refresh by setting a special ID
                             request_clone.set_id(0xFFFF);
 
-                            tokio::spawn(async move {
-                                debug!(
-                                    "Background lazy refresh: starting fresh query for {}",
-                                    key_clone
-                                );
+                            // Enqueue refresh task instead of spawning thread
+                            let task = RefreshTask {
+                                key: key_clone.clone(),
+                                message: request_clone,
+                                handler: background_handler,
+                                entry_name: entry_name.clone(),
+                                created_at: Instant::now(),
+                            };
 
-                                // Execute complete query pipeline in background
-                                let ctx = RequestContext::new(request_clone, Protocol::Udp);
-                                match background_handler.handle(ctx).await {
-                                    Ok(response) => {
+                            tokio::spawn(async move {
+                                match coordinator_clone.enqueue(task).await {
+                                    Ok(_) => {
                                         debug!(
-                                            "Background lazy refresh successful for {}: {}",
-                                            key_clone,
-                                            if response.response_code()
-                                                == crate::dns::ResponseCode::NoError
-                                            {
-                                                "NoError"
-                                            } else {
-                                                "Error"
-                                            }
+                                            "Background lazy refresh enqueued for {}",
+                                            key_clone
                                         );
                                     }
                                     Err(e) => {
                                         debug!(
-                                            "Background lazy refresh failed for {}: {}",
+                                            "Failed to enqueue lazy refresh for {}: {}",
                                             key_clone, e
                                         );
+                                        // Remove from refreshing set if enqueue failed
+                                        refreshing_keys_clone.remove(&key_clone);
                                     }
                                 }
-
-                                // Remove from refreshing set
-                                refreshing_keys_clone.remove(&key_clone);
-
-                                debug!("Background lazy refresh completed for {}", key_clone);
                             });
                         } else {
                             debug!(
-                                "LazyCache: lazy_refresh_handler not available in metadata, falling back to cache invalidation"
+                                "LazyCache: lazy_refresh_handler not available in metadata or coordinator not initialized, falling back to cache invalidation"
                             );
 
                             // Fallback to old behavior: invalidate cache entry
@@ -1096,6 +1095,39 @@ impl Plugin for CachePlugin {
             if ttl > 0 {
                 cache = cache.with_cache_ttl(ttl);
             }
+        }
+
+        // Parse refresh coordinator configuration
+        let worker_count = match args.get("refresh_worker_count") {
+            Some(Value::Number(n)) => n
+                .as_i64()
+                .ok_or_else(|| Error::Config("Invalid refresh_worker_count value".to_string()))?
+                as usize,
+            Some(_) => {
+                return Err(Error::Config(
+                    "refresh_worker_count must be a number".to_string(),
+                ));
+            }
+            None => 4, // Default: 4 workers
+        };
+
+        let queue_capacity = match args.get("refresh_queue_capacity") {
+            Some(Value::Number(n)) => n
+                .as_i64()
+                .ok_or_else(|| Error::Config("Invalid refresh_queue_capacity value".to_string()))?
+                as usize,
+            Some(_) => {
+                return Err(Error::Config(
+                    "refresh_queue_capacity must be a number".to_string(),
+                ));
+            }
+            None => 1000, // Default: 1000 pending tasks
+        };
+
+        // Create refresh coordinator if lazycache or cache_ttl is enabled
+        if cache.enable_lazycache || cache.cache_ttl.is_some() {
+            let coordinator = RefreshCoordinator::new(worker_count, queue_capacity);
+            cache.refresh_coordinator = Some(Arc::new(coordinator));
         }
 
         // Parse lazycache parameter (default: false)

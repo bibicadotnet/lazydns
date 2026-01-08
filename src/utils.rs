@@ -7,6 +7,8 @@ use tokio::sync::{Mutex, mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
 
+pub mod task_queue;
+
 /// Macro to generate a match statement for DNS type name to numeric value mapping.
 /// Supports fallback to parsing as numeric value if name is not recognized.
 /// Returns Result<T, ParseIntError> where T is the numeric type.
