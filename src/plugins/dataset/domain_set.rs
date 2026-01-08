@@ -765,6 +765,7 @@ impl Matcher for DomainSetPlugin {
 #[async_trait]
 impl Shutdown for DomainSetPlugin {
     async fn shutdown(&self) -> Result<()> {
+        // Stop the file watcher if active
         let handle = {
             let mut guard = self.watcher.lock();
             guard.take()
@@ -772,6 +773,13 @@ impl Shutdown for DomainSetPlugin {
         if let Some(h) = handle {
             h.stop().await;
         }
+
+        // Clear all rules and shrink memory usage
+        {
+            let mut rules = self.rules.write();
+            rules.clear();
+        }
+
         Ok(())
     }
 }
@@ -998,6 +1006,41 @@ mod tests {
 
         // Verify metadata was set
         assert!(ctx.has_metadata("domain_set_test"));
+    }
+
+    #[tokio::test]
+    async fn test_domain_set_plugin_shutdown_clears_rules() {
+        let plugin = DomainSetPlugin::new("test").with_files(vec!["nonexistent.txt".to_string()]); // Won't load but that's fine
+
+        // Manually add some rules to test clearing
+        {
+            let mut rules = plugin.rules.write();
+            rules.add_rule(MatchType::Full, "test.com".to_string());
+            rules.add_rule(MatchType::Domain, "example.com".to_string());
+            rules.add_rule(MatchType::Keyword, "keyword".to_string());
+            rules.add_rule(MatchType::Regexp, ".*regexp.*".to_string());
+        }
+
+        // Verify rules are loaded
+        {
+            let rules = plugin.rules.read();
+            assert_eq!(rules.full.len(), 1);
+            assert_eq!(rules.domain.len(), 1);
+            assert_eq!(rules.keyword.len(), 1);
+            assert_eq!(rules.regexp.len(), 1);
+        }
+
+        // Shutdown should clear all rules
+        plugin.shutdown().await.unwrap();
+
+        // Verify rules are cleared
+        {
+            let rules = plugin.rules.read();
+            assert_eq!(rules.full.len(), 0);
+            assert_eq!(rules.domain.len(), 0);
+            assert_eq!(rules.keyword.len(), 0);
+            assert_eq!(rules.regexp.len(), 0);
+        }
     }
 
     #[test]
