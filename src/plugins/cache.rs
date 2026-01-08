@@ -841,9 +841,17 @@ impl Plugin for CachePlugin {
                                         key_clone
                                     );
 
-                                    let ctx = RequestContext::new(request_clone, Protocol::Udp);
-                                    match background_handler.handle(ctx).await {
-                                        Ok(response) => {
+                                    // Add 10-second timeout to prevent task accumulation
+                                    let timeout_result =
+                                        tokio::time::timeout(Duration::from_secs(10), async {
+                                            let ctx =
+                                                RequestContext::new(request_clone, Protocol::Udp);
+                                            background_handler.handle(ctx).await
+                                        })
+                                        .await;
+
+                                    match timeout_result {
+                                        Ok(Ok(response)) => {
                                             debug!(
                                                 "Background stale-serving TTL refresh successful for {}: {}",
                                                 key_clone,
@@ -856,10 +864,16 @@ impl Plugin for CachePlugin {
                                                 }
                                             );
                                         }
-                                        Err(e) => {
+                                        Ok(Err(e)) => {
                                             debug!(
                                                 "Background stale-serving TTL refresh failed for {}: {}",
                                                 key_clone, e
+                                            );
+                                        }
+                                        Err(_timeout) => {
+                                            debug!(
+                                                "Background stale-serving TTL refresh timeout for {} (>10s)",
+                                                key_clone
                                             );
                                         }
                                     }
@@ -1003,10 +1017,16 @@ impl Plugin for CachePlugin {
                                     key_clone
                                 );
 
-                                // Execute complete query pipeline in background
-                                let ctx = RequestContext::new(request_clone, Protocol::Udp);
-                                match background_handler.handle(ctx).await {
-                                    Ok(response) => {
+                                // Execute complete query pipeline in background with 10-second timeout
+                                let timeout_result =
+                                    tokio::time::timeout(Duration::from_secs(10), async {
+                                        let ctx = RequestContext::new(request_clone, Protocol::Udp);
+                                        background_handler.handle(ctx).await
+                                    })
+                                    .await;
+
+                                match timeout_result {
+                                    Ok(Ok(response)) => {
                                         debug!(
                                             "Background lazy refresh successful for {}: {}",
                                             key_clone,
@@ -1019,10 +1039,16 @@ impl Plugin for CachePlugin {
                                             }
                                         );
                                     }
-                                    Err(e) => {
+                                    Ok(Err(e)) => {
                                         debug!(
                                             "Background lazy refresh failed for {}: {}",
                                             key_clone, e
+                                        );
+                                    }
+                                    Err(_timeout) => {
+                                        debug!(
+                                            "Background lazy refresh timeout for {} (>10s)",
+                                            key_clone
                                         );
                                     }
                                 }
