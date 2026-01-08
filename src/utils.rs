@@ -214,6 +214,23 @@ where
     FileWatcherHandle { stop_tx, handle }
 }
 
+/// Hint the allocator to release unused pages back to the OS when supported.
+///
+/// On Linux with the GNU C library this calls `malloc_trim(0)` which asks the
+/// allocator to try to return free memory to the OS. On other platforms or
+/// with other allocators this is a no-op. This function is intentionally a
+/// small, best-effort hint and does not provide guarantees about memory
+/// reclamation.
+#[inline]
+pub fn malloc_trim_hint() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    unsafe {
+        // Call is safe as it's a simple allocator hint; ignore the return value.
+        let _ = libc::malloc_trim(0);
+    }
+    // No-op on other platforms
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
