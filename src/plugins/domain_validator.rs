@@ -15,7 +15,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 /// Validation result
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValidationResult {
     Valid,
     InvalidChars,
@@ -159,7 +159,7 @@ impl Plugin for DomainValidatorPlugin {
                     let duration = start.elapsed().as_secs_f64();
                     crate::metrics::DNS_DOMAIN_VALIDATION_DURATION_SECONDS.observe(duration);
                 }
-                return handle_result(result.clone(), &qname, ctx);
+                return handle_result(*result, &qname, ctx);
             }
         }
 
@@ -184,7 +184,7 @@ impl Plugin for DomainValidatorPlugin {
         // Cache result
         {
             let mut cache = self.cache.write().await;
-            cache.put(qname.clone(), result.clone());
+            cache.put(qname.clone(), result);
         }
 
         #[cfg(feature = "metrics")]

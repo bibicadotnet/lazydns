@@ -258,6 +258,39 @@ impl PluginBuilder {
         }
         Ok(())
     }
+
+    /// Start background tasks for plugins that need them
+    ///
+    /// This method iterates through all registered plugins and starts any
+    /// background tasks they may require (e.g., cache cleanup tasks).
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of JoinHandles for the spawned background tasks.
+    pub fn start_background_tasks(&self) -> Vec<tokio::task::JoinHandle<()>> {
+        let mut background_tasks = Vec::new();
+
+        for (plugin_name, plugin) in &self.plugins {
+            // Check if this is a CachePlugin and start its cleanup task
+            if plugin
+                .as_any()
+                .downcast_ref::<CachePlugin>()
+                .is_some_and(|cache_plugin| cache_plugin.is_cleanup_enabled())
+            {
+                let cache_plugin = plugin.as_any().downcast_ref::<CachePlugin>().unwrap();
+                info!(
+                    "Starting background cleanup task for cache plugin '{}'",
+                    plugin_name
+                );
+                // Clone the plugin and wrap in Arc
+                let cache_arc = Arc::new((*cache_plugin).clone());
+                let cleanup_handle = cache_arc.spawn_cleanup_task();
+                background_tasks.push(cleanup_handle);
+            }
+        }
+
+        background_tasks
+    }
 }
 
 impl Default for PluginBuilder {
