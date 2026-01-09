@@ -17,7 +17,7 @@
 // #![warn(clippy::all)]
 
 // Re-export proc_macro derives for plugin registration
-pub use lazydns_macros::{RegisterExecPlugin, RegisterPlugin};
+pub use lazydns_macros::{RegisterExecPlugin, RegisterPlugin, ShutdownPlugin};
 
 /// DNS protocol implementation
 ///

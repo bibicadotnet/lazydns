@@ -174,3 +174,50 @@ pub fn derive_register_exec_plugin(input: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
+
+/// Derive macro to auto-generate `as_shutdown` method for plugins
+///
+/// This macro implements the `as_shutdown(&self) -> Option<&dyn Shutdown>` method,
+/// returning `Some(self)` to indicate that the plugin implements the Shutdown trait.
+///
+/// Use this on any Plugin type that also implements the `Shutdown` trait.
+///
+/// # Example
+///
+/// ```ignore
+/// use lazydns::plugin::{Plugin, traits::Shutdown};
+/// use async_trait::async_trait;
+///
+/// #[derive(ShutdownPlugin)]
+/// struct MyPlugin;
+///
+/// #[async_trait]
+/// impl Plugin for MyPlugin {
+///     fn name(&self) -> &str { "my_plugin" }
+///     async fn execute(&self, ctx: &mut Context) -> Result<()> { Ok(()) }
+/// }
+///
+/// #[async_trait]
+/// impl Shutdown for MyPlugin {
+///     async fn shutdown(&self) -> Result<()> {
+///         // cleanup code
+///         Ok(())
+///     }
+/// }
+/// ```
+#[proc_macro_derive(ShutdownPlugin)]
+pub fn derive_shutdown_plugin(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let plugin_type = &input.ident;
+
+    let expanded = quote! {
+        impl #plugin_type {
+            /// Auto-generated bridge to Shutdown trait
+            pub fn as_shutdown(&self) -> Option<&dyn crate::plugin::traits::Shutdown> {
+                Some(self)
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}

@@ -59,6 +59,7 @@
 //!   store plugin.
 use crate::RegisterPlugin;
 use crate::Result;
+use crate::ShutdownPlugin;
 use crate::config::PluginConfig;
 use crate::dns::Message;
 use crate::error::Error;
@@ -328,7 +329,7 @@ impl fmt::Display for LazyCacheStats {
 /// When enabled, if a cached entry's TTL drops below the threshold (e.g., 10%),
 /// the entry is marked for lazy refresh. A background task or next access
 /// will trigger a refresh query to keep the cache warm.
-#[derive(Clone, RegisterPlugin)]
+#[derive(Clone, RegisterPlugin, ShutdownPlugin)]
 pub struct CachePlugin {
     /// The cache storage (domain name -> cache entry)
     cache: Arc<parking_lot::RwLock<LruCache<String, CacheEntry>>>,
@@ -1336,10 +1337,6 @@ impl Plugin for CachePlugin {
         );
 
         Ok(Arc::new(cache))
-    }
-
-    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
-        Some(self)
     }
 }
 

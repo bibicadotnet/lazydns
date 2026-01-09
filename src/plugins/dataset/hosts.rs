@@ -38,7 +38,7 @@ use crate::config::PluginConfig;
 use crate::dns::{Message, Question, RData, RecordType, ResourceRecord};
 use crate::error::Error;
 use crate::plugin::{Context, Plugin, traits::Shutdown};
-use crate::{RegisterPlugin, Result};
+use crate::{RegisterPlugin, Result, ShutdownPlugin};
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -167,7 +167,7 @@ impl fmt::Debug for Hosts {
 }
 
 /// Hosts plugin wrapper: lifecycle, file watching and Plugin impl
-#[derive(RegisterPlugin)]
+#[derive(RegisterPlugin, ShutdownPlugin)]
 pub struct HostsPlugin {
     hosts: Arc<Hosts>,
     files: Vec<PathBuf>,
@@ -432,10 +432,6 @@ impl Plugin for HostsPlugin {
         plugin.start_file_watcher();
 
         Ok(Arc::new(plugin))
-    }
-
-    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
-        Some(self)
     }
 }
 

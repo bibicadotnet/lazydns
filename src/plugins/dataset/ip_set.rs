@@ -1,6 +1,6 @@
 use crate::plugin::traits::{Matcher, Shutdown};
 use crate::plugin::{Context, Plugin};
-use crate::{RegisterPlugin, Result, config::PluginConfig, dns::RData};
+use crate::{RegisterPlugin, Result, ShutdownPlugin, config::PluginConfig, dns::RData};
 use async_trait::async_trait;
 use ipnet::IpNet;
 use parking_lot::RwLock;
@@ -25,7 +25,7 @@ use tracing::{debug, error, info, warn};
 ///     .with_files(vec!["china-ip-list.txt".to_string()])
 ///     .with_auto_reload(true);
 /// ```
-#[derive(Clone, RegisterPlugin)]
+#[derive(Clone, RegisterPlugin, ShutdownPlugin)]
 pub struct IpSetPlugin {
     /// Name/tag for this IP set
     name: String,
@@ -378,10 +378,6 @@ impl Plugin for IpSetPlugin {
         plugin.start_file_watcher();
 
         Ok(Arc::new(plugin))
-    }
-
-    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
-        Some(self)
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::config::PluginConfig;
 use crate::plugin::traits::{Matcher, Shutdown};
 use crate::plugin::{Context, Plugin};
-use crate::{RegisterPlugin, Result};
+use crate::{RegisterPlugin, Result, ShutdownPlugin};
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use regex::Regex;
@@ -363,7 +363,7 @@ pub struct DomainRulesStats {
 ///     .with_auto_reload(true)
 ///     .with_default_match_type(MatchType::Domain);
 /// ```
-#[derive(Clone, RegisterPlugin)]
+#[derive(Clone, RegisterPlugin, ShutdownPlugin)]
 pub struct DomainSetPlugin {
     /// Name/tag for this domain set
     name: String,
@@ -743,10 +743,6 @@ impl Plugin for DomainSetPlugin {
         plugin.start_file_watcher();
 
         Ok(Arc::new(plugin))
-    }
-
-    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
-        Some(self)
     }
 }
 

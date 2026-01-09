@@ -1,5 +1,6 @@
 use crate::RegisterPlugin;
 use crate::Result;
+use crate::ShutdownPlugin;
 use crate::config::types::PluginConfig;
 use crate::plugin::Context;
 use crate::plugin::factory as plugin_factory;
@@ -56,7 +57,7 @@ use tracing::{debug, info, warn};
 /// - "0 * * * *" = every hour at minute 0
 ///
 /// Field ranges: minute(0-59), hour(0-23), day(1-31), month(1-12), weekday(0-6)
-#[derive(Debug, RegisterPlugin)]
+#[derive(Debug, RegisterPlugin, ShutdownPlugin)]
 pub struct CronPlugin {
     jobs: Mutex<Vec<JobHandle>>,
     stop_tx: watch::Sender<bool>,
@@ -356,10 +357,6 @@ impl Plugin for CronPlugin {
         }
 
         Ok(Arc::new(plugin))
-    }
-
-    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
-        Some(self)
     }
 }
 
