@@ -7,7 +7,7 @@ use parking_lot::RwLock;
 use regex::Regex;
 use std::collections::HashSet;
 use std::fmt;
-use std::fs;
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,40 +18,6 @@ use tracing::{debug, error, info, warn};
 /// The `MatchType` enum defines different strategies for matching domain names against rules.
 /// When a query domain needs to be matched, the system checks rules in priority order:
 /// **Full > Domain > Regexp > Keyword**, and returns `true` on the first match.
-///
-/// # Variants
-///
-/// - **Full**: Exact (case-insensitive) match. `full:example.com` matches only `example.com`,
-///   not `sub.example.com` or `example.com.hk`. Uses O(1) HashMap lookup.
-///
-/// - **Domain**: Domain and all subdomain match. `domain:example.com` matches `example.com`,
-///   `www.example.com`, `a.b.c.example.com`, but not `notexample.com` or `example.com.hk`.
-///   When multiple domain rules apply to a query (e.g., both `com` and `example.com` exist),
-///   the most specific (longest) match wins. Uses O(1) per-level lookup.
-///
-/// - **Regexp**: Regex pattern match using Rust's standard regex syntax (compatible with Go stdlib).
-///   `regexp:.+\.google\.com$` matches `www.google.com` but not `google.com` (requires prefix).
-///   Rules are evaluated in import order; first match wins. Uses O(n) traversal (regex matching
-///   can be CPU-intensive with complex patterns).
-///
-/// - **Keyword**: Substring/keyword match. `keyword:google` matches any domain containing "google"
-///   like `google.com`, `www.google.com`, `google.com.hk`, `mygoogle.net`. Case-insensitive.
-///   Rules are evaluated in import order; first match wins. Uses O(n) traversal.
-///
-/// # Performance Characteristics
-///
-/// - Full/Domain: O(1) per level, ~1MB per 10,000 rules (HashMap memory)
-/// - Regexp/Keyword: O(n) traversal, higher CPU cost (especially regex with backtracking)
-///
-/// # Examples
-///
-/// ```text
-/// full:exact.com              → Only matches: exact.com
-/// domain:parent.com           → Matches: parent.com, www.parent.com, a.b.parent.com
-/// keyword:google              → Matches: google.com, mygoogle.com, google.com.cn, etc.
-/// regexp:^[a-z]+\.google\.com$  → Matches: maps.google.com, mail.google.com, etc.
-/// google.com                  → Uses plugin's default_match_type (typically Domain)
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum MatchType {
     /// Exact match only (e.g., `full:google.com` matches only `google.com`)
@@ -79,49 +45,6 @@ impl fmt::Debug for RegexpRule {
 }
 
 /// Domain matching rules storage with optimized data structures.
-///
-/// `DomainRules` is the core data structure that stores and evaluates domain matching rules.
-/// It uses different storage strategies based on match type for optimal performance:
-///
-/// # Storage Strategy
-///
-/// - **Full**: `HashSet<String>` - constant-time exact domain lookup
-/// - **Domain**: `HashSet<String>` - constant-time per-level lookup for domain hierarchy
-/// - **Regexp**: `Vec<RegexpRule>` - ordered storage preserving import sequence
-/// - **Keyword**: `Vec<String>` - ordered storage preserving import sequence
-///
-/// # Evaluation Order
-///
-/// When `matches(domain)` is called, the following priority-based algorithm is applied:
-///
-/// 1. Check Full rules (O(1)) → return true if match found
-/// 2. Check Domain rules by splitting domain into levels (O(levels))
-///    - For `www.google.com`, checks: `www.google.com`, `google.com`, `com`
-///    - Matches most specific rule first (subdomain priority)
-/// 3. Check Regexp rules in import order (O(n·regex_complexity))
-/// 4. Check Keyword rules in import order (O(n·string_len))
-///
-/// # Memory Characteristics
-///
-/// - Approximately 1 MB per 10,000 Full/Domain rules
-/// - Each regex rule stores compiled pattern + source string
-/// - Each keyword rule stores single string
-///
-/// # Examples
-///
-/// ```ignore
-/// let mut rules = DomainRules::new();
-/// rules.add_rule(MatchType::Full, "exact.com");
-/// rules.add_rule(MatchType::Domain, "parent.com");
-/// rules.add_rule(MatchType::Keyword, "google");
-/// rules.add_rule(MatchType::Regexp, r".+\.github\.io$");
-///
-/// assert!(rules.matches("exact.com"));           // Full match
-/// assert!(rules.matches("sub.parent.com"));      // Domain match
-/// assert!(rules.matches("mygoogle.net"));        // Keyword match
-/// assert!(rules.matches("mysite.github.io"));    // Regexp match
-/// ```
-#[derive(Debug, Clone, Default)]
 pub struct DomainRules {
     /// Full/exact match domains - O(1) lookup
     full: HashSet<String>,
@@ -135,7 +58,20 @@ pub struct DomainRules {
 
 impl DomainRules {
     pub fn new() -> Self {
-        Self::default()
+        Self::with_capacity(0, 0)
+    }
+
+    /// Create a new DomainRules with pre-allocated capacity
+    ///
+    /// This avoids multiple reallocations when loading large domain lists.
+    /// Use this when you know the total size upfront.
+    pub fn with_capacity(full_cap: usize, domain_cap: usize) -> Self {
+        Self {
+            full: HashSet::with_capacity(full_cap),
+            domain: HashSet::with_capacity(domain_cap),
+            regexp: Vec::new(),
+            keyword: Vec::new(),
+        }
     }
 
     /// Add a single rule to the domain rules collection.
@@ -157,32 +93,38 @@ impl DomainRules {
     /// rules.add_rule(MatchType::Regexp, r".+\.github\.io$");
     /// rules.add_rule(MatchType::Keyword, "test");
     /// ```
-    pub fn add_rule(&mut self, match_type: MatchType, value: &str) {
-        let value_lower = value.trim().to_lowercase();
-        if value_lower.is_empty() {
+    /// Add a rule with an owned String pattern.
+    pub fn add_rule(&mut self, match_type: MatchType, value: String) {
+        if value.is_empty() {
             return;
         }
 
+        // Normalize non-regexp rules to lowercase for case-insensitive matching
+        let normalized = match match_type {
+            MatchType::Regexp => value,
+            _ => value.to_lowercase(),
+        };
+
         match match_type {
             MatchType::Full => {
-                self.full.insert(value_lower);
+                self.full.insert(normalized);
             }
             MatchType::Domain => {
-                self.domain.insert(value_lower);
+                self.domain.insert(normalized);
             }
-            MatchType::Regexp => match Regex::new(&value_lower) {
+            MatchType::Regexp => match Regex::new(&normalized) {
                 Ok(regex) => {
                     self.regexp.push(RegexpRule {
-                        pattern: value_lower,
+                        pattern: normalized,
                         regex,
                     });
                 }
                 Err(e) => {
-                    warn!(pattern = %value, error = %e, "Invalid regexp pattern, skipping");
+                    warn!(pattern = %normalized, error = %e, "Invalid regexp pattern, skipping");
                 }
             },
             MatchType::Keyword => {
-                self.keyword.push(value_lower);
+                self.keyword.push(normalized);
             }
         }
     }
@@ -222,13 +164,13 @@ impl DomainRules {
     /// rules.add_line("keyword:facebook", MatchType::Domain);
     /// rules.add_line("regexp:.*twitter.*", MatchType::Domain);
     /// ```
-    pub fn add_line(&mut self, line: &str, default_type: MatchType) {
+    pub fn add_line(&mut self, line: &str, default_type: &MatchType) {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             return;
         }
 
-        let (match_type, value) = if let Some(rest) = line.strip_prefix("full:") {
+        let (match_type, raw) = if let Some(rest) = line.strip_prefix("full:") {
             (MatchType::Full, rest)
         } else if let Some(rest) = line.strip_prefix("domain:") {
             (MatchType::Domain, rest)
@@ -240,7 +182,19 @@ impl DomainRules {
             (default_type.clone(), line)
         };
 
-        self.add_rule(match_type, value);
+        let value = raw.trim();
+        if value.is_empty() {
+            return;
+        }
+
+        // For regex patterns we must not lowercase or alter the pattern.
+        // For other types, normalize to lowercase to enable case-insensitive matching.
+        let normalized = match match_type {
+            MatchType::Regexp => value.to_string(),
+            _ => value.to_lowercase(),
+        };
+
+        self.add_rule(match_type, normalized);
     }
 
     /// Check if a domain matches any rule in the collection.
@@ -281,7 +235,7 @@ impl DomainRules {
         let domain_lower = domain.trim_end_matches('.').to_lowercase();
 
         // 1. Full match (highest priority) - O(1)
-        if self.full.contains(&domain_lower) {
+        if self.full.contains(domain_lower.as_str()) {
             return true;
         }
 
@@ -291,7 +245,7 @@ impl DomainRules {
         let parts: Vec<&str> = domain_lower.split('.').collect();
         for i in 0..parts.len() {
             let candidate = parts[i..].join(".");
-            if self.domain.contains(&candidate) {
+            if self.domain.contains(candidate.as_str()) {
                 return true;
             }
         }
@@ -339,14 +293,42 @@ impl DomainRules {
         self.domain.clear();
         self.regexp.clear();
         self.keyword.clear();
+        // Explicitly shrink capacity to return memory to allocator
+        self.full.shrink_to_fit();
+        self.domain.shrink_to_fit();
+        self.regexp.shrink_to_fit();
+        self.keyword.shrink_to_fit();
     }
 
     /// Merge rules from another DomainRules
     pub fn merge(&mut self, other: DomainRules) {
+        // Pre-reserve capacity to avoid multiple allocations during extend
+        // This prevents the HashSet from repeatedly doubling capacity (waste)
+        self.full.reserve(other.full.len());
+        self.domain.reserve(other.domain.len());
+        self.regexp.reserve(other.regexp.len());
+        self.keyword.reserve(other.keyword.len());
+
+        // Now extend without triggering additional implicit reserve
         self.full.extend(other.full);
         self.domain.extend(other.domain);
         self.regexp.extend(other.regexp);
         self.keyword.extend(other.keyword);
+    }
+
+    /// Shrink memory usage to fit actual content
+    /// Should be called after loading is complete to minimize peak memory
+    pub fn shrink_to_fit(&mut self) {
+        self.full.shrink_to_fit();
+        self.domain.shrink_to_fit();
+        self.regexp.shrink_to_fit();
+        self.keyword.shrink_to_fit();
+    }
+}
+
+impl Default for DomainRules {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -448,7 +430,7 @@ impl DomainSetPlugin {
 
         let name = self.name.clone();
         let files = self.files.clone();
-        let rules = Arc::clone(&self.rules);
+        let rules_weak = Arc::downgrade(&self.rules);
         let default_match_type = self.default_match_type.clone();
 
         debug!(
@@ -470,18 +452,55 @@ impl DomainSetPlugin {
                     .unwrap_or("unknown");
 
                 let start = std::time::Instant::now();
-                let mut new_rules = DomainRules::new();
 
-                for file_path in files {
-                    if let Ok(content) = fs::read_to_string(file_path) {
-                        for line in content.lines() {
-                            new_rules.add_line(line, default_match_type.clone());
+                // First pass: count total lines across files without loading them fully
+                use std::fs::File;
+                use std::io::{BufRead, BufReader};
+
+                let mut total_est = 0usize;
+                for file_path in files.iter() {
+                    match std::fs::metadata(file_path) {
+                        Ok(m) => {
+                            total_est = total_est
+                                .saturating_add(((m.len() / 40) as usize).saturating_add(1))
                         }
+                        Err(_) => total_est = total_est.saturating_add(128),
+                    }
+                }
+
+                // Create rules with pre-allocated estimated capacity
+                let mut new_rules = DomainRules::with_capacity(total_est, 0);
+
+                // Read files line-by-line and add to rules (no large temporary buffers)
+                for file_path in files.iter() {
+                    if let Ok(file) = File::open(file_path) {
+                        let reader = BufReader::new(file);
+                        for l in reader.lines().map_while(|r| r.ok()) {
+                            new_rules.add_line(&l, &default_match_type);
+                        }
+                    } else {
+                        error!(file = ?file_path, "Failed to read domain file");
                     }
                 }
 
                 let stats = new_rules.stats();
-                *rules.write() = new_rules;
+
+                // Upgrade weak reference to Arc, if plugin still exists
+                if let Some(rules) = rules_weak.upgrade() {
+                    // Replace old rules and explicitly drop old value to free memory immediately
+                    let old_rules = {
+                        let mut writer = rules.write();
+                        std::mem::replace(&mut *writer, new_rules)
+                    };
+                    // Explicitly drop old rules immediately (~25-30MB)
+                    drop(old_rules);
+                    // Tell allocator to release unused memory back to the OS immediately after reload (platform guarded)
+                    crate::utils::malloc_trim_hint();
+                } else {
+                    warn!(name = %name, "plugin dropped, skipping reload");
+                    return;
+                }
+
                 let duration = start.elapsed();
 
                 info!(
@@ -504,7 +523,10 @@ impl DomainSetPlugin {
 
     /// Load domains from all configured files
     pub fn load_domains(&self) -> Result<()> {
-        let mut new_rules = DomainRules::new();
+        // First pass: collect rules and calculate total sizes to avoid reallocation
+        let mut all_file_rules = Vec::new();
+        let mut total_full = 0;
+        let mut total_domain = 0;
 
         // Load from files first
         for file_path in &self.files {
@@ -519,7 +541,9 @@ impl DomainSetPlugin {
                         keyword = stats.keyword_count,
                         "Loaded domains from file"
                     );
-                    new_rules.merge(file_rules);
+                    total_full += stats.full_count;
+                    total_domain += stats.domain_count;
+                    all_file_rules.push(file_rules);
                 }
                 Err(e) => {
                     error!(
@@ -532,13 +556,26 @@ impl DomainSetPlugin {
             }
         }
 
+        // Second pass: create rules with exact capacity, then merge all files
+        let mut new_rules = DomainRules::with_capacity(total_full, total_domain);
+
+        for file_rules in all_file_rules {
+            new_rules.merge(file_rules);
+        }
+
         // Then load from inline expressions (exps)
         for exp in &self.exps {
-            new_rules.add_line(exp, self.default_match_type.clone());
+            new_rules.add_line(exp, &self.default_match_type);
         }
+
+        // Shrink to fit to release excess capacity after full load
+        new_rules.shrink_to_fit();
 
         let stats = new_rules.stats();
         *self.rules.write() = new_rules;
+
+        // Tell allocator to release unused memory back to the OS immediately after loading (platform guarded)
+        crate::utils::malloc_trim_hint();
 
         info!(
             name = %self.name,
@@ -557,12 +594,26 @@ impl DomainSetPlugin {
 
     /// Load domains from a single file
     fn load_domain_file(&self, path: &Path) -> Result<DomainRules> {
-        let content = fs::read_to_string(path)
-            .map_err(|e| crate::Error::Config(format!("Failed to read file {:?}: {}", path, e)))?;
+        use std::fs::File;
+        use std::io::{BufRead, BufReader};
 
-        let mut rules = DomainRules::new();
-        for line in content.lines() {
-            rules.add_line(line, self.default_match_type.clone());
+        // First pass: count lines without loading entire file into memory
+        let file = File::open(path)
+            .map_err(|e| crate::Error::Config(format!("Failed to open file {:?}: {}", path, e)))?;
+        let reader = BufReader::new(file);
+        let line_count = reader.lines().count();
+
+        // Second pass: read lines and add rules incrementally
+        let file = File::open(path)
+            .map_err(|e| crate::Error::Config(format!("Failed to open file {:?}: {}", path, e)))?;
+        let reader = BufReader::new(file);
+
+        let mut rules = DomainRules::with_capacity(line_count, line_count);
+        for line in reader.lines() {
+            let l = line.map_err(|e| {
+                crate::Error::Config(format!("Failed to read line {:?}: {}", path, e))
+            })?;
+            rules.add_line(&l, &self.default_match_type);
         }
 
         Ok(rules)
@@ -714,6 +765,7 @@ impl Matcher for DomainSetPlugin {
 #[async_trait]
 impl Shutdown for DomainSetPlugin {
     async fn shutdown(&self) -> Result<()> {
+        // Stop the file watcher if active
         let handle = {
             let mut guard = self.watcher.lock();
             guard.take()
@@ -721,6 +773,13 @@ impl Shutdown for DomainSetPlugin {
         if let Some(h) = handle {
             h.stop().await;
         }
+
+        // Clear all rules and shrink memory usage
+        {
+            let mut rules = self.rules.write();
+            rules.clear();
+        }
+
         Ok(())
     }
 }
@@ -755,7 +814,7 @@ mod tests {
     #[test]
     fn test_full_match() {
         let mut rules = DomainRules::new();
-        rules.add_rule(MatchType::Full, "google.com");
+        rules.add_rule(MatchType::Full, "google.com".to_string());
 
         assert!(rules.matches("google.com"));
         assert!(rules.matches("GOOGLE.COM")); // case insensitive
@@ -766,7 +825,7 @@ mod tests {
     #[test]
     fn test_domain_match() {
         let mut rules = DomainRules::new();
-        rules.add_rule(MatchType::Domain, "google.com");
+        rules.add_rule(MatchType::Domain, "google.com".to_string());
 
         assert!(rules.matches("google.com")); // matches self
         assert!(rules.matches("www.google.com")); // matches subdomain
@@ -778,7 +837,7 @@ mod tests {
     #[test]
     fn test_keyword_match() {
         let mut rules = DomainRules::new();
-        rules.add_rule(MatchType::Keyword, "google");
+        rules.add_rule(MatchType::Keyword, "google".to_string());
 
         assert!(rules.matches("google.com"));
         assert!(rules.matches("www.google.com"));
@@ -790,7 +849,7 @@ mod tests {
     #[test]
     fn test_regexp_match() {
         let mut rules = DomainRules::new();
-        rules.add_rule(MatchType::Regexp, r".+\.google\.com$");
+        rules.add_rule(MatchType::Regexp, r".+\.google\.com$".to_string());
 
         assert!(!rules.matches("google.com")); // requires prefix
         assert!(rules.matches("www.google.com"));
@@ -802,8 +861,8 @@ mod tests {
     fn test_match_priority_full_over_domain() {
         let mut rules = DomainRules::new();
         // Add domain rule first, then full - full should still win
-        rules.add_rule(MatchType::Domain, "example.com");
-        rules.add_rule(MatchType::Full, "test.example.com");
+        rules.add_rule(MatchType::Domain, "example.com".to_string());
+        rules.add_rule(MatchType::Full, "test.example.com".to_string());
 
         // Both should match test.example.com, but full has priority
         assert!(rules.matches("test.example.com"));
@@ -813,8 +872,8 @@ mod tests {
     #[test]
     fn test_domain_subdomain_priority() {
         let mut rules = DomainRules::new();
-        rules.add_rule(MatchType::Domain, "com");
-        rules.add_rule(MatchType::Domain, "google.com");
+        rules.add_rule(MatchType::Domain, "com".to_string());
+        rules.add_rule(MatchType::Domain, "google.com".to_string());
 
         // www.google.com should match google.com first (more specific)
         // This is verified by the match order in the implementation
@@ -826,11 +885,11 @@ mod tests {
     fn test_parse_line_with_prefix() {
         let mut rules = DomainRules::new();
 
-        rules.add_line("full:exact.com", MatchType::Domain);
-        rules.add_line("domain:parent.com", MatchType::Full);
-        rules.add_line("keyword:searchterm", MatchType::Domain);
-        rules.add_line("regexp:.*test.*", MatchType::Domain);
-        rules.add_line("default.com", MatchType::Domain); // uses default
+        rules.add_line("full:exact.com", &MatchType::Domain);
+        rules.add_line("domain:parent.com", &MatchType::Full);
+        rules.add_line("keyword:searchterm", &MatchType::Domain);
+        rules.add_line("regexp:.*test.*", &MatchType::Domain);
+        rules.add_line("default.com", &MatchType::Domain); // uses default
 
         assert!(rules.matches("exact.com"));
         assert!(!rules.matches("sub.exact.com")); // full match
@@ -880,7 +939,7 @@ mod tests {
     #[test]
     fn test_invalid_regexp() {
         let mut rules = DomainRules::new();
-        rules.add_rule(MatchType::Regexp, "[invalid(regex");
+        rules.add_rule(MatchType::Regexp, "[invalid(regex".to_string());
 
         // Invalid regex should be skipped
         assert_eq!(rules.regexp.len(), 0);
@@ -889,9 +948,9 @@ mod tests {
     #[test]
     fn test_case_insensitive() {
         let mut rules = DomainRules::new();
-        rules.add_rule(MatchType::Full, "UPPER.COM");
-        rules.add_rule(MatchType::Domain, "MixedCase.ORG");
-        rules.add_rule(MatchType::Keyword, "KeyWord");
+        rules.add_rule(MatchType::Full, "UPPER.COM".to_string());
+        rules.add_rule(MatchType::Domain, "MixedCase.ORG".to_string());
+        rules.add_rule(MatchType::Keyword, "KeyWord".to_string());
 
         assert!(rules.matches("upper.com"));
         assert!(rules.matches("UPPER.COM"));
@@ -902,7 +961,7 @@ mod tests {
     #[test]
     fn test_trailing_dot_handling() {
         let mut rules = DomainRules::new();
-        rules.add_rule(MatchType::Full, "example.com");
+        rules.add_rule(MatchType::Full, "example.com".to_string());
 
         assert!(rules.matches("example.com"));
         assert!(rules.matches("example.com.")); // trailing dot normalized
@@ -911,10 +970,10 @@ mod tests {
     #[test]
     fn test_empty_and_comment_lines() {
         let mut rules = DomainRules::new();
-        rules.add_line("", MatchType::Domain);
-        rules.add_line("   ", MatchType::Domain);
-        rules.add_line("# comment", MatchType::Domain);
-        rules.add_line("  # another comment", MatchType::Domain);
+        rules.add_line("", &MatchType::Domain);
+        rules.add_line("   ", &MatchType::Domain);
+        rules.add_line("# comment", &MatchType::Domain);
+        rules.add_line("  # another comment", &MatchType::Domain);
 
         assert!(rules.is_empty());
     }
@@ -922,12 +981,12 @@ mod tests {
     #[test]
     fn test_domain_rules_merge() {
         let mut rules1 = DomainRules::new();
-        rules1.add_rule(MatchType::Full, "a.com");
-        rules1.add_rule(MatchType::Domain, "b.com");
+        rules1.add_rule(MatchType::Full, "a.com".to_string());
+        rules1.add_rule(MatchType::Domain, "b.com".to_string());
 
         let mut rules2 = DomainRules::new();
-        rules2.add_rule(MatchType::Keyword, "test");
-        rules2.add_rule(MatchType::Regexp, ".*pattern.*");
+        rules2.add_rule(MatchType::Keyword, "test".to_string());
+        rules2.add_rule(MatchType::Regexp, ".*pattern.*".to_string());
 
         rules1.merge(rules2);
 
@@ -949,10 +1008,45 @@ mod tests {
         assert!(ctx.has_metadata("domain_set_test"));
     }
 
+    #[tokio::test]
+    async fn test_domain_set_plugin_shutdown_clears_rules() {
+        let plugin = DomainSetPlugin::new("test").with_files(vec!["nonexistent.txt".to_string()]); // Won't load but that's fine
+
+        // Manually add some rules to test clearing
+        {
+            let mut rules = plugin.rules.write();
+            rules.add_rule(MatchType::Full, "test.com".to_string());
+            rules.add_rule(MatchType::Domain, "example.com".to_string());
+            rules.add_rule(MatchType::Keyword, "keyword".to_string());
+            rules.add_rule(MatchType::Regexp, ".*regexp.*".to_string());
+        }
+
+        // Verify rules are loaded
+        {
+            let rules = plugin.rules.read();
+            assert_eq!(rules.full.len(), 1);
+            assert_eq!(rules.domain.len(), 1);
+            assert_eq!(rules.keyword.len(), 1);
+            assert_eq!(rules.regexp.len(), 1);
+        }
+
+        // Shutdown should clear all rules
+        plugin.shutdown().await.unwrap();
+
+        // Verify rules are cleared
+        {
+            let rules = plugin.rules.read();
+            assert_eq!(rules.full.len(), 0);
+            assert_eq!(rules.domain.len(), 0);
+            assert_eq!(rules.keyword.len(), 0);
+            assert_eq!(rules.regexp.len(), 0);
+        }
+    }
+
     #[test]
     fn test_domain_match_boundary() {
         let mut rules = DomainRules::new();
-        rules.add_rule(MatchType::Domain, "google.com");
+        rules.add_rule(MatchType::Domain, "google.com".to_string());
 
         // Should NOT match - these are not subdomains
         assert!(!rules.matches("notgoogle.com"));

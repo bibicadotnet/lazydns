@@ -752,11 +752,12 @@ impl ForwardPlugin {
     }
 
     /// Execute concurrent queries to all upstreams, return first success
-    async fn execute_concurrent(&self, request: &Message) -> Result<Message> {
+    async fn execute_concurrent(&self, request: Arc<Message>) -> Result<Message> {
         let mut tasks = Vec::new();
 
         for idx in 0..self.core.upstreams.len() {
-            let req = request.clone();
+            // Use Arc clones for lightweight sharing instead of deep cloning the message
+            let req = Arc::clone(&request);
             let core = self.core.clone();
 
             let task = tokio::spawn(async move {
@@ -764,6 +765,7 @@ impl ForwardPlugin {
                 trace!("Concurrent query to: {}", upstream.addr);
                 let start = std::time::Instant::now();
 
+                // Deref Arc<Message> to &Message for the core API
                 match core.forward_query(&req, upstream).await {
                     Ok(response) => {
                         let elapsed = start.elapsed();
@@ -912,7 +914,8 @@ impl Plugin for ForwardPlugin {
             return Ok(());
         }
 
-        let request = ctx.request().clone();
+        // Create a single Arc<Message> so concurrent queries can cheaply clone handles
+        let request_arc = Arc::new(ctx.request().clone());
 
         // Try concurrent queries if enabled
         if self.concurrent_queries && self.core.upstreams.len() > 1 {
@@ -921,14 +924,14 @@ impl Plugin for ForwardPlugin {
                 self.core.upstreams.len()
             );
 
-            if let Ok(response) = self.execute_concurrent(&request).await {
+            if let Ok(response) = self.execute_concurrent(Arc::clone(&request_arc)).await {
                 ctx.set_response(Some(response));
                 return Ok(());
             }
         }
 
-        // Fall back to sequential failover
-        self.execute_sequential(ctx, &request).await
+        // Fall back to sequential failover (pass a &Message by deref'ing the Arc)
+        self.execute_sequential(ctx, &request_arc).await
     }
 
     fn name(&self) -> &str {

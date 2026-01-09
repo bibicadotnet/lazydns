@@ -107,6 +107,7 @@ pub struct CacheControlRequest {
 ///   "hits": 5800,
 ///   "misses": 1200,
 ///   "evictions": 42,
+///   "expirations": 198,
 ///   "hit_rate": 82.86
 /// }
 /// ```
@@ -120,6 +121,8 @@ pub struct CacheStatsResponse {
     pub misses: u64,
     /// Cache evictions
     pub evictions: u64,
+    /// Cache expirations
+    pub expirations: u64,
     /// Hit rate percentage
     pub hit_rate: f64,
 }
@@ -550,6 +553,7 @@ async fn cache_control(
 ///   "hits": 5800,
 ///   "misses": 1200,
 ///   "evictions": 42,
+///   "expirations": 198,
 ///   "hit_rate": 82.86
 /// }
 /// ```
@@ -576,6 +580,7 @@ async fn cache_stats(State(state): State<Arc<AdminState>>) -> Response {
             hits,
             misses,
             evictions: stats.evictions(),
+            expirations: stats.expirations(),
             hit_rate,
         };
 
@@ -747,6 +752,7 @@ mod tests {
             hits: 80,
             misses: 20,
             evictions: 5,
+            expirations: 15,
             hit_rate: 80.0,
         };
         let json = serde_json::to_string(&resp).unwrap();
@@ -1016,6 +1022,7 @@ mod tests {
             hits: 10_000_000,
             misses: 2_000_000,
             evictions: 50_000,
+            expirations: 100_000,
             hit_rate: 83.33,
         };
 
@@ -1033,6 +1040,7 @@ mod tests {
             hits: 0,
             misses: 0,
             evictions: 0,
+            expirations: 0,
             hit_rate: 0.0,
         };
 

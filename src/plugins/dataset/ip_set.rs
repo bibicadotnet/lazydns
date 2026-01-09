@@ -9,7 +9,7 @@ use std::fs;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// IP set data provider plugin
 ///
@@ -83,7 +83,7 @@ impl IpSetPlugin {
 
         let name = self.name.clone();
         let files = self.files.clone();
-        let networks = Arc::clone(&self.networks);
+        let networks_weak = Arc::downgrade(&self.networks);
 
         debug!(
             name = %name,
@@ -139,7 +139,22 @@ impl IpSetPlugin {
                 }
 
                 let count = new_networks.len();
-                *networks.write() = new_networks;
+
+                // Upgrade weak reference to Arc, if plugin still exists
+                if let Some(networks) = networks_weak.upgrade() {
+                    // Replace old networks and explicitly drop old value to free memory immediately
+                    {
+                        let mut writer = networks.write();
+                        let _ = std::mem::replace(&mut *writer, new_networks);
+                        // Explicitly drop the old networks when writer scope ends
+                    }
+                    // Hint to allocator to release freed memory back to the OS after reload (platform guarded)
+                    crate::utils::malloc_trim_hint();
+                } else {
+                    warn!(name = %name, "ip_set plugin dropped, skipping reload");
+                    return;
+                }
+
                 let duration = start.elapsed();
 
                 info!(
@@ -205,7 +220,15 @@ impl IpSetPlugin {
         }
 
         let count = networks.len();
-        *self.networks.write() = networks;
+        // Replace old networks and explicitly drop old value to free memory immediately
+        {
+            let mut writer = self.networks.write();
+            let _ = std::mem::replace(&mut *writer, networks);
+            // Explicitly drop the old networks when writer scope ends
+        }
+
+        // Hint to allocator to release freed memory back to the OS after loading (platform guarded)
+        crate::utils::malloc_trim_hint();
 
         info!(
             name = %self.name,

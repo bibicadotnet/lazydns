@@ -26,6 +26,11 @@ example.org                # no prefix → uses the dataset's default match type
 - Auto-reload: when `auto_reload` is enabled the plugin watches listed files and reloads them
 	atomically on change. Use atomic replacements (write-to-temp + rename) for safe updates.
 
+	**Memory & auto-reload:** after large dataset loads or reloads, lazydns will attempt to
+	hint the system allocator to return freed pages to the OS (via `malloc_trim(3)`) on Linux
+	with the GNU C library. This is a best-effort, platform-specific optimization and is a
+	no-op on other platforms or allocator implementations.
+
 Examples and recommendations:
 
 - Place dataset examples under `examples/etc/` (e.g. `examples/etc/direct-list.txt`,
