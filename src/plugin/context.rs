@@ -36,7 +36,7 @@ pub struct Context {
     /// The original DNS query
     request: Message,
 
-    /// The DNS response (if set by a plugin). Stored as Arc<Message> to enable
+    /// The DNS response (if set by a plugin). Stored as `Arc<Message>` to enable
     /// sharing without deep cloning; mutation is done via `Arc::make_mut`.
     response: Option<Arc<Message>>,
 
