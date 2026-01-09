@@ -1439,6 +1439,25 @@ mod tests {
         assert_eq!(cache.stats().hits(), 0);
     }
 
+    /// Ensure that `as_any()` implementation exists and allows downcasting
+    /// to `CachePlugin`. This prevents accidental removal of `as_any()`.
+    #[test]
+    fn test_plugin_as_any_downcast_present() {
+        use std::sync::Arc;
+
+        let cache = CachePlugin::new(128);
+        let plugin: Arc<dyn crate::plugin::Plugin> = Arc::new(cache);
+
+        // Should be able to downcast to CachePlugin
+        assert!(
+            plugin
+                .as_ref()
+                .as_any()
+                .downcast_ref::<CachePlugin>()
+                .is_some()
+        );
+    }
+
     #[test]
     fn test_make_key() {
         let msg = create_test_message();
