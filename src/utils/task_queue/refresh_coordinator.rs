@@ -6,12 +6,11 @@
 //! - Timeout protection
 //! - Comprehensive statistics
 
+use super::EnqueueError;
 use crate::dns::Message;
 use crate::plugin::PluginHandler;
 use crate::server::{Protocol, RequestContext, RequestHandler};
 use dashmap::DashSet;
-use std::error::Error;
-use std::fmt::Display;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -115,12 +114,12 @@ impl RefreshCoordinator {
     ///
     /// # Returns
     /// Ok(()) if enqueued successfully, Err if rejected
-    pub async fn enqueue(&self, task: RefreshTask) -> Result<(), EnqueueError> {
+    pub async fn enqueue(&self, task: RefreshTask) -> crate::Result<()> {
         // Check if already processing this key
         if !self.processing.insert(task.key.clone()) {
             trace!(key = %task.key, "Refresh already in progress, skipping duplicate");
             self.stats.record_dedup_skipped();
-            return Err(EnqueueError::AlreadyProcessing);
+            return Err(EnqueueError::AlreadyProcessing.into());
         }
 
         // Try to send to queue (non-blocking)
@@ -139,13 +138,13 @@ impl RefreshCoordinator {
                     queue_depth = self.stats.queue_depth(),
                     "Refresh queue full, rejecting task"
                 );
-                Err(EnqueueError::QueueFull)
+                Err(EnqueueError::QueueFull.into())
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 // Channel closed (should not happen in normal operation)
                 self.processing.remove(&key_for_cleanup);
                 warn!("Refresh coordinator channel closed");
-                Err(EnqueueError::Closed)
+                Err(EnqueueError::Closed.into())
             }
         }
     }
@@ -163,7 +162,7 @@ impl RefreshCoordinator {
     ///
     /// # Returns
     /// Ok(()) on successful shutdown, Err if worker join fails
-    pub async fn shutdown(self) -> Result<(), String> {
+    pub async fn shutdown(self) -> crate::Result<()> {
         debug!("Shutting down refresh coordinator");
 
         // Drop the sender to close the channel
@@ -277,7 +276,7 @@ impl RefreshCoordinator {
     }
 
     /// Execute a single refresh task
-    async fn execute_task(task: &RefreshTask) -> Result<(), String> {
+    async fn execute_task(task: &RefreshTask) -> crate::Result<()> {
         trace!(key = %task.key, "Executing refresh query");
 
         let ctx = RequestContext::new(task.message.clone(), Protocol::Udp);
@@ -293,39 +292,19 @@ impl RefreshCoordinator {
                         rcode = ?response.response_code(),
                         "Refresh query returned error response"
                     );
-                    Err(format!("Response code: {:?}", response.response_code()))
+                    Err(crate::Error::Plugin(format!(
+                        "Response code: {:?}",
+                        response.response_code()
+                    )))
                 }
             }
             Err(e) => {
                 trace!(key = %task.key, error = %e, "Refresh query failed");
-                Err(e.to_string())
+                Err(e)
             }
         }
     }
 }
-
-/// Errors that can occur when enqueueing a refresh task
-#[derive(Debug)]
-pub enum EnqueueError {
-    /// Task for this key is already being processed
-    AlreadyProcessing,
-    /// Queue is full (backpressure)
-    QueueFull,
-    /// Coordinator channel closed (should not happen)
-    Closed,
-}
-
-impl Display for EnqueueError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EnqueueError::AlreadyProcessing => write!(f, "Already processing"),
-            EnqueueError::QueueFull => write!(f, "Queue full"),
-            EnqueueError::Closed => write!(f, "Coordinator closed"),
-        }
-    }
-}
-
-impl Error for EnqueueError {}
 
 #[cfg(test)]
 mod tests {

@@ -64,6 +64,7 @@ use crate::dns::Message;
 use crate::error::Error;
 #[cfg(feature = "metrics")]
 use crate::metrics;
+use crate::plugin::traits::Shutdown;
 use crate::plugin::{Context, Plugin, PluginHandler, RETURN_FLAG};
 use crate::utils::task_queue::{RefreshCoordinator, RefreshTask};
 use async_trait::async_trait;
@@ -74,6 +75,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use tracing::{debug, trace};
 
 /// TTL used when serving stale responses during cache_ttl window
@@ -356,8 +358,8 @@ pub struct CachePlugin {
     refreshing_keys: Arc<DashSet<String>>,
     /// Plugin tag from YAML configuration
     tag: Option<String>,
-    /// Refresh coordinator for background cache refresh operations
-    refresh_coordinator: Option<Arc<RefreshCoordinator>>,
+    /// Refresh coordinator for background cache refresh operations (wrapped in Mutex for interior mutability)
+    refresh_coordinator: Arc<Mutex<Option<RefreshCoordinator>>>,
     /// Enable periodic cleanup of expired entries (default: true)
     enable_cleanup: bool,
     /// Interval (in seconds) for cleanup tasks (default: 60)
@@ -397,7 +399,7 @@ impl CachePlugin {
             lazycache_threshold_dynamic: Arc::new(tokio::sync::RwLock::new(0.05)),
             refreshing_keys: Arc::new(DashSet::new()),
             tag: None,
-            refresh_coordinator: None,
+            refresh_coordinator: Arc::new(Mutex::new(None)),
             enable_cleanup: true,
             cleanup_interval_secs: 60,
             cleanup_pressure_threshold: 0.8,
@@ -437,10 +439,8 @@ impl CachePlugin {
     pub fn with_lazycache(mut self, threshold: f32) -> Self {
         self.enable_lazycache = true;
         self.lazycache_threshold = threshold.clamp(0.0, 1.0);
-        // Initialize coordinator if not already present
-        if self.refresh_coordinator.is_none() {
-            self.refresh_coordinator = Some(Arc::new(RefreshCoordinator::new(4, 1000)));
-        }
+        // Initialize coordinator: wrap RefreshCoordinator in Mutex<Option<>>
+        self.refresh_coordinator = Arc::new(Mutex::new(Some(RefreshCoordinator::new(4, 1000))));
         self
     }
 
@@ -448,10 +448,8 @@ impl CachePlugin {
     pub fn with_cache_ttl(mut self, ttl_secs: u32) -> Self {
         if ttl_secs > 0 {
             self.cache_ttl = Some(ttl_secs);
-            // Initialize coordinator if not already present
-            if self.refresh_coordinator.is_none() {
-                self.refresh_coordinator = Some(Arc::new(RefreshCoordinator::new(4, 1000)));
-            }
+            // Initialize coordinator for stale-serving refresh if not already set
+            self.refresh_coordinator = Arc::new(Mutex::new(Some(RefreshCoordinator::new(4, 1000))));
         }
         self
     }
@@ -830,10 +828,10 @@ impl Plugin for CachePlugin {
                         if self.refreshing_keys.insert(key.clone()) {
                             self.lazycache_stats.record_refresh();
 
-                            if let (Some(handler), Some(entry_name), Some(coordinator)) = (
+                            // Check if we have required metadata and coordinator
+                            if let (Some(handler), Some(entry_name)) = (
                                 context.get_metadata::<Arc<PluginHandler>>("lazy_refresh_handler"),
                                 context.get_metadata::<String>("lazy_refresh_entry"),
-                                &self.refresh_coordinator,
                             ) {
                                 let background_handler = Arc::new(PluginHandler {
                                     registry: Arc::clone(&handler.registry),
@@ -843,7 +841,7 @@ impl Plugin for CachePlugin {
                                 let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
                                 let mut request_clone = context.request().clone();
                                 let key_clone = key.clone();
-                                let coordinator_clone = Arc::clone(coordinator);
+                                let coordinator = Arc::clone(&self.refresh_coordinator);
 
                                 // Mark as background refresh
                                 request_clone.set_id(0xFFFF);
@@ -858,26 +856,32 @@ impl Plugin for CachePlugin {
                                 };
 
                                 tokio::spawn(async move {
-                                    match coordinator_clone.enqueue(task).await {
-                                        Ok(_) => {
-                                            debug!(
-                                                "Background stale-serving TTL refresh enqueued for {}",
-                                                key_clone
-                                            );
+                                    // Lock the Mutex to access the coordinator inside
+                                    if let Some(coord) = coordinator.lock().await.as_ref() {
+                                        match coord.enqueue(task).await {
+                                            Ok(_) => {
+                                                debug!(
+                                                    "Background stale-serving TTL refresh enqueued for {}",
+                                                    key_clone
+                                                );
+                                            }
+                                            Err(e) => {
+                                                debug!(
+                                                    "Failed to enqueue stale-serving TTL refresh for {}: {}",
+                                                    key_clone, e
+                                                );
+                                                // Remove from refreshing set if enqueue failed
+                                                refreshing_keys_clone.remove(&key_clone);
+                                            }
                                         }
-                                        Err(e) => {
-                                            debug!(
-                                                "Failed to enqueue stale-serving TTL refresh for {}: {}",
-                                                key_clone, e
-                                            );
-                                            // Remove from refreshing set if enqueue failed
-                                            refreshing_keys_clone.remove(&key_clone);
-                                        }
+                                    } else {
+                                        debug!("Refresh coordinator not initialized");
+                                        refreshing_keys_clone.remove(&key_clone);
                                     }
                                 });
                             } else {
                                 debug!(
-                                    "Stale-serving TTL: handler metadata missing or coordinator not initialized, falling back to invalidate stale entry"
+                                    "Stale-serving TTL: handler metadata missing, falling back to invalidate stale entry"
                                 );
                                 let cache_clone = Arc::clone(&self.cache);
                                 let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
@@ -985,10 +989,9 @@ impl Plugin for CachePlugin {
                         self.lazycache_stats.record_refresh();
 
                         // Get lazy refresh handler from metadata
-                        if let (Some(handler), Some(entry_name), Some(coordinator)) = (
+                        if let (Some(handler), Some(entry_name)) = (
                             context.get_metadata::<Arc<PluginHandler>>("lazy_refresh_handler"),
                             context.get_metadata::<String>("lazy_refresh_entry"),
-                            &self.refresh_coordinator,
                         ) {
                             // Create a new handler instance for background refresh
                             let background_handler = Arc::new(PluginHandler {
@@ -999,7 +1002,7 @@ impl Plugin for CachePlugin {
                             let refreshing_keys_clone = Arc::clone(&self.refreshing_keys);
                             let mut request_clone = context.request().clone();
                             let key_clone = key.clone();
-                            let coordinator_clone = Arc::clone(coordinator);
+                            let coordinator = Arc::clone(&self.refresh_coordinator);
 
                             // Mark this as a background refresh by setting a special ID
                             request_clone.set_id(0xFFFF);
@@ -1014,21 +1017,27 @@ impl Plugin for CachePlugin {
                             };
 
                             tokio::spawn(async move {
-                                match coordinator_clone.enqueue(task).await {
-                                    Ok(_) => {
-                                        debug!(
-                                            "Background lazy refresh enqueued for {}",
-                                            key_clone
-                                        );
+                                // Lock the Mutex to access the coordinator inside
+                                if let Some(coord) = coordinator.lock().await.as_ref() {
+                                    match coord.enqueue(task).await {
+                                        Ok(_) => {
+                                            debug!(
+                                                "Background lazy refresh enqueued for {}",
+                                                key_clone
+                                            );
+                                        }
+                                        Err(e) => {
+                                            debug!(
+                                                "Failed to enqueue lazy refresh for {}: {}",
+                                                key_clone, e
+                                            );
+                                            // Remove from refreshing set if enqueue failed
+                                            refreshing_keys_clone.remove(&key_clone);
+                                        }
                                     }
-                                    Err(e) => {
-                                        debug!(
-                                            "Failed to enqueue lazy refresh for {}: {}",
-                                            key_clone, e
-                                        );
-                                        // Remove from refreshing set if enqueue failed
-                                        refreshing_keys_clone.remove(&key_clone);
-                                    }
+                                } else {
+                                    debug!("Refresh coordinator not initialized");
+                                    refreshing_keys_clone.remove(&key_clone);
                                 }
                             });
                         } else {
@@ -1250,7 +1259,7 @@ impl Plugin for CachePlugin {
         // Create refresh coordinator if lazycache or cache_ttl is enabled
         if cache.enable_lazycache || cache.cache_ttl.is_some() {
             let coordinator = RefreshCoordinator::new(worker_count, queue_capacity);
-            cache.refresh_coordinator = Some(Arc::new(coordinator));
+            cache.refresh_coordinator = Arc::new(Mutex::new(Some(coordinator)));
         }
 
         // Parse lazycache parameter (default: false)
@@ -1329,8 +1338,20 @@ impl Plugin for CachePlugin {
         Ok(Arc::new(cache))
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
+    fn as_shutdown(&self) -> Option<&dyn Shutdown> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl Shutdown for CachePlugin {
+    async fn shutdown(&self) -> Result<()> {
+        // Shutdown the refresh coordinator if it exists
+        if let Some(coordinator) = self.refresh_coordinator.lock().await.take() {
+            debug!("Shutting down CachePlugin refresh coordinator");
+            coordinator.shutdown().await?;
+        }
+        Ok(())
     }
 }
 
