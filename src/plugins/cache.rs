@@ -1173,6 +1173,10 @@ impl Plugin for CachePlugin {
         50
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
         let args = config.effective_args();
         use serde_yaml::Value;
