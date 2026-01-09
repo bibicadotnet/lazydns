@@ -65,14 +65,21 @@ build-all:
 	$(MAKE) build-for PLATFORM=linux/arm64
 
 # local build: prebuild binary for the platform then build image
+# Prerequisites:
+# # Install podman and buildah on Ubuntu/Debian:
+# 
+# sudo apt update
+# sudo apt install -y podman skopeo buildah podman-docker
+# 
+# make local PLATFORM=linux/arm/v7 EXTRA="--no-default-features --features full"
+#
 PLATFORM ?= linux/arm/v7
 EXTRA ?= "--no-default-features --features log,cron"
 local: build-for
 	@echo "Building Docker image for $(PLATFORM)"; \
 	@echo "Using EXTRA features: $(EXTRA)"; \
-	docker buildx build --platform $(PLATFORM) --output=type=docker -f docker/Dockerfile.local.scratch -t lazywalker/lazydns:local .; \
+	docker buildx build --platform $(PLATFORM) -f docker/Dockerfile.local.scratch -t lazywalker/lazydns:local .; \
 	docker save lazywalker/lazydns:local > lazydns.tar
-
 
 # Generate man pages from markdown sources using pandoc
 .PHONY: man

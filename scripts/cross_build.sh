@@ -55,8 +55,9 @@ PLATFORM="$1"
 # --no-default-features --features "log,cron" or --release etc.)
 EXTRA_ARGS=""
 if [ "$#" -ge 2 ]; then
-  # Join all remaining args as the extra args
-  EXTRA_ARGS="${@:2}"
+  # Join all remaining args as the extra args (POSIX sh compatible)
+  shift
+  EXTRA_ARGS="$*"
 fi
 # Map buildx TARGETPLATFORM (e.g. linux/arm/v7) to Rust target triple
 case "$PLATFORM" in
