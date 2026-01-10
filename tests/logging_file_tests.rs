@@ -11,10 +11,14 @@ fn test_file_logging_disables_ansi_text() {
 
     let cfg = LogConfig {
         level: "info".to_string(),
-        file: Some(path.clone()),
+        console: true,
         format: "text".to_string(),
-        rotate: "never".to_string(),
-        rotate_dir: None,
+        file: Some(lazydns::config::FileLogConfig {
+            enabled: true,
+            path: path.clone(),
+            rotation: lazydns::log::RotationTrigger::Never,
+            compress: false,
+        }),
     };
 
     let filter = tracing_subscriber::EnvFilter::try_new(cfg.level.clone()).unwrap();
@@ -60,10 +64,14 @@ fn test_file_logging_disables_ansi_json() {
 
     let cfg = LogConfig {
         level: "info".to_string(),
-        file: Some(path.clone()),
+        console: true,
         format: "json".to_string(),
-        rotate: "never".to_string(),
-        rotate_dir: None,
+        file: Some(lazydns::config::FileLogConfig {
+            enabled: true,
+            path: path.clone(),
+            rotation: lazydns::log::RotationTrigger::Never,
+            compress: false,
+        }),
     };
 
     let filter = tracing_subscriber::EnvFilter::try_new(cfg.level.clone()).unwrap();
@@ -110,10 +118,14 @@ fn test_rolling_daily_creates_file() {
 
     let cfg = LogConfig {
         level: "info".to_string(),
-        file: Some("app.log".to_string()),
+        console: true,
         format: "text".to_string(),
-        rotate: "daily".to_string(),
-        rotate_dir: Some(dir_str.clone()),
+        file: Some(lazydns::config::FileLogConfig {
+            enabled: true,
+            path: dir.path().join("app.log").to_string_lossy().to_string(),
+            rotation: lazydns::log::RotationTrigger::time(lazydns::log::RotationPeriod::Daily),
+            compress: false,
+        }),
     };
 
     let filter = tracing_subscriber::EnvFilter::try_new(cfg.level.clone()).unwrap();

@@ -20,7 +20,7 @@ pub fn validate_config(config: &Config) -> Result<()> {
     // Validate logging configuration
     validate_log_level(&config.log.level)?;
     validate_log_format(&config.log.format)?;
-    validate_log_rotation(&config.log.rotate)?;
+    // Rotation is now validated via serde/RotationTrigger enum
 
     // Validate plugins
     validate_plugins(&config.plugins)?;
@@ -49,18 +49,6 @@ fn validate_log_format(format: &str) -> Result<()> {
         return Err(Error::Config(format!(
             "Invalid log format '{}'. Must be one of: {}",
             format,
-            valid.join(", ")
-        )));
-    }
-    Ok(())
-}
-
-fn validate_log_rotation(rot: &str) -> Result<()> {
-    let valid = ["never", "daily", "hourly"];
-    if !valid.contains(&rot) {
-        return Err(Error::Config(format!(
-            "Invalid rotate '{}'. Must be one of: {}",
-            rot,
             valid.join(", ")
         )));
     }
@@ -113,16 +101,6 @@ mod tests {
     #[test]
     fn test_validate_log_level_invalid() {
         let result = validate_log_level("invalid");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_validate_log_rotation() {
-        assert!(validate_log_rotation("never").is_ok());
-        assert!(validate_log_rotation("daily").is_ok());
-        assert!(validate_log_rotation("hourly").is_ok());
-
-        let result = validate_log_rotation("weekly");
         assert!(result.is_err());
     }
 

@@ -8,7 +8,14 @@
 log:
   level: info
   format: text
-  file: /var/log/lazydns/lazydns.log
+  file:
+    enabled: true
+    path: /var/log/lazydns/lazydns.log
+    rotation:
+      type: size
+      period: daily
+      max_size: 10485760
+      max_files: 5
 
 # Plugin execution flow
 plugins:

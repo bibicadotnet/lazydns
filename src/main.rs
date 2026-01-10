@@ -13,7 +13,7 @@
 mod cli;
 use crate::cli::parse_args;
 use lazydns::config::Config;
-use lazydns::logging;
+use lazydns::log;
 use lazydns::plugin::PluginBuilder;
 use lazydns::server::ServerLauncher;
 use std::sync::Arc;
@@ -89,8 +89,8 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("Configuration validation warning: {}", e);
     }
 
-    // Initialize logging: precedence handled in logging::effective_log_spec
-    if let Err(e) = crate::logging::init_logging(&config.log, Some(args.verbose)) {
+    // Initialize logging: precedence handled in log::effective_log_spec
+    if let Err(e) = log::init_logging(&config.log, Some(args.verbose)) {
         eprintln!("Failed to initialize logging: {}", e);
     }
 

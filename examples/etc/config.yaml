@@ -409,14 +409,9 @@ log:
   # * text (by default) | json
   # format: text
 
-  # * optional; if not set, logs to stdout
-  # file: test.log
+  # * true | false (by default)
+  console: true
 
-  # * daily | hourly | never (by default)
-  # rotate: daily
-
-  # * optional; overrides parent dir of `file`
-  # rotate_dir: /var/log/lazydns
 # ============================================================================
 # END OF CONFIGURATION
 # ============================================================================

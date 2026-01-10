@@ -47,8 +47,10 @@ pub mod utils;
 /// Supports YAML configuration files with validation.
 pub mod config;
 
-/// Logging initialization utilities
-pub mod logging;
+/// Logging initialization utilities with rotation support.
+///
+/// Provides time-based, size-based, or hybrid log rotation.
+pub mod log;
 
 /// Metrics collection and Prometheus exporter
 ///
