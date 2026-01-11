@@ -21,7 +21,6 @@ pub mod types;
 pub mod validation;
 
 use crate::Result;
-use crate::log::RotationTrigger;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -29,7 +28,14 @@ use std::path::Path;
 pub use reload::ConfigReloader;
 pub use types::PluginConfig;
 
-/// File logging configuration with rotation support.
+// Re-export lazylog types for configuration
+#[cfg(feature = "log")]
+pub use lazylog::{
+    FileLogConfig as LazylogFileConfig, LogConfig as LazylogLogConfig, RotationPeriod,
+    RotationTrigger,
+};
+
+/// File logging configuration with rotation support (lazydns adapter).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FileLogConfig {
     /// Whether file logging is enabled (default: false).
@@ -42,6 +48,7 @@ pub struct FileLogConfig {
 
     /// Rotation configuration.
     #[serde(default)]
+    #[cfg(feature = "log")]
     pub rotation: RotationTrigger,
 
     /// Whether to compress rotated files (reserved for future use).
@@ -58,13 +65,22 @@ impl Default for FileLogConfig {
         Self {
             enabled: false,
             path: default_file_path(),
+            #[cfg(feature = "log")]
             rotation: RotationTrigger::default(),
             compress: false,
         }
     }
 }
 
-/// Logging configuration
+#[cfg(feature = "log")]
+impl FileLogConfig {
+    /// Convert lazydns FileLogConfig to lazylog FileLogConfig
+    pub fn to_lazylog(&self) -> LazylogFileConfig {
+        LazylogFileConfig::new(self.path.clone()).with_rotation_trigger(self.rotation.clone())
+    }
+}
+
+/// Logging configuration (lazydns adapter)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LogConfig {
     /// Log level: trace|debug|info|warn|error
@@ -104,6 +120,25 @@ impl Default for LogConfig {
             format: default_log_format(),
             file: None,
         }
+    }
+}
+
+#[cfg(feature = "log")]
+impl LogConfig {
+    /// Convert lazydns LogConfig to lazylog LogConfig
+    pub fn to_lazylog(&self, log_spec: String) -> LazylogLogConfig {
+        let mut config = LazylogLogConfig::new()
+            .with_console(self.console)
+            .with_level(log_spec)
+            .with_format(self.format.clone());
+
+        if let Some(ref file) = self.file
+            && file.enabled
+        {
+            config = config.with_file(file.to_lazylog());
+        }
+
+        config
     }
 }
 

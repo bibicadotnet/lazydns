@@ -1162,7 +1162,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "lazydns"
-version = "0.2.62"
+version = "0.2.63"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1175,6 +1175,7 @@ dependencies = [
  "hickory-proto",
  "ipnet",
  "lazydns-macros",
+ "lazylog",
  "libc",
  "linkme",
  "lru",
@@ -1199,8 +1200,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -1209,6 +1208,20 @@ version = "0.2.62"
 dependencies = [
  "quote",
  "syn",
+]
+
+[[package]]
+name = "lazylog"
+version = "0.1.4"
+source = "git+https://github.com/lazywalker/lazylog#f23d32115306e20d53317e569913105d45b186c4"
+dependencies = [
+ "once_cell",
+ "serde",
+ "thiserror 1.0.69",
+ "time",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
 ]
 
 [[package]]

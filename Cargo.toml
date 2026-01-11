@@ -3,7 +3,7 @@ members = [".", "lazydns-macros"]
 
 [package]
 name = "lazydns"
-version = "0.2.62"
+version = "0.2.63"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A light and fast DNS server/forwarder implementation in Rust"
@@ -35,11 +35,9 @@ thiserror = "2.0"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", default-features = false, features = [
-    "fmt",
-], optional = true }
-tracing-appender = { version = "0.2", optional = true }
-# time crate is used for constructing UTC fallback for OffsetTime
+lazylog = { git = "https://github.com/lazywalker/lazylog", optional = true, default-features = false }
+
+# Time crate for cron plugin
 time = { version = "0.3", default-features = false, optional = true }
 
 # cron expression parsing for cron plugin
@@ -123,18 +121,12 @@ default = ["log-ansi"]
 full = ["cron", "log-ansi", "log-file", "dot", "doh", "doq", "admin", "metrics"]
 # Enable cron expression parsing for cron plugin
 cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
-# Enable structured  JSON logging output with time stamps
-log = [
-    "tracing-subscriber/env-filter",
-    "tracing-subscriber/json",
-    "tracing-subscriber/local-time",
-    "time/local-offset",
-    "time/macros",
-]
+# Enable structured logging with lazylog
+log = ["lazylog/time"]
 # Enable ANSI-colored logging output to terminal
-log-ansi = ["log", "tracing-subscriber/ansi"]
+log-ansi = ["log", "lazylog/ansi"]
 # Enable logging to file
-log-file = ["log", "tracing-appender"]
+log-file = ["log", "lazylog/file"]
 # Enable TLS-backed (DoT using tokio-rustls) server implementation
 dot = ["rustls", "rustls-pemfile", "tokio-rustls"]
 # Enable TLS-backed (DoH using axum-server + rustls) server implementation

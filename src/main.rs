@@ -13,7 +13,10 @@
 mod cli;
 use crate::cli::parse_args;
 use lazydns::config::Config;
-use lazydns::log;
+#[cfg(feature = "log")]
+use lazydns::config::LogConfig;
+#[cfg(feature = "log")]
+use lazydns::init_logging;
 use lazydns::plugin::PluginBuilder;
 use lazydns::server::ServerLauncher;
 use std::sync::Arc;
@@ -89,9 +92,15 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("Configuration validation warning: {}", e);
     }
 
-    // Initialize logging: precedence handled in log::effective_log_spec
-    if let Err(e) = log::init_logging(&config.log, Some(args.verbose)) {
-        eprintln!("Failed to initialize logging: {}", e);
+    // Initialize logging: precedence handled in effective_log_spec
+    #[cfg(feature = "log")]
+    {
+        // Apply CLI verbosity override to config level
+        let log_spec = effective_log_spec(&config.log, args.verbose);
+
+        if let Err(e) = init_logging(&config.log.to_lazylog(log_spec)) {
+            eprintln!("Failed to initialize logging: {}", e);
+        }
     }
 
     info!("lazydns starting...");
@@ -184,4 +193,31 @@ async fn main() -> anyhow::Result<()> {
     info!("lazydns exited normally");
 
     Ok(())
+}
+
+#[cfg(feature = "log")]
+/// Determine the effective log specification, considering config and CLI overrides.
+fn effective_log_spec(config: &LogConfig, cli_verbose: u8) -> String {
+    // RUST_LOG takes precedence over everything
+    if let Ok(rust_log) = std::env::var("RUST_LOG")
+        && !rust_log.is_empty()
+    {
+        return rust_log;
+    }
+
+    // CLI verbose flag overrides config level when > 0
+    if cli_verbose > 0 {
+        return match cli_verbose {
+            1 => format!("{},lazydns=debug", config.level),
+            2 => format!("{},lazydns=trace", config.level),
+            _ => "trace".to_string(),
+        };
+    }
+
+    // Use config level with crate-specific override
+    if config.level.is_empty() {
+        "info,lazydns=info".to_string()
+    } else {
+        format!("{},lazydns={}", config.level, config.level)
+    }
 }

@@ -50,7 +50,7 @@ log:
     path: /var/log/lazydns/app.log
     rotation:
       type: size
-      max_size: 10485760   # 10MB in bytes
+      max_size: 10M   # 10MB in bytes
       max_files: 5         # Keep 5 rotated files
 ```
 
@@ -69,7 +69,7 @@ log:
     rotation:
       type: both
       period: daily        # Rotate daily
-      max_size: 10485760   # OR when file exceeds 10MB
+      max_size: 10M   # OR when file exceeds 10MB
       max_files: 5         # Keep 5 size-rotated files
 ```
 
@@ -141,7 +141,7 @@ log:
       period: daily
       
       # Max file size in bytes (for type: size or both)
-      max_size: 10485760   # 10MB
+      max_size: 10M   # 10MB
       
       # Number of rotated files to keep (for type: size or both)
       max_files: 5

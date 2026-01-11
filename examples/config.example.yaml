@@ -18,7 +18,7 @@ log:
   #   rotation:
   #     type: both      # time, size, both, or never
   #     period: daily   # daily or hourly
-  #     max_size: 10485760   # 10MB
+  #     max_size: 10M   # 10MB
   #     max_files: 5
 
 # Plugin execution flow

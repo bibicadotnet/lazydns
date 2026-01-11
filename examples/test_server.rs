@@ -70,10 +70,15 @@ impl RequestHandler for SimpleHandler {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
-    #[cfg(feature = "tracing-subscriber")]
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+    #[cfg(feature = "log")]
+    lazylog::builder()
+        .with_console(true)
+        .with_level("trace")
+        .init()
+        .unwrap();
+
+    #[cfg(not(feature = "log"))]
+    println!("Logging not available - compiled without log feature");
 
     println!("Starting DNS test server on 127.0.0.1:5353");
     println!("Test with: dig @127.0.0.1 -p 5353 example.com");
