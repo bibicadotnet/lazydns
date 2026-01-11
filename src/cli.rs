@@ -20,6 +20,7 @@ pub struct Args {
 
     /// Verbosity count: 0 = normal, 1 = -v (debug), 2 = -vv (trace), 3 = -vvv (trace + external)
     /// When `verbose == 0` this means no verbose flag was provided.
+    #[cfg(feature = "log")]
     pub verbose: u8,
 }
 
@@ -33,6 +34,7 @@ pub fn print_help() {
     println!("OPTIONS:");
     println!("  -c, --config <file>       Configuration file path (default: config.yaml)");
     println!("  -d, --dir <dir>           Working directory");
+    #[cfg(feature = "log")]
     println!(
         "  -v, --verbose <count>     Verbosity: -v (debug), -vv (trace), -vvv (trace + external crate logs)"
     );
@@ -80,7 +82,9 @@ pub fn parse_args_from_vec(raw_args: Vec<String>) -> Option<Args> {
     };
 
     // Count verbose occurrences (supports -v, -vv, -vvv and --verbose repeated)
+    #[cfg(feature = "log")]
     let mut verbose_count: u8 = 0;
+    #[cfg(feature = "log")]
     for arg in &raw_args[1..] {
         if arg == "-v" || arg == "--verbose" {
             verbose_count = verbose_count.saturating_add(1);
@@ -101,6 +105,7 @@ pub fn parse_args_from_vec(raw_args: Vec<String>) -> Option<Args> {
     Some(Args {
         config,
         dir,
+        #[cfg(feature = "log")]
         verbose: verbose_count.min(3),
     })
 }
@@ -123,6 +128,7 @@ mod tests {
         assert!(res.is_none());
     }
 
+    #[cfg(feature = "log")]
     #[test]
     fn parses_verbose_variants_and_config() {
         let args = vec![
@@ -150,6 +156,7 @@ mod tests {
         ];
         let res = parse_args_from_vec(args).expect("should parse");
         assert_eq!(res.config, "cfg.yml");
+        #[cfg(feature = "log")]
         assert_eq!(res.verbose, 0);
     }
 

@@ -25,7 +25,7 @@ async fn integration_smoke_test_config_reload_and_watcher() -> Result<(), Box<dy
 
     // Create a minimal config with admin enabled and hosts plugin auto_reload
     let cfg_contents = format!(
-        "log:\n  level: info\nadmin:\n  enabled: true\n  addr: \"127.0.0.1:{}\"\nplugins:\n  - tag: hosts\n    type: hosts\n    args:\n      files:\n        - \"{}\"\n      auto_reload: true\n",
+        "log:\n  level: info\n  console: true\nadmin:\n  enabled: true\n  addr: \"127.0.0.1:{}\"\nplugins:\n  - tag: hosts\n    type: hosts\n    args:\n      files:\n        - \"{}\"\n      auto_reload: true\n",
         port,
         hosts_path.display()
     );
@@ -38,7 +38,7 @@ async fn integration_smoke_test_config_reload_and_watcher() -> Result<(), Box<dy
             "-p",
             "lazydns",
             "--features",
-            "admin",
+            "admin,log-ansi",
             "--bin",
             "lazydns",
         ])

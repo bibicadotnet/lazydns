@@ -28,52 +28,117 @@ use std::path::Path;
 pub use reload::ConfigReloader;
 pub use types::PluginConfig;
 
-/// Logging configuration
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+// Re-export lazylog types for configuration
+#[cfg(feature = "log")]
+pub use lazylog::{
+    FileLogConfig as LazylogFileConfig, LogConfig as LazylogLogConfig, RotationPeriod,
+    RotationTrigger,
+};
+
+/// File logging configuration with rotation support (lazydns adapter).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FileLogConfig {
+    /// Whether file logging is enabled (default: false).
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Path to the log file.
+    #[serde(default = "default_file_path")]
+    pub path: String,
+
+    /// Rotation configuration.
+    #[serde(default)]
+    #[cfg(feature = "log")]
+    pub rotation: RotationTrigger,
+
+    /// Whether to compress rotated files (reserved for future use).
+    #[serde(default)]
+    pub compress: bool,
+}
+
+fn default_file_path() -> String {
+    "lazydns.log".to_string()
+}
+
+impl Default for FileLogConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            path: default_file_path(),
+            #[cfg(feature = "log")]
+            rotation: RotationTrigger::default(),
+            compress: false,
+        }
+    }
+}
+
+#[cfg(feature = "log")]
+impl FileLogConfig {
+    /// Convert lazydns FileLogConfig to lazylog FileLogConfig
+    pub fn to_lazylog(&self) -> LazylogFileConfig {
+        LazylogFileConfig::new(self.path.clone()).with_rotation_trigger(self.rotation.clone())
+    }
+}
+
+/// Logging configuration (lazydns adapter)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LogConfig {
     /// Log level: trace|debug|info|warn|error
     #[serde(default = "default_log_level")]
     pub level: String,
 
-    /// Optional file to write logs to (path)
-    #[serde(default)]
-    pub file: Option<String>,
+    /// Whether to output logs to console/stdout (default: false).
+    #[serde(default = "default_console")]
+    pub console: bool,
 
     /// Log output format: text|json
     #[serde(default = "default_log_format")]
     pub format: String,
 
-    /// Log rotation policy: "never" | "daily" | "hourly"
-    #[serde(default = "default_rotate")]
-    pub rotate: String,
-
-    /// Optional directory to place rotated logs (overrides parent of `file` if provided)
+    /// File logging configuration.
     #[serde(default)]
-    pub rotate_dir: Option<String>,
+    pub file: Option<FileLogConfig>,
 }
 
 fn default_log_level() -> String {
     "info".to_string()
 }
 
-fn default_log_format() -> String {
-    "text".to_string()
+fn default_console() -> bool {
+    false
 }
 
-fn default_rotate() -> String {
-    "daily".to_string()
+fn default_log_format() -> String {
+    "text".to_string()
 }
 
 impl Default for LogConfig {
     fn default() -> Self {
         Self {
             level: default_log_level(),
-            file: None,
+            console: default_console(),
             format: default_log_format(),
-
-            rotate: default_rotate(),
-            rotate_dir: None,
+            file: None,
         }
+    }
+}
+
+#[cfg(feature = "log")]
+impl LogConfig {
+    /// Convert lazydns LogConfig to lazylog LogConfig
+    pub fn to_lazylog(&self, log_spec: String) -> LazylogLogConfig {
+        let mut config = LazylogLogConfig::new()
+            .with_console(self.console)
+            .with_level(log_spec)
+            .with_format(self.format.clone());
+
+        if let Some(ref file) = self.file
+            && file.enabled
+        {
+            config = config.with_file(file.to_lazylog());
+        }
+
+        config
     }
 }
 

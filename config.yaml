@@ -8,7 +8,7 @@
 log:
   level: info
   format: text
-  # file: log/lazydns.log
+  console: true
 
 # Plugin execution flow
 plugins:

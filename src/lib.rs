@@ -47,8 +47,9 @@ pub mod utils;
 /// Supports YAML configuration files with validation.
 pub mod config;
 
-/// Logging initialization utilities
-pub mod logging;
+/// Re-export logging types from lazylog
+#[cfg(feature = "log")]
+pub use lazylog::{FileLogConfig, LogConfig, RotationPeriod, RotationTrigger, init_logging};
 
 /// Metrics collection and Prometheus exporter
 ///

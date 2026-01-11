@@ -192,11 +192,22 @@ fn apply_env_overrides(config: &mut Config) -> Result<()> {
     }
     if let Some(val) = first_non_empty("LOG_FILE", &env_vars) {
         info!("Applied env override: LOG_FILE = {}", val);
-        config.log.file = Some(val);
+        // Create or update file config with the path
+        if let Some(ref mut file_cfg) = config.log.file {
+            file_cfg.path = val;
+            file_cfg.enabled = true;
+        } else {
+            config.log.file = Some(crate::config::FileLogConfig {
+                enabled: true,
+                path: val,
+                ..Default::default()
+            });
+        }
     }
-    if let Some(val) = first_non_empty("LOG_ROTATE", &env_vars) {
-        info!("Applied env override: LOG_ROTATE = {}", val);
-        config.log.rotate = val;
+    if let Some(val) = first_non_empty("LOG_CONSOLE", &env_vars) {
+        info!("Applied env override: LOG_CONSOLE = {}", val);
+        let normalized = val.to_lowercase();
+        config.log.console = normalized == "true" || normalized == "1" || normalized == "yes";
     }
 
     apply_env_overrides_from_snapshot(config, &env_vars)
@@ -236,15 +247,26 @@ pub(crate) fn apply_env_overrides_from_snapshot(
             "LOG_FILE" => {
                 if !value_str.is_empty() {
                     info!("Applied env override: LOG_FILE = {}", value_str);
-                    config.log.file = Some(value_str.clone());
+                    // Create or update file config with the path
+                    if let Some(ref mut file_cfg) = config.log.file {
+                        file_cfg.path = value_str.clone();
+                        file_cfg.enabled = true;
+                    } else {
+                        config.log.file = Some(crate::config::FileLogConfig {
+                            enabled: true,
+                            path: value_str.clone(),
+                            ..Default::default()
+                        });
+                    }
                 }
                 continue;
             }
-
-            "LOG_ROTATE" => {
+            "LOG_CONSOLE" => {
                 if !value_str.is_empty() {
-                    info!("Applied env override: LOG_ROTATE = {}", value_str);
-                    config.log.rotate = value_str.clone();
+                    info!("Applied env override: LOG_CONSOLE = {}", value_str);
+                    let normalized = value_str.to_lowercase();
+                    config.log.console =
+                        normalized == "true" || normalized == "1" || normalized == "yes";
                 }
                 continue;
             }
@@ -502,14 +524,24 @@ log:
         let yaml = r#"
 log:
   level: info
-  rotate: daily
+  console: true
+  file:
+    enabled: true
+    path: /var/log/app.log
+    rotation:
+      type: time
+      period: daily
 plugins:
   - plugin_type: forward
     priority: 100
 "#;
         let config = load_from_yaml(yaml).unwrap();
         assert_eq!(config.log.level, "info");
-        assert_eq!(config.log.rotate, "daily");
+        assert!(config.log.console);
+        assert!(config.log.file.is_some());
+        let file_cfg = config.log.file.as_ref().unwrap();
+        assert!(file_cfg.enabled);
+        assert_eq!(file_cfg.path, "/var/log/app.log");
         assert_eq!(config.plugins.len(), 1);
 
         unsafe {

@@ -312,8 +312,8 @@ plugins:
         exec: accept
 
       # reject PTR and DNSSEC to fix some iOS issues
-      - matches: qtype 12 65
-        exec: reject 0
+      # - matches: qtype 12 65
+      #   exec: reject 0
 
       # block ads
       - matches: qname $domain_reject_list
@@ -409,14 +409,34 @@ log:
   # * text (by default) | json
   # format: text
 
-  # * optional; if not set, logs to stdout
-  # file: test.log
+  # * true | false (by default)
+  console: true
 
-  # * daily | hourly | never (by default)
-  # rotate: daily
+  # File logging configuration
+  file:
+    # Enable file logging (default: false)
+    enabled: false
+    
+    # Path to log file
+    path: /var/log/lazydns/lazydns.log
+    
+    # Rotation configuration
+    rotation:
+      # Rotation type: time, size, both, or never
+      type: size
+      
+      # Time period: daily or hourly (for type: time or both)
+      period: daily
+      
+      # Max file size in bytes (for type: size or both)
+      max_size: 10M   # 10MB
+      
+      # Number of rotated files to keep (for type: size or both)
+      max_files: 5
+      
+      # Compress rotated files (future feature)
+      compress: false
 
-  # * optional; overrides parent dir of `file`
-  # rotate_dir: /var/log/lazydns
 # ============================================================================
 # END OF CONFIGURATION
 # ============================================================================
