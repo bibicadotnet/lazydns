@@ -551,4 +551,3 @@ println!("Keyword: {}", stats.keyword_count);
 - [IP Matching Rules](IP_MATCHING_RULES.md)
 - [Plugins Overview](IMPLEMENTATION.md)
 - [Configuration Guide](UPSTREAM_FEATURES.md)
-- [Admin Usage](ADMIN_USAGE.md)

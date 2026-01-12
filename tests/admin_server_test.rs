@@ -24,7 +24,7 @@ mod admin_server_integration_tests {
         // Test if server is responding
         let client = reqwest::Client::new();
         let response = client
-            .get("http://127.0.0.1:9999/api/server/status")
+            .get("http://127.0.0.1:9999/api/server/stats")
             .send()
             .await;
 

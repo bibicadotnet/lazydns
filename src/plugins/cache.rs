@@ -440,8 +440,13 @@ impl CachePlugin {
     pub fn with_lazycache(mut self, threshold: f32) -> Self {
         self.enable_lazycache = true;
         self.lazycache_threshold = threshold.clamp(0.0, 1.0);
-        // Note: RefreshCoordinator will be initialized later in from_config
-        // to avoid duplicate creation when both lazycache and cache_ttl are enabled
+        // Initialize coordinator if not already present (non-blocking try_lock)
+        match self.refresh_coordinator.try_lock() {
+            Ok(mut guard) if guard.is_none() => {
+                *guard = Some(RefreshCoordinator::new(4, 1000));
+            }
+            _ => {}
+        }
         self
     }
 
@@ -449,8 +454,13 @@ impl CachePlugin {
     pub fn with_cache_ttl(mut self, ttl_secs: u32) -> Self {
         if ttl_secs > 0 {
             self.cache_ttl = Some(ttl_secs);
-            // Note: RefreshCoordinator will be initialized later in from_config
-            // to avoid duplicate creation when both lazycache and cache_ttl are enabled
+            // Initialize coordinator if not already present (non-blocking try_lock)
+            match self.refresh_coordinator.try_lock() {
+                Ok(mut guard) if guard.is_none() => {
+                    *guard = Some(RefreshCoordinator::new(4, 1000));
+                }
+                _ => {}
+            }
         }
         self
     }
@@ -1263,8 +1273,16 @@ impl Plugin for CachePlugin {
 
         // Create refresh coordinator if lazycache or cache_ttl is enabled
         if cache.enable_lazycache || cache.cache_ttl.is_some() {
-            let coordinator = RefreshCoordinator::new(worker_count, queue_capacity);
-            cache.refresh_coordinator = Arc::new(Mutex::new(Some(coordinator)));
+            // Initialize coordinator only if not already set by builder methods
+            if let Ok(mut guard) = cache.refresh_coordinator.try_lock() {
+                if guard.is_none() {
+                    *guard = Some(RefreshCoordinator::new(worker_count, queue_capacity));
+                }
+            } else {
+                // If mutex is currently locked, replace to ensure initialization
+                let coordinator = RefreshCoordinator::new(worker_count, queue_capacity);
+                cache.refresh_coordinator = Arc::new(Mutex::new(Some(coordinator)));
+            }
         }
 
         // Parse lazycache parameter (default: false)

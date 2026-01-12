@@ -24,7 +24,7 @@ admin:
   # Admin API provides endpoints for:
   #   - /api/cache/control - Cache management (clear, stats)
   #   - /api/config/reload - Config hot-reload
-  #   - /api/server/status - Server status
+  #   - /api/server/stats - Server status
   enabled: true
   # Listen address (default: 127.0.0.1:8080)
   # Warning: Do NOT expose to untrusted networks!

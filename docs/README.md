@@ -69,7 +69,6 @@ Use the site sidebar (`en/SUMMARY.md`) or the quick links below to jump to commo
 
 These files live at the `docs/` root (non-recursive) and cover targeted topics useful for maintainers and operators:
 
-- [ADMIN_USAGE](ADMIN_USAGE.md) — Administrative HTTP API and management examples.
 - [CACHE_CONFIG_GUIDE](CACHE_CONFIG_GUIDE.md) — Deep-dive guide for cache tuning and options.
 - [ENV_OVERRIDE](ENV_OVERRIDE.md) — How to override configuration via environment variables.
 - [IMPLEMENTATION](IMPLEMENTATION.md) — Design notes and implementation details.

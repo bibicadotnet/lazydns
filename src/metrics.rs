@@ -147,6 +147,16 @@ pub static CACHE_SIZE: Lazy<IntGauge> = Lazy::new(|| {
     gauge
 });
 
+/// Gauge exposing process uptime in seconds (set from monitoring server)
+pub static SERVER_UPTIME_SECONDS: Lazy<IntGauge> = Lazy::new(|| {
+    let gauge = IntGauge::new("dns_uptime_seconds", "Process uptime in seconds")
+        .expect("Failed to create dns_uptime_seconds metric");
+    METRICS_REGISTRY
+        .register(Box::new(gauge.clone()))
+        .expect("Failed to register dns_uptime_seconds");
+    gauge
+});
+
 /// Counter of queries sent to upstream resolvers, labelled by `upstream` and `status`.
 ///
 /// Labels:
@@ -347,5 +357,13 @@ mod tests {
 
         // check specific labelled value appears for active connections
         assert!(metrics.contains("dns_active_connections{protocol=\"udp\"} 3"));
+    }
+
+    #[test]
+    fn test_uptime_metric_exposed() {
+        SERVER_UPTIME_SECONDS.set(123);
+        let metrics = gather_metrics();
+        assert!(metrics.contains("dns_uptime_seconds"));
+        assert!(metrics.contains("dns_uptime_seconds 123"));
     }
 }

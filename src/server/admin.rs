@@ -16,7 +16,7 @@
 //! - `GET /api/cache/stats` - Retrieve cache statistics (size, hits, misses, evictions, hit rate)
 //! - `POST /api/cache/control` - Control cache operations (e.g., clear)
 //! - `POST /api/config/reload` - Reload configuration from file
-//! - `GET /api/server/status` - Get current server status and version
+//! - `GET /api/server/stats` - Get current server status and version
 //!
 //! # Security Considerations
 //!
@@ -38,7 +38,7 @@
 //!
 //! ```bash
 //! # Query server status
-//! curl http://127.0.0.1:8080/api/server/status
+//! curl http://127.0.0.1:8080/api/server/stats
 //!
 //! # Get cache statistics
 //! curl http://127.0.0.1:8080/api/cache/stats
@@ -61,6 +61,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
@@ -211,6 +212,8 @@ pub struct AdminState {
     config: Arc<RwLock<Config>>,
     /// Plugin registry reference for accessing plugins like cache
     registry: Arc<Registry>,
+    /// Process start time for uptime reporting
+    start_time: Instant,
 }
 
 impl AdminState {
@@ -241,7 +244,11 @@ impl AdminState {
     /// let state = AdminState::new(Arc::clone(&config), Arc::clone(&registry));
     /// ```
     pub fn new(config: Arc<RwLock<Config>>, registry: Arc<Registry>) -> Self {
-        Self { config, registry }
+        Self {
+            config,
+            registry,
+            start_time: Instant::now(),
+        }
     }
 }
 
@@ -259,7 +266,7 @@ impl AdminState {
 /// - `GET /api/cache/stats` - Cache statistics
 /// - `POST /api/cache/control` - Cache control operations
 /// - `POST /api/config/reload` - Reload configuration
-/// - `GET /api/server/status` - Server status and version
+/// - `GET /api/server/stats` - Server status and version
 ///
 /// # Example
 ///
@@ -358,7 +365,7 @@ impl AdminServer {
             .route("/api/cache/control", post(cache_control))
             .route("/api/cache/stats", get(cache_stats))
             .route("/api/config/reload", post(reload_config))
-            .route("/api/server/status", get(server_status))
+            .route("/api/server/stats", get(server_stats))
             .with_state(Arc::clone(&self.state));
 
         let listener = TcpListener::bind(&self.addr).await?;
@@ -693,6 +700,7 @@ async fn reload_config(
 /// Returns a JSON object with:
 /// - `status`: Current operational status (always `"running"`)
 /// - `version`: Server version from the package manifest
+/// - `uptime`: Human readable uptime (e.g., "21d 15:05:37")
 ///
 /// # HTTP Status Codes
 ///
@@ -703,7 +711,8 @@ async fn reload_config(
 /// ```json
 /// {
 ///   "status": "running",
-///   "version": "0.2.8"
+///   "version": "0.2.8",
+///   "uptime": "3d 04:12:32"
 /// }
 /// ```
 ///
@@ -711,19 +720,39 @@ async fn reload_config(
 ///
 /// This is a lightweight endpoint suitable for health checks. More detailed
 /// metrics are available from the monitoring server at `/metrics`.
-async fn server_status() -> impl IntoResponse {
+async fn server_stats(State(state): State<Arc<AdminState>>) -> impl IntoResponse {
     #[derive(Serialize)]
     struct StatusResponse {
         status: String,
         version: String,
+        uptime: String,
     }
+
+    let elapsed = state.start_time.elapsed();
+    let uptime = format_duration(elapsed);
 
     let response = StatusResponse {
         status: "running".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        uptime,
     };
 
     (StatusCode::OK, Json(response))
+}
+
+/// Format a duration in Linux uptime style: "21d 15:05:37" or "15:05:37"
+fn format_duration(d: Duration) -> String {
+    let secs = d.as_secs();
+    let days = secs / 86400;
+    let hours = (secs % 86400) / 3600;
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+
+    if days > 0 {
+        format!("{}d {:02}:{:02}:{:02}", days, hours, minutes, seconds)
+    } else {
+        format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+    }
 }
 
 #[cfg(test)]
@@ -857,17 +886,38 @@ mod tests {
     // ============ Handler Tests ============
 
     #[tokio::test]
-    async fn test_server_status_endpoint() {
-        let response = server_status().await.into_response();
+    async fn test_server_stats_endpoint() {
+        let config = Arc::new(RwLock::new(Config::new()));
+        let registry = Arc::new(Registry::new());
+        let state = Arc::new(AdminState::new(Arc::clone(&config), Arc::clone(&registry)));
+
+        let response = server_stats(State(state)).await.into_response();
         let (parts, body) = response.into_parts();
 
         assert_eq!(parts.status, StatusCode::OK);
 
-        // Verify body contains version
+        // Verify body contains version and uptime
         let body_bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
         let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
         assert!(body_str.contains("running"));
         assert!(body_str.contains("version"));
+        assert!(body_str.contains("uptime"));
+    }
+
+    #[test]
+    fn test_format_duration_uptime_style() {
+        // Less than a day -> HH:MM:SS
+        assert_eq!(format_duration(Duration::from_secs(0)), "00:00:00");
+        assert_eq!(format_duration(Duration::from_secs(65)), "00:01:05");
+        assert_eq!(format_duration(Duration::from_secs(3661)), "01:01:01");
+
+        // One day -> "1d HH:MM:SS"
+        let one_day_one_hour = Duration::from_secs(86400 + 3600);
+        assert_eq!(format_duration(one_day_one_hour), "1d 01:00:00");
+
+        // Multiple days -> "Nd HH:MM:SS"
+        let days = Duration::from_secs(8 * 86400 + 22 * 3600 + 21 * 60);
+        assert_eq!(format_duration(days), "8d 22:21:00");
     }
 
     #[tokio::test]

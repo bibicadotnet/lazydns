@@ -10,6 +10,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use prometheus::{Encoder, TextEncoder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -162,7 +163,9 @@ impl MonitoringServer {
 }
 
 /// Handle metrics endpoint (Prometheus format)
-async fn metrics_handler() -> Response {
+async fn metrics_handler(State(state): State<Arc<MonitoringState>>) -> Response {
+    // Update uptime gauge before scraping
+    metrics::SERVER_UPTIME_SECONDS.set(state.uptime_seconds() as i64);
     let metrics_text = metrics::gather_metrics();
     (StatusCode::OK, metrics_text).into_response()
 }
@@ -179,6 +182,18 @@ async fn health_handler(State(state): State<Arc<MonitoringState>>) -> Response {
 }
 
 /// Handle stats endpoint
+///
+/// Notes:
+/// - `total_queries` is computed by summing all samples of the `dns_queries_total` metric
+///   across label combinations. This avoids maintaining separate aggregation state and
+///   automatically covers new labels/protocols (e.g., `udp`, `tcp`, `doh`, `dot`, `doq`).
+/// - `active_connections` is computed by summing all samples of the `dns_active_connections`
+///   gauge metric; this includes all protocol labels and thus reflects the total active
+///   connections across protocols.
+/// - This approach reads the current Prometheus registry (`METRICS_REGISTRY.gather()`)
+///   and performs an immediate aggregation; for very high-throughput scenarios a dedicated
+///   aggregated metric maintained at the source may be preferable for performance and
+///   absolute accuracy.
 async fn stats_handler() -> Response {
     // Gather statistics from metrics
     let cache_hits = metrics::CACHE_HITS_TOTAL.get();
@@ -189,16 +204,50 @@ async fn stats_handler() -> Response {
         0.0
     };
 
-    // Get active connections (sum across all protocols)
-    let active_conns: i64 = metrics::ACTIVE_CONNECTIONS
-        .with_label_values(&["udp"])
-        .get()
-        + metrics::ACTIVE_CONNECTIONS
-            .with_label_values(&["tcp"])
-            .get();
+    // Aggregate total queries and active connections by inspecting the registry
+    let mut total_queries: u64 = 0;
+    let mut active_conns: i64 = 0;
+
+    // Encode each relevant metric family to Prometheus text format and parse numeric samples.
+    // This avoids using non-public proto helper traits and works with the public encoder API.
+    let encoder = TextEncoder::new();
+    let metric_families = metrics::METRICS_REGISTRY.gather();
+    for mf in metric_families.iter() {
+        match mf.name() {
+            "dns_queries_total" | "dns_active_connections" => {
+                let mut buf = Vec::new();
+                // use a slice reference to avoid cloning the MetricFamily
+                if encoder.encode(std::slice::from_ref(mf), &mut buf).is_ok() {
+                    let text = match String::from_utf8(buf) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+
+                    for line in text.lines() {
+                        let line = line.trim();
+                        if line.is_empty() || line.starts_with('#') {
+                            continue;
+                        }
+                        // line format: metric_name{labels} <value>
+                        if let Some(pos) = line.rfind(' ') {
+                            let value_str = &line[pos + 1..];
+                            if let Ok(v) = value_str.parse::<f64>() {
+                                if mf.name() == "dns_queries_total" {
+                                    total_queries = total_queries.saturating_add(v as u64);
+                                } else {
+                                    active_conns = active_conns.saturating_add(v as i64);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 
     let stats = StatsResponse {
-        total_queries: 0, // Would need to sum all query counters
+        total_queries,
         cache_hit_rate,
         active_connections: active_conns,
     };
@@ -391,6 +440,46 @@ mod tests {
         let tcp_conns = 3;
         let total_conns = udp_conns + tcp_conns;
         assert_eq!(total_conns, 8);
+    }
+
+    #[tokio::test]
+    async fn test_stats_handler_aggregates_metrics() {
+        // Reset/increment metrics to known values
+        // Increment queries: 5 udp + 3 tcp
+        for _ in 0..5 {
+            metrics::DNS_QUERIES_TOTAL
+                .with_label_values(&["udp", "A"])
+                .inc();
+        }
+        for _ in 0..3 {
+            metrics::DNS_QUERIES_TOTAL
+                .with_label_values(&["tcp", "A"])
+                .inc();
+        }
+
+        // Set cache hits/misses to compute hit rate
+        metrics::CACHE_HITS_TOTAL.inc_by(75);
+        metrics::CACHE_MISSES_TOTAL.inc_by(25);
+
+        // Set active connections
+        metrics::ACTIVE_CONNECTIONS
+            .with_label_values(&["udp"])
+            .set(2);
+        metrics::ACTIVE_CONNECTIONS
+            .with_label_values(&["tcp"])
+            .set(4);
+
+        let response = stats_handler().await;
+        let (parts, body) = response.into_parts();
+        assert_eq!(parts.status, StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
+        let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
+
+        let stats: StatsResponse = serde_json::from_str(&body_str).unwrap();
+        assert_eq!(stats.total_queries, 8);
+        assert!((stats.cache_hit_rate - 0.75).abs() < 1e-6);
+        assert_eq!(stats.active_connections, 6);
     }
 
     #[tokio::test]
