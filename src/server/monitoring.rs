@@ -256,6 +256,35 @@ async fn stats_handler() -> Response {
 }
 
 #[cfg(test)]
+fn parse_metric_family_values(mf: &prometheus::proto::MetricFamily) -> Vec<f64> {
+    let encoder = TextEncoder::new();
+    let mut buf = Vec::new();
+    if encoder.encode(std::slice::from_ref(mf), &mut buf).is_err() {
+        return Vec::new();
+    }
+    let text = match String::from_utf8(buf) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut values = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(pos) = line.rfind(' ') {
+            let value_str = &line[pos + 1..];
+            if let Ok(v) = value_str.parse::<f64>() {
+                values.push(v);
+            }
+        }
+    }
+
+    values
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -442,10 +471,23 @@ mod tests {
         assert_eq!(total_conns, 8);
     }
 
-    #[tokio::test]
-    async fn test_stats_handler_aggregates_metrics() {
-        // Reset/increment metrics to known values
-        // Increment queries: 5 udp + 3 tcp
+    #[test]
+    fn test_parse_metric_family_values_and_sum() {
+        // Snapshot current totals to avoid flakes due to global metric state
+        let mfs_before = metrics::METRICS_REGISTRY.gather();
+        let q_mf_before = mfs_before
+            .iter()
+            .find(|mf| mf.name() == "dns_queries_total");
+        let prev_total_queries: u64 = q_mf_before
+            .map(|mf| {
+                parse_metric_family_values(mf)
+                    .iter()
+                    .map(|v| *v as u64)
+                    .sum()
+            })
+            .unwrap_or(0);
+
+        // Set up counters/gauges
         for _ in 0..5 {
             metrics::DNS_QUERIES_TOTAL
                 .with_label_values(&["udp", "A"])
@@ -457,16 +499,100 @@ mod tests {
                 .inc();
         }
 
-        // Set cache hits/misses to compute hit rate
-        metrics::CACHE_HITS_TOTAL.inc_by(75);
-        metrics::CACHE_MISSES_TOTAL.inc_by(25);
-
-        // Set active connections
         metrics::ACTIVE_CONNECTIONS
             .with_label_values(&["udp"])
             .set(2);
         metrics::ACTIVE_CONNECTIONS
             .with_label_values(&["tcp"])
+            .set(4);
+
+        // Find metric families and parse
+        let mfs = metrics::METRICS_REGISTRY.gather();
+        let q_mf = mfs
+            .iter()
+            .find(|mf| mf.name() == "dns_queries_total")
+            .unwrap();
+        let a_mf = mfs
+            .iter()
+            .find(|mf| mf.name() == "dns_active_connections")
+            .unwrap();
+
+        let q_vals = parse_metric_family_values(q_mf);
+        assert!(q_vals.len() >= 2);
+        let total_queries_after: u64 = q_vals.iter().map(|v| *v as u64).sum();
+        assert_eq!(total_queries_after, prev_total_queries + 8);
+
+        let a_vals = parse_metric_family_values(a_mf);
+        assert!(a_vals.len() >= 2);
+        assert_eq!(a_vals.iter().map(|v| *v as i64).sum::<i64>(), 6);
+    }
+
+    #[tokio::test]
+    async fn test_stats_handler_aggregates_metrics() {
+        // Tests share global Prometheus metrics. Snapshot current values and
+        // assert that our increments change the aggregated totals by the
+        // expected deltas so the test is robust against other tests.
+
+        // Snapshot current totals for dns_queries_total and dns_active_connections
+        let mfs_before = metrics::METRICS_REGISTRY.gather();
+        let q_mf_before = mfs_before
+            .iter()
+            .find(|mf| mf.name() == "dns_queries_total");
+        let prev_total_queries: u64 = q_mf_before
+            .map(|mf| {
+                parse_metric_family_values(mf)
+                    .iter()
+                    .map(|v| *v as u64)
+                    .sum()
+            })
+            .unwrap_or(0);
+
+        let a_mf_before = mfs_before
+            .iter()
+            .find(|mf| mf.name() == "dns_active_connections");
+        let prev_total_active: i64 = a_mf_before
+            .map(|mf| {
+                parse_metric_family_values(mf)
+                    .iter()
+                    .map(|v| *v as i64)
+                    .sum()
+            })
+            .unwrap_or(0);
+
+        let prev_cache_hits = metrics::CACHE_HITS_TOTAL.get();
+        let prev_cache_misses = metrics::CACHE_MISSES_TOTAL.get();
+
+        // Increment queries: 5 udp_test + 3 tcp_test (use unique labels to avoid
+        // clobbering other tests' label values)
+        for _ in 0..5 {
+            metrics::DNS_QUERIES_TOTAL
+                .with_label_values(&["udp_test", "A"])
+                .inc();
+        }
+        for _ in 0..3 {
+            metrics::DNS_QUERIES_TOTAL
+                .with_label_values(&["tcp_test", "A"])
+                .inc();
+        }
+
+        // Set cache hits/misses to compute hit rate
+        metrics::CACHE_HITS_TOTAL.inc_by(75);
+        metrics::CACHE_MISSES_TOTAL.inc_by(25);
+
+        // Record existing per-label active connection values for our test labels
+        let prev_udp_val = metrics::ACTIVE_CONNECTIONS
+            .with_label_values(&["udp_test"])
+            .get();
+        let prev_tcp_val = metrics::ACTIVE_CONNECTIONS
+            .with_label_values(&["tcp_test"])
+            .get();
+
+        // Set active connections for our test labels
+        metrics::ACTIVE_CONNECTIONS
+            .with_label_values(&["udp_test"])
+            .set(2);
+        metrics::ACTIVE_CONNECTIONS
+            .with_label_values(&["tcp_test"])
             .set(4);
 
         let response = stats_handler().await;
@@ -477,9 +603,22 @@ mod tests {
         let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
 
         let stats: StatsResponse = serde_json::from_str(&body_str).unwrap();
-        assert_eq!(stats.total_queries, 8);
-        assert!((stats.cache_hit_rate - 0.75).abs() < 1e-6);
-        assert_eq!(stats.active_connections, 6);
+
+        // Verify totals increased by the amounts we added
+        let expected_total_queries = prev_total_queries + 8;
+        assert_eq!(stats.total_queries, expected_total_queries);
+
+        // Verify cache hit rate reflects our increments on top of previous counts
+        let expected_hit_rate = if (prev_cache_hits + prev_cache_misses + 100) > 0 {
+            (prev_cache_hits + 75) as f64 / (prev_cache_hits + prev_cache_misses + 100) as f64
+        } else {
+            0.0
+        };
+        assert!((stats.cache_hit_rate - expected_hit_rate).abs() < 1e-6);
+
+        // Verify active connections: replace previous values for our labels with the new ones
+        let expected_active = prev_total_active - prev_udp_val - prev_tcp_val + 2 + 4;
+        assert_eq!(stats.active_connections, expected_active);
     }
 
     #[tokio::test]

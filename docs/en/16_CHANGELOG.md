@@ -2,12 +2,13 @@
 
 This file contains high-level release notes and migration guidance.
 
-## Release v0.2.63 - 2026-01-11
+## Release v0.2.63 - 2026-01-12
 
 Short: Patch fixing logging/rotation compatibility and small rotation improvements.
 
 - Switched `lazylog` to the GitHub URL and fixed YAML parsing for `rotation`.
 - Improved size-based rotation (copy+truncate) and made size units case-insensitive (K/M/G).
+- Added cache eviction metrics for better monitoring.
 
 
 ## Release v0.2.60 - 2026-01-03

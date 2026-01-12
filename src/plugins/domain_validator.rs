@@ -44,6 +44,12 @@ impl DomainValidatorPlugin {
             LruCache::new(NonZeroUsize::new(1).unwrap()) // Minimal cache
         };
 
+        // Initialize metrics if metrics enabled: set current size
+        #[cfg(feature = "metrics")]
+        {
+            crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_SIZE.set(cache.len() as i64);
+        }
+
         Self {
             strict_mode,
             cache: Arc::new(RwLock::new(cache)),
@@ -181,10 +187,25 @@ impl Plugin for DomainValidatorPlugin {
                 .inc();
         }
 
-        // Cache result
+        // Cache result (update cache size metric after mutation, count evictions)
         {
             let mut cache = self.cache.write().await;
-            cache.put(qname.clone(), result);
+
+            #[cfg(feature = "metrics")]
+            {
+                // LruCache::put returns `Some((k, v))` if an entry was evicted.
+                let evicted = cache.put(qname.clone(), result);
+                if evicted.is_some() {
+                    crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_EVICTIONS_TOTAL.inc();
+                }
+                crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_SIZE.set(cache.len() as i64);
+            }
+
+            #[cfg(not(feature = "metrics"))]
+            {
+                // No metrics enabled: just insert into cache
+                cache.put(qname.clone(), result);
+            }
         }
 
         #[cfg(feature = "metrics")]

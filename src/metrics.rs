@@ -257,6 +257,63 @@ pub static DNS_DOMAIN_VALIDATION_CACHE_HITS_TOTAL: Lazy<IntCounter> = Lazy::new(
     counter
 });
 
+/// Gauge exposing the current number of entries in the domain validation cache.
+/// This is useful for monitoring cache pressure and ensuring the cache size
+/// behaves as expected (growth, evictions, or unexpected shrinkage).
+pub static DNS_DOMAIN_VALIDATION_CACHE_SIZE: Lazy<IntGauge> = Lazy::new(|| {
+    let gauge = IntGauge::new(
+        "dns_domain_validation_cache_size",
+        "Number of entries in domain validation cache",
+    )
+    .expect("Failed to create dns_domain_validation_cache_size metric");
+    METRICS_REGISTRY
+        .register(Box::new(gauge.clone()))
+        .expect("Failed to register dns_domain_validation_cache_size");
+    gauge
+});
+
+/// Counter for number of evictions from all caches (e.g., response cache, domain validation cache).
+/// Incremented when inserting a new entry causes an existing entry to be evicted.
+pub static DNS_CACHE_EVICTIONS_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
+    let counter = IntCounter::new(
+        "dns_cache_evictions_total",
+        "Total number of evictions from caches",
+    )
+    .expect("Failed to create dns_cache_evictions_total metric");
+    METRICS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("Failed to register dns_cache_evictions_total");
+    counter
+});
+
+/// Counter for number of expirations from all caches (entries removed due to TTL expiry)
+pub static DNS_CACHE_EXPIRATIONS_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
+    let counter = IntCounter::new(
+        "dns_cache_expirations_total",
+        "Total number of expirations from caches",
+    )
+    .expect("Failed to create dns_cache_expirations_total metric");
+    METRICS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("Failed to register dns_cache_expirations_total");
+    counter
+});
+
+/// Domain-specific counter for evictions from the domain validation cache.
+/// This helps distinguish evictions originating from the domain validator
+/// versus other caches.
+pub static DNS_DOMAIN_VALIDATION_CACHE_EVICTIONS_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
+    let counter = IntCounter::new(
+        "dns_domain_validation_cache_evictions_total",
+        "Total number of evictions from domain validation cache",
+    )
+    .expect("Failed to create dns_domain_validation_cache_evictions_total metric");
+    METRICS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("Failed to register dns_domain_validation_cache_evictions_total");
+    counter
+});
+
 /// Counter of plugin execution events, labelled by `plugin` and `status`.
 ///
 /// Typical `status` labels are `ok`, `skipped`, `error`, etc., depending on

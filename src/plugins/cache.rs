@@ -184,11 +184,21 @@ impl CacheStats {
     /// Increment eviction counter
     fn record_eviction(&self) {
         self.evictions.fetch_add(1, Ordering::Relaxed);
+        // Update Prometheus metric
+        #[cfg(feature = "metrics")]
+        {
+            crate::metrics::DNS_CACHE_EVICTIONS_TOTAL.inc();
+        }
     }
 
     /// Increment expiration counter
     fn record_expiration(&self) {
         self.expirations.fetch_add(1, Ordering::Relaxed);
+        // Update Prometheus metric
+        #[cfg(feature = "metrics")]
+        {
+            crate::metrics::DNS_CACHE_EXPIRATIONS_TOTAL.inc();
+        }
     }
 
     /// Get number of hits
