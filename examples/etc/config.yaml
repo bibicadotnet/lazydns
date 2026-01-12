@@ -107,14 +107,12 @@ plugins:
           #   "0 */6 * * *" = every 6 hours at minute 0 (00:00, 06:00, 12:00, 18:00 local time)
           #   "0 * * * *" = every hour at minute 0
           # You may optionally append a TZ name as the last token: e.g. "0 */6 * * * UTC"
-          cron: "32 11  * * *"
+          cron: "10 2  * * *"
           action:
             invoke_plugin:
               type: "downloader"
               args:
                 files:
-                  - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt"
-                    path: "gfw.txt"
                   - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt"
                     path: "reject-list.txt"
                   - url: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt"
@@ -173,7 +171,7 @@ plugins:
       # Set `enable_lazycache` to false to test cache_ttl stale-serving
       # When DNS TTL expires but cache TTL remains, serve stale response with small TTL
       # and refresh in background. Set to desired cache duration (e.g., 600 for 10 minutes)
-      # cache_ttl: 600
+      cache_ttl: 600
 
       # TODO: Prefetch extension can be enabled here in future
       # Optional: Enable prefetch for additional performance
@@ -259,6 +257,19 @@ plugins:
   - tag: upstream_reject
     type: blackhole
 
+  # rate limiter plugin
+  - tag: rate_limiter_default
+    type: rate_limit
+    args:
+      max_queries: 500
+      window_secs: 60
+
+  # domain validator plugin
+  - tag: validator
+    type: domain_validator
+    args:
+      cache_size: 1000
+  
   # ========================================================================
   # Sub sequence and Fallback Logic
   # ========================================================================
@@ -268,7 +279,7 @@ plugins:
     type: sequence
     args:
       - exec: $upstream_direct
-      - matches: resp_ip $ip_direct_list
+      - matches: "!resp_ip $ip_direct_list"
         exec: drop_resp
       - exec: accept
 
@@ -306,14 +317,17 @@ plugins:
   - tag: sequence_main
     type: sequence
     args:
+      - exec: $validator
+      - exec: $rate_limiter_default
+      
       # check hosts files first
       - exec: $hosts_files
       - matches: has_resp
         exec: accept
 
       # reject PTR and DNSSEC to fix some iOS issues
-      # - matches: qtype 12 65
-      #   exec: reject 0
+      - matches: qtype 12 65
+        exec: reject 0
 
       # block ads
       - matches: qname $domain_reject_list

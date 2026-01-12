@@ -71,12 +71,12 @@ build-all:
 # sudo apt update
 # sudo apt install -y podman skopeo buildah podman-docker
 # 
-# make local PLATFORM=linux/arm/v7 EXTRA="--no-default-features --features full"
+# make local PLATFORM=linux/arm/v7 EXTRA="--no-default-features --features log,cron,dot,doh,doq,admin,metrics"
 #
 PLATFORM ?= linux/arm/v7
 EXTRA ?= "--no-default-features --features log,cron"
 local: build-for
-	@echo "Building Docker image for $(PLATFORM)"; \
+	@echo "Building Docker image for $(PLATFORM)"
 	@echo "Using EXTRA features: $(EXTRA)"; \
 	docker buildx build --platform $(PLATFORM) -f docker/Dockerfile.local.scratch -t lazywalker/lazydns:local .; \
 	docker save lazywalker/lazydns:local > lazydns.tar

@@ -14,7 +14,6 @@ curl https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt -s
 curl https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt  -s -o $TMPDIR/reject-list.txt
 curl https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt  -s -o $TMPDIR/direct-list.txt
 curl https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt  -s -o $TMPDIR/proxy-list.txt
-curl https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt  -s -o $TMPDIR/gfw.txt
 curl https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/apple-cn.txt  -s -o $TMPDIR/apple-cn.txt
 curl https://raw.githubusercontent.com/lazywalker/ghosts/refs/heads/master/hosts.mdns  -s -o $TMPDIR/hosts-github.txt
 

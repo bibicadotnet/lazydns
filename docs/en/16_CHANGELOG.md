@@ -2,6 +2,14 @@
 
 This file contains high-level release notes and migration guidance.
 
+## Release v0.2.63 - 2026-01-11
+
+Short: Patch fixing logging/rotation compatibility and small rotation improvements.
+
+- Switched `lazylog` to the GitHub URL and fixed YAML parsing for `rotation`.
+- Improved size-based rotation (copy+truncate) and made size units case-insensitive (K/M/G).
+
+
 ## Release v0.2.60 - 2026-01-03
 
 Summary: feature and refactor release focused on plugin tagging, domain validation, cache improvements, fuzzing infrastructure, and developer tooling enhancements.

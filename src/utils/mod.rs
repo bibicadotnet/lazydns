@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, mpsc, watch};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 pub mod task_queue;
 
@@ -107,7 +107,7 @@ where
             }
         }
 
-        info!(name = %name, "file watcher started successfully");
+        debug!(name = %name, "file watcher started successfully");
 
         loop {
             tokio::select! {
