@@ -440,8 +440,8 @@ impl CachePlugin {
     pub fn with_lazycache(mut self, threshold: f32) -> Self {
         self.enable_lazycache = true;
         self.lazycache_threshold = threshold.clamp(0.0, 1.0);
-        // Initialize coordinator: wrap RefreshCoordinator in Mutex<Option<>>
-        self.refresh_coordinator = Arc::new(Mutex::new(Some(RefreshCoordinator::new(4, 1000))));
+        // Note: RefreshCoordinator will be initialized later in from_config
+        // to avoid duplicate creation when both lazycache and cache_ttl are enabled
         self
     }
 
@@ -449,8 +449,8 @@ impl CachePlugin {
     pub fn with_cache_ttl(mut self, ttl_secs: u32) -> Self {
         if ttl_secs > 0 {
             self.cache_ttl = Some(ttl_secs);
-            // Initialize coordinator for stale-serving refresh if not already set
-            self.refresh_coordinator = Arc::new(Mutex::new(Some(RefreshCoordinator::new(4, 1000))));
+            // Note: RefreshCoordinator will be initialized later in from_config
+            // to avoid duplicate creation when both lazycache and cache_ttl are enabled
         }
         self
     }
