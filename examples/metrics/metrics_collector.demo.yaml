@@ -17,7 +17,7 @@
 # - reset(): Reset all counters
 #
 # Usage:
-#   cargo run -- -c examples/collector/metrics_collector.demo.yaml -vv
+#   cargo run -- -c examples/metrics/metrics_collector.demo.yaml -vv
 #
 # Test with:
 #   dig @127.0.0.1 -p 5354 cloudflare.com A
@@ -25,7 +25,7 @@
 #
 # The metrics can be accessed programmatically by getting a reference
 # to the plugin instance from the registry.
-# See examples/collector/metrics_collector_access.demo.rs for details.
+# See examples/metrics/metrics_collector_access.demo.rs for details.
 
 log:
   level: info

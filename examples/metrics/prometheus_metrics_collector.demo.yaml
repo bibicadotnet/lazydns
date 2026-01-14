@@ -18,7 +18,7 @@
 #   Build with metrics feature: cargo build --features metrics
 #
 # Usage:
-#   cargo run --features metrics -- -c examples/collector/prometheus_metrics_collector.demo.yaml -vv
+#   cargo run --features metrics -- -c examples/metrics/prometheus_metrics_collector.demo.yaml -vv
 #
 # Test with:
 #   dig @127.0.0.1 -p 5354 cloudflare.com A

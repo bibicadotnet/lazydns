@@ -339,6 +339,39 @@ pub struct MonitoringConfig {
     /// Listen address for monitoring server (e.g., "127.0.0.1:9090")
     #[serde(default = "default_monitoring_addr")]
     pub addr: String,
+
+    /// Memory metrics collection configuration
+    #[serde(default)]
+    pub memory_metrics: MemoryMetricsConfig,
+}
+
+/// Memory metrics collection configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryMetricsConfig {
+    /// Enable memory metrics collection
+    #[serde(default = "default_memory_metrics_enabled")]
+    pub enabled: bool,
+
+    /// Sampling interval in milliseconds
+    #[serde(default = "default_memory_metrics_interval_ms")]
+    pub interval_ms: u64,
+}
+
+fn default_memory_metrics_enabled() -> bool {
+    true
+}
+
+fn default_memory_metrics_interval_ms() -> u64 {
+    5000 // 5 seconds
+}
+
+impl Default for MemoryMetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_memory_metrics_enabled(),
+            interval_ms: default_memory_metrics_interval_ms(),
+        }
+    }
 }
 
 fn default_monitoring_enabled() -> bool {
@@ -354,6 +387,7 @@ impl Default for MonitoringConfig {
         Self {
             enabled: default_monitoring_enabled(),
             addr: default_monitoring_addr(),
+            memory_metrics: MemoryMetricsConfig::default(),
         }
     }
 }

@@ -762,6 +762,26 @@ impl ServerLauncher {
 
         let server = MonitoringServer::new(addr);
 
+        // Start memory metrics collector if configured in monitoring section
+        // This ensures the collector runs whenever the monitoring server is started
+        // and keeps collector lifecycle tied to monitoring behavior.
+        let mem_cfg = {
+            let cfg_read = config.read().await;
+            cfg_read.monitoring.memory_metrics.clone()
+        };
+        if mem_cfg.enabled {
+            info!(
+                "Starting memory metrics collector (interval: {}ms)",
+                mem_cfg.interval_ms
+            );
+            let mem_config = crate::metrics::memory::MemoryMetricsConfig {
+                enabled: mem_cfg.enabled,
+                interval_ms: mem_cfg.interval_ms,
+            };
+            let _memory_handle = crate::metrics::memory::start_memory_metrics_collector(mem_config);
+            // Note: handle is dropped but task continues running in background
+        }
+
         let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
 
         tokio::spawn(async move {
@@ -987,6 +1007,14 @@ mod tests {
             // Wait for server to signal startup (should complete quickly)
             let started = tokio::time::timeout(std::time::Duration::from_secs(2), startup_rx).await;
             assert!(started.is_ok());
+
+            // Allow a few sampling intervals to elapse so the collector can register
+            // and populate metrics in the global registry.
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+            let mfs = crate::metrics::METRICS_REGISTRY.gather();
+            let names: Vec<_> = mfs.iter().map(|m| m.name()).collect();
+            assert!(names.contains(&"lazydns_process_resident_memory_bytes"));
         } else {
             panic!("Expected monitoring server to be launched");
         }
