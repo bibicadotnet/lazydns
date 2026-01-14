@@ -6,9 +6,11 @@ This file contains high-level release notes and migration guidance.
 
 Short: Patch fixing logging/rotation compatibility and small rotation improvements.
 
-- Switched `lazylog` to the GitHub URL and fixed YAML parsing for `rotation`.
-- Improved size-based rotation (copy+truncate) and made size units case-insensitive (K/M/G).
+- logs moved to `lazylog` crate for better maintenance and features.
+- improved size-based rotation (copy+truncate) and made size units case-insensitive (K/M/G).
+- introduced `lazydns-macros` crate for procedural macros (future use).
 - Added cache eviction metrics for better monitoring.
+- add grafana dashboard json config.
 
 
 ## Release v0.2.60 - 2026-01-03

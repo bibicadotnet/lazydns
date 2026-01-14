@@ -35,7 +35,7 @@ thiserror = "2.0"
 
 # Logging
 tracing = "0.1"
-lazylog = { git = "https://github.com/lazywalker/lazylog", optional = true, default-features = false }
+lazylog = { git = "https://github.com/lazywalker/lazylog", version = "0.1.4", optional = true, default-features = false }
 
 # Time crate for cron plugin
 time = { version = "0.3", default-features = false, optional = true }
@@ -79,7 +79,7 @@ quinn = { version = "0.11", optional = true }
 base64 = "0.22"
 
 # Procedural macros for plugin registration (workspace member)
-lazydns-macros = { path = "lazydns-macros" }
+lazydns-macros = { path = "lazydns-macros", version = "0.2.62" }
 
 # Metrics
 prometheus = { version = "0.14", optional = true }

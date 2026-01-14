@@ -98,7 +98,9 @@ async fn main() -> anyhow::Result<()> {
         // Apply CLI verbosity override to config level
         let log_spec = effective_log_spec(&config.log, args.verbose);
 
-        if let Err(e) = init_logging(&config.log.to_lazylog(log_spec)) {
+        // Use the new convenience method for clearer code
+        let lazy_config = config.log.to_lazylog(log_spec);
+        if let Err(e) = init_logging(&lazy_config) {
             eprintln!("Failed to initialize logging: {}", e);
         }
     }
@@ -106,6 +108,8 @@ async fn main() -> anyhow::Result<()> {
     info!("lazydns starting...");
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
     info!("Configuration file: {}", args.config);
+    #[cfg(feature = "log")]
+    debug!("Logging configuration: {}", config.log.summary());
 
     // Ensure rustls has a process-level CryptoProvider installed (ring)
     #[cfg(feature = "rustls")]

@@ -4,11 +4,16 @@ version = "0.2.62"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "Procedural macros for lazydns plugin registration"
+repository = "https://github.com/lazywalker/lazydns/lazydns-macros"
 license = "GPL-3.0-or-later"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-syn = { version = "2.0", default-features = false }
+syn = { version = "2.0", default-features = false, features = [
+    "parsing",
+    "derive",
+    "proc-macro",
+] }
 quote = "1.0"

@@ -36,17 +36,53 @@ pub use lazylog::{
 };
 
 /// File logging configuration with rotation support (lazydns adapter).
+///
+/// This struct controls file-based logging in lazydns. It wraps the
+/// [lazylog::FileLogConfig] and adds an `enabled` field for convenience.
+///
+/// # Examples
+///
+/// ```yaml
+/// log:
+///   file:
+///     enabled: true
+///     path: ./logs/lazydns.log
+///     rotation:
+///       size:
+///         max_size: "10M"
+///         max_backups: 5
+/// ```
+///
+/// To rotate files daily:
+///
+/// ```yaml
+/// log:
+///   file:
+///     enabled: true
+///     path: ./logs/lazydns.log
+///     rotation:
+///       daily:
+///         max_backups: 7
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FileLogConfig {
     /// Whether file logging is enabled (default: false).
+    ///
+    /// Even if other file configuration is present, logging is only
+    /// written to files if this is true.
     #[serde(default)]
     pub enabled: bool,
 
     /// Path to the log file.
+    ///
+    /// Can be absolute or relative. Parent directories are created
+    /// automatically if needed.
     #[serde(default = "default_file_path")]
     pub path: String,
 
     /// Rotation configuration.
+    ///
+    /// Determines when and how log files are rotated.
     #[serde(default)]
     #[cfg(feature = "log")]
     pub rotation: RotationTrigger,
@@ -72,18 +108,72 @@ impl Default for FileLogConfig {
     }
 }
 
+impl FileLogConfig {
+    /// Create a new FileLogConfig with the given path
+    pub fn new<S: Into<String>>(path: S) -> Self {
+        Self {
+            path: path.into(),
+            enabled: false,
+            #[cfg(feature = "log")]
+            rotation: RotationTrigger::default(),
+            compress: false,
+        }
+    }
+
+    /// Enable file logging for this configuration
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+}
+
 #[cfg(feature = "log")]
 impl FileLogConfig {
+    /// Set rotation trigger
+    pub fn with_rotation(mut self, rotation: RotationTrigger) -> Self {
+        self.rotation = rotation;
+        self
+    }
+
     /// Convert lazydns FileLogConfig to lazylog FileLogConfig
     pub fn to_lazylog(&self) -> LazylogFileConfig {
         LazylogFileConfig::new(self.path.clone()).with_rotation_trigger(self.rotation.clone())
     }
 }
 
-/// Logging configuration (lazydns adapter)
+/// Logging configuration (lazydns adapter).
+///
+/// lazydns provides a thin wrapper around [lazylog::LogConfig] to:
+/// 1. Maintain a simple, DNS-focused configuration interface
+/// 2. Support domain-specific defaults (e.g., file.enabled)
+/// 3. Enable potential future logging backend swapping
+///
+/// # Conversion to lazylog
+///
+/// Use [LogConfig::to_lazylog] to convert to the underlying lazylog configuration
+/// for actual logging initialization.
+///
+/// # Examples
+///
+/// ```yaml
+/// log:
+///   level: info
+///   console: true
+///   format: text
+///   file:
+///     enabled: false
+///     path: ./lazydns.log
+/// ```
+///
+/// ```rust,no_run
+/// # use lazydns::config::LogConfig;
+/// let config = LogConfig::default();
+/// let lazy_config = config.to_lazylog("info".to_string());
+/// // Use lazy_config with lazylog::init_logging()
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LogConfig {
-    /// Log level: trace|debug|info|warn|error
+    /// Log level: trace|debug|info|warn|error (default: info).
     #[serde(default = "default_log_level")]
     pub level: String,
 
@@ -91,7 +181,7 @@ pub struct LogConfig {
     #[serde(default = "default_console")]
     pub console: bool,
 
-    /// Log output format: text|json
+    /// Log output format: text|json (default: text).
     #[serde(default = "default_log_format")]
     pub format: String,
 
@@ -123,9 +213,61 @@ impl Default for LogConfig {
     }
 }
 
+impl LogConfig {
+    /// Create a new LogConfig with defaults
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Check if file logging is enabled
+    pub fn is_file_logging_enabled(&self) -> bool {
+        self.file.as_ref().is_some_and(|f| f.enabled)
+    }
+
+    /// Check if console logging is enabled
+    pub fn is_console_logging_enabled(&self) -> bool {
+        self.console
+    }
+
+    /// Get effective logging configuration (for debugging)
+    pub fn summary(&self) -> String {
+        format!(
+            "LogConfig {{ level: {}, console: {}, format: {}, file_logging: {} }}",
+            self.level,
+            self.console,
+            self.format,
+            self.is_file_logging_enabled()
+        )
+    }
+}
+
 #[cfg(feature = "log")]
 impl LogConfig {
-    /// Convert lazydns LogConfig to lazylog LogConfig
+    /// Convert to lazylog configuration with specified log level
+    ///
+    /// The `log_spec` parameter allows overriding the configured level,
+    /// typically used for CLI verbosity options.
+    ///
+    /// File logging is only enabled if both:
+    /// - `self.file` is Some
+    /// - `file.enabled` is true
+    ///
+    /// # Arguments
+    ///
+    /// * `log_spec` - Log level specification (e.g., "info", "debug")
+    ///
+    /// # Returns
+    ///
+    /// A [LazylogLogConfig] ready to pass to [lazylog::init_logging]
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use lazydns::config::LogConfig;
+    /// let config = LogConfig::default();
+    /// let lazy = config.to_lazylog("debug".to_string());
+    /// // Pass to lazylog::init_logging(&lazy)
+    /// ```
     pub fn to_lazylog(&self, log_spec: String) -> LazylogLogConfig {
         let mut config = LazylogLogConfig::new()
             .with_console(self.console)
@@ -139,6 +281,22 @@ impl LogConfig {
         }
 
         config
+    }
+
+    /// Convert to lazylog configuration using the configured level
+    ///
+    /// This is equivalent to calling [LogConfig::to_lazylog] with
+    /// the configured level value.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # use lazydns::config::LogConfig;
+    /// let config = LogConfig::default();
+    /// let lazy = config.to_lazylog_with_default();
+    /// ```
+    pub fn to_lazylog_with_default(&self) -> LazylogLogConfig {
+        self.to_lazylog(self.level.clone())
     }
 }
 
@@ -347,5 +505,142 @@ log:
         let config = Config::new();
         let yaml = config.to_yaml().unwrap();
         assert!(yaml.contains("log:"));
+    }
+
+    // LogConfig tests
+    #[test]
+    fn test_log_config_new() {
+        let config = LogConfig::new();
+        assert_eq!(config.level, "info");
+        assert!(!config.console);
+        assert_eq!(config.format, "text");
+        assert!(config.file.is_none());
+    }
+
+    #[test]
+    fn test_log_config_is_console_logging_enabled() {
+        let mut config = LogConfig::default();
+        assert!(!config.is_console_logging_enabled());
+        config.console = true;
+        assert!(config.is_console_logging_enabled());
+    }
+
+    #[test]
+    fn test_log_config_is_file_logging_enabled() {
+        let mut config = LogConfig::default();
+        assert!(!config.is_file_logging_enabled());
+
+        config.file = Some(FileLogConfig::new("test.log"));
+        assert!(!config.is_file_logging_enabled()); // Not enabled even with file config
+
+        config.file = Some(FileLogConfig::new("test.log").with_enabled(true));
+        assert!(config.is_file_logging_enabled());
+    }
+
+    #[test]
+    fn test_log_config_summary() {
+        let config = LogConfig::default();
+        let summary = config.summary();
+        assert!(summary.contains("level: info"));
+        assert!(summary.contains("console: false"));
+        assert!(summary.contains("file_logging: false"));
+    }
+
+    #[test]
+    #[cfg(feature = "log")]
+    fn test_log_config_to_lazylog_with_level_override() {
+        let config = LogConfig {
+            level: "debug".to_string(),
+            console: true,
+            format: "json".to_string(),
+            file: None,
+        };
+
+        let lazy = config.to_lazylog("info".to_string());
+        assert_eq!(lazy.level, "info"); // Level is overridden
+        assert!(lazy.console);
+        assert_eq!(lazy.format, "json");
+        assert!(lazy.file.is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "log")]
+    fn test_log_config_to_lazylog_with_default() {
+        let config = LogConfig {
+            level: "debug".to_string(),
+            console: true,
+            format: "text".to_string(),
+            file: None,
+        };
+
+        let lazy = config.to_lazylog_with_default();
+        assert_eq!(lazy.level, "debug"); // Uses configured level
+        assert!(lazy.console);
+        assert_eq!(lazy.format, "text");
+        assert!(lazy.file.is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "log")]
+    fn test_log_config_to_lazylog_file_enabled() {
+        let config = LogConfig {
+            console: true,
+            file: Some(FileLogConfig::new("test.log").with_enabled(true)),
+            ..Default::default()
+        };
+
+        let lazy = config.to_lazylog("info".to_string());
+        assert!(lazy.console);
+        assert!(lazy.file.is_some());
+        assert_eq!(lazy.file.unwrap().path.to_string_lossy(), "test.log");
+    }
+
+    #[test]
+    #[cfg(feature = "log")]
+    fn test_log_config_to_lazylog_file_disabled() {
+        let config = LogConfig {
+            console: true,
+            file: Some(FileLogConfig::new("test.log").with_enabled(false)),
+            ..Default::default()
+        };
+
+        let lazy = config.to_lazylog("info".to_string());
+        assert!(lazy.console);
+        assert!(lazy.file.is_none()); // File not included when disabled
+    }
+
+    // FileLogConfig tests
+    #[test]
+    fn test_file_log_config_new() {
+        let config = FileLogConfig::new("app.log");
+        assert_eq!(config.path, "app.log");
+        assert!(!config.enabled);
+        assert!(!config.compress);
+    }
+
+    #[test]
+    fn test_file_log_config_with_enabled() {
+        let config = FileLogConfig::new("app.log").with_enabled(true);
+        assert!(config.enabled);
+    }
+
+    #[test]
+    #[cfg(feature = "log")]
+    fn test_file_log_config_with_rotation() {
+        let config = FileLogConfig::new("app.log")
+            .with_enabled(true)
+            .with_rotation(RotationTrigger::Never);
+        assert!(config.enabled);
+        assert_eq!(config.rotation, RotationTrigger::Never);
+    }
+
+    #[test]
+    #[cfg(feature = "log")]
+    fn test_file_log_config_to_lazylog() {
+        let config = FileLogConfig::new("test.log")
+            .with_enabled(true)
+            .with_rotation(RotationTrigger::Never);
+        let lazy = config.to_lazylog();
+        assert_eq!(lazy.path.to_string_lossy(), "test.log");
     }
 }
