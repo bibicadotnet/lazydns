@@ -321,6 +321,21 @@ pub static DNS_DOMAIN_VALIDATION_CACHE_EVICTIONS_TOTAL: Lazy<IntCounter> = Lazy:
     counter
 });
 
+/// Counter for misses in the domain validation cache (cache.get() returned None).
+/// Helps diagnose cache performance: hits_total + misses_total should approximate
+/// the total number of validations performed.
+pub static DNS_DOMAIN_VALIDATION_CACHE_MISSES_TOTAL: Lazy<IntCounter> = Lazy::new(|| {
+    let counter = IntCounter::new(
+        "dns_domain_validation_cache_misses_total",
+        "Total number of misses in domain validation cache",
+    )
+    .expect("Failed to create dns_domain_validation_cache_misses_total metric");
+    METRICS_REGISTRY
+        .register(Box::new(counter.clone()))
+        .expect("Failed to register dns_domain_validation_cache_misses_total");
+    counter
+});
+
 /// Counter of plugin execution events, labelled by `plugin` and `status`.
 ///
 /// Typical `status` labels are `ok`, `skipped`, `error`, etc., depending on

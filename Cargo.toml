@@ -35,7 +35,7 @@ thiserror = "2.0"
 
 # Logging
 tracing = "0.1"
-lazylog = { git = "https://github.com/lazywalker/lazylog", version = "0.1.4", optional = true, default-features = false }
+lazylog = { git = "https://github.com/lazywalker/lazylog", version = "0.1.6", optional = true, default-features = false }
 
 # Time crate for cron plugin
 time = { version = "0.3", default-features = false, optional = true }
