@@ -16,7 +16,7 @@ In production, enable memory metrics in your `config.yaml`:
 ```yaml
 monitoring:
   enabled: true
-  addr: "0.0.0.0:9090"
+  addr: "0.0.0.0:8001"
   memory_metrics:
     enabled: true
     interval_ms: 5000  # Sample every 5 seconds
@@ -28,7 +28,7 @@ Then configure Prometheus to scrape the `/metrics` endpoint:
 scrape_configs:
   - job_name: 'lazydns'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['localhost:8001']
     scrape_interval: 15s
 ```
 

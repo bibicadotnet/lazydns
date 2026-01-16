@@ -307,7 +307,7 @@ pub struct AdminConfig {
     #[serde(default = "default_admin_enabled")]
     pub enabled: bool,
 
-    /// Listen address for admin API (e.g., "127.0.0.1:8080")
+    /// Listen address for admin API (e.g., "127.0.0.1:8000")
     #[serde(default = "default_admin_addr")]
     pub addr: String,
 }
@@ -317,7 +317,7 @@ fn default_admin_enabled() -> bool {
 }
 
 fn default_admin_addr() -> String {
-    "127.0.0.1:8080".to_string()
+    "127.0.0.1:8000".to_string()
 }
 
 impl Default for AdminConfig {
@@ -336,7 +336,7 @@ pub struct MonitoringConfig {
     #[serde(default = "default_monitoring_enabled")]
     pub enabled: bool,
 
-    /// Listen address for monitoring server (e.g., "127.0.0.1:9090")
+    /// Listen address for monitoring server (e.g., "127.0.0.1:8001")
     #[serde(default = "default_monitoring_addr")]
     pub addr: String,
 
@@ -379,7 +379,7 @@ fn default_monitoring_enabled() -> bool {
 }
 
 fn default_monitoring_addr() -> String {
-    "127.0.0.1:9090".to_string()
+    "127.0.0.1:8001".to_string()
 }
 
 impl Default for MonitoringConfig {

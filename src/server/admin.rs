@@ -8,7 +8,7 @@
 //! # Architecture
 //!
 //! The admin server runs as a separate HTTP server alongside the main DNS servers, bound to
-//! a configurable address (default: `127.0.0.1:8080`). It allows operators to monitor and
+//! a configurable address (default: `127.0.0.1:8000`). It allows operators to monitor and
 //! manage the server without restarting the entire process.
 //!
 //! # API Endpoints
@@ -33,18 +33,18 @@
 //! # Configuration example
 //! admin:
 //!   enabled: true
-//!   addr: "127.0.0.1:8080"
+//!   addr: "127.0.0.1:8000"
 //! ```
 //!
 //! ```bash
 //! # Query server status
-//! curl http://127.0.0.1:8080/api/server/stats
+//! curl http://127.0.0.1:8000/api/server/stats
 //!
 //! # Get cache statistics
-//! curl http://127.0.0.1:8080/api/cache/stats
+//! curl http://127.0.0.1:8000/api/cache/stats
 //!
 //! # Clear cache
-//! curl -X POST http://127.0.0.1:8080/api/cache/control \
+//! curl -X POST http://127.0.0.1:8000/api/cache/control \
 //!   -H "Content-Type: application/json" \
 //!   -d '{"action":"clear"}'
 //! ```
@@ -281,7 +281,7 @@ impl AdminState {
 /// let config = Arc::new(RwLock::new(Config::new()));
 /// let registry = Arc::new(Registry::new());
 /// let state = AdminState::new(Arc::clone(&config), Arc::clone(&registry));
-/// let server = AdminServer::new("127.0.0.1:8080", state);
+/// let server = AdminServer::new("127.0.0.1:8000", state);
 /// // server.run().await?;
 /// # Ok(())
 /// # }
@@ -296,7 +296,7 @@ impl AdminServer {
     ///
     /// # Arguments
     ///
-    /// * `addr` - Address to bind to (e.g., "127.0.0.1:8080")
+    /// * `addr` - Address to bind to (e.g., "127.0.0.1:8000")
     /// * `state` - Admin state containing shared config and plugin registry
     ///
     /// # Returns
@@ -344,7 +344,7 @@ impl AdminServer {
     /// let config = Arc::new(RwLock::new(Config::new()));
     /// let registry = Arc::new(Registry::new());
     /// let state = AdminState::new(config, registry);
-    /// let server = AdminServer::new("127.0.0.1:8080", state);
+    /// let server = AdminServer::new("127.0.0.1:8000", state);
     ///
     /// let (tx, rx) = tokio::sync::oneshot::channel();
     /// tokio::spawn(async move {

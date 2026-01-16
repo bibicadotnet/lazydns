@@ -8,7 +8,7 @@
 #   --name lazydns \
 #   -p 53:53/udp -p 53:53/tcp \
 #   -p 853:853/tcp -p 443:443/tcp \
-#   -p 784:784/tcp -p 8080:8080/tcp -p 9090:9090/tcp \
+#   -p 784:784/tcp -p 8000:8000/tcp -p 8001:8001/tcp \
 #   -e TZ=Asia/Shanghai \
 #   -v /path/to/config:/etc/lazydns \
 #   lazywalker/lazydns:latest
@@ -84,9 +84,9 @@ EXPOSE 443/tcp
 EXPOSE 784/tcp
 
 # Expose HTTP management ports
-EXPOSE 8080/tcp
+EXPOSE 8000/tcp
 # Expose Prometheus metrics port
-EXPOSE 9090/tcp
+EXPOSE 8001/tcp
 
 WORKDIR /app
 

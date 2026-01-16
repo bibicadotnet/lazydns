@@ -31,7 +31,7 @@ Memory metrics are collected in real-time and exposed via the `/metrics` endpoin
 ```yaml
 monitoring:
   enabled: true
-  addr: "0.0.0.0:9090"
+  addr: "0.0.0.0:8001"
   memory_metrics:
     enabled: true
     interval_ms: 5000  # Sampling interval (default: 5s)
@@ -49,7 +49,7 @@ monitoring:
 ```yaml
 monitoring:
   enabled: true
-  addr: "0.0.0.0:9090"
+  addr: "0.0.0.0:8001"
   memory_metrics:
     enabled: false
 ```
@@ -99,7 +99,7 @@ When cgroups are not detected (bare-metal, VMs), lazydns relies solely on `/proc
 scrape_configs:
   - job_name: 'lazydns'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['localhost:8001']
     scrape_interval: 15s
     scrape_timeout: 10s
 ```
@@ -210,7 +210,7 @@ label_replace(lazydns_process_cgroup_memory_bytes, "type", "cgroup", "", "")
 
 1. **Verify monitoring is enabled:**
    ```bash
-   curl http://localhost:9090/metrics | grep lazydns_process
+   curl http://localhost:8001/metrics | grep lazydns_process
    ```
 
 2. **Check configuration:**
@@ -311,7 +311,7 @@ services:
     image: lazydns:latest
     ports:
       - "53:53/udp"
-      - "9090:9090"
+      - "8001:8001"
     volumes:
       - ./config.yaml:/etc/lazydns/config.yaml
     environment:
@@ -338,7 +338,7 @@ spec:
           requests:
             memory: "256Mi"
         ports:
-        - containerPort: 9090
+        - containerPort: 8001
           name: metrics
 ---
 apiVersion: v1
@@ -349,7 +349,7 @@ metadata:
     app: lazydns
 spec:
   ports:
-  - port: 9090
+  - port: 8001
     name: metrics
   selector:
     app: lazydns

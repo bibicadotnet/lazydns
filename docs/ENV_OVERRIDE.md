@@ -28,9 +28,9 @@ Override server settings using these environment variables:
 | Variable          | Config Field      | Example          | Valid Values                           |
 | ----------------- | ----------------- | ---------------- | -------------------------------------- |
 | `ADMIN_ENABLED`   | `admin.enabled`   | `true`           | `true`, `false`, `1`, `0`, `yes`, `no` |
-| `ADMIN_ADDR`      | `admin.addr`      | `127.0.0.1:8080` | Any valid address:port                 |
+| `ADMIN_ADDR`      | `admin.addr`      | `127.0.0.1:8000` | Any valid address:port                 |
 | `METRICS_ENABLED` | `metrics.enabled` | `true`           | `true`, `false`, `1`, `0`, `yes`, `no` |
-| `METRICS_ADDR`    | `metrics.addr`    | `127.0.0.1:9090` | Any valid address:port                 |
+| `METRICS_ADDR`    | `metrics.addr`    | `127.0.0.1:8001` | Any valid address:port                 |
 
 ### 3. Plugin Arguments
 
@@ -90,9 +90,9 @@ Environment variable values are automatically converted based on their format:
 ```bash
 docker run -e LOG_FORMAT=json \
            -e LOG_LEVEL=info \
-           -e ADMIN_ADDR=0.0.0.0:8080 \
+           -e ADMIN_ADDR=0.0.0.0:8000 \
            -e METRICS_ENABLED=true \
-           -e METRICS_ADDR=0.0.0.0:9090 \
+           -e METRICS_ADDR=0.0.0.0:8001 \
            -e PLUGINS_CACHE_ARGS_SIZE=4096 \
            -v /path/to/config.yaml:/etc/lazydns/config.yaml \
            lazydns:latest
@@ -108,10 +108,10 @@ services:
       LOG_FORMAT: json
       LOG_LEVEL: debug
       ADMIN_ENABLED: true
-      ADMIN_ADDR: "0.0.0.0:8080"
+      ADMIN_ADDR: "0.0.0.0:8000"
       METRICS_ENABLED: true
-      METRICS_ADDR: "0.0.0.0:9090"
-      PLUGINS_ADD_GFWLIST_ARGS_SERVER: "http://list-server:8080"
+      METRICS_ADDR: "0.0.0.0:8001"
+      PLUGINS_ADD_GFWLIST_ARGS_SERVER: "http://list-server:8000"
       PLUGINS_CACHE_ARGS_SIZE: "2048"
     volumes:
       - ./config.yaml:/etc/lazydns/config.yaml
@@ -128,15 +128,15 @@ env:
   - name: ADMIN_ENABLED
     value: "true"
   - name: ADMIN_ADDR
-    value: "0.0.0.0:8080"
+    value: "0.0.0.0:8000"
   - name: METRICS_ENABLED
     value: "true"
   - name: METRICS_ADDR
-    value: "0.0.0.0:9090"
+    value: "0.0.0.0:8001"
   - name: PLUGINS_CACHE_ARGS_SIZE
     value: "4096"
   - name: PLUGINS_ADD_GFWLIST_ARGS_SERVER
-    value: "http://list-server.default:8080"
+    value: "http://list-server.default:8000"
 ```
 
 ### CI/CD Pipeline
@@ -146,9 +146,9 @@ env:
 export LOG_FORMAT=json
 export LOG_LEVEL=warn
 export ADMIN_ENABLED=true
-export ADMIN_ADDR=0.0.0.0:8080
+export ADMIN_ADDR=0.0.0.0:8000
 export METRICS_ENABLED=true
-export METRICS_ADDR=0.0.0.0:9090
+export METRICS_ADDR=0.0.0.0:8001
 export PLUGINS_CACHE_ARGS_NEGATIVE_TTL=7200
 ./lazydns -c /etc/config.yaml
 ```
@@ -160,11 +160,11 @@ You don't need to modify the YAML file; these are typically set in YAML directly
 ```yaml
 admin:
   enabled: true # Can be overridden by ADMIN_ENABLED
-  addr: "127.0.0.1:8080" # Can be overridden by ADMIN_ADDR
+  addr: "127.0.0.1:8000" # Can be overridden by ADMIN_ADDR
 
 metrics:
   enabled: false # Can be overridden by METRICS_ENABLED
-  addr: "127.0.0.1:9090" # Can be overridden by METRICS_ADDR
+  addr: "127.0.0.1:8001" # Can be overridden by METRICS_ADDR
 
 log:
   level: info # Can be overridden by LOG_LEVEL

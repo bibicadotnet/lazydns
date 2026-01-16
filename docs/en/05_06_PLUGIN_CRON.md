@@ -47,7 +47,7 @@ plugins:
           action:
             http:
               method: GET
-              url: http://127.0.0.1:8080/health
+              url: http://127.0.0.1:8000/health
 
         - name: refresh_cache
           cron: "0 */6 * * *" # every 6 hours

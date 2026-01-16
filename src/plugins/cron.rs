@@ -33,7 +33,7 @@ use tracing::{debug, info, warn};
 ///       action:
 ///         http:
 ///           method: GET
-///           url: http://127.0.0.1:8080/ping
+///           url: http://127.0.0.1:8000/ping
 ///     - name: invoke_cache
 ///       cron: "0 0 */6 * * *"  # every 6 hours (00:00, 06:00, 12:00, 18:00 local time)
 ///       action:

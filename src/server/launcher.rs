@@ -693,7 +693,7 @@ impl ServerLauncher {
     /// # Configuration Parameters
     ///
     /// - `enabled`: Whether to start the admin server (default: false)
-    /// - `addr`: Listen address (default: "127.0.0.1:8080")
+    /// - `addr`: Listen address (default: "127.0.0.1:8000")
     ///
     /// # Behavior
     ///
@@ -708,7 +708,7 @@ impl ServerLauncher {
     /// ```yaml
     /// admin:
     ///   enabled: true
-    ///   addr: "127.0.0.1:8080"
+    ///   addr: "127.0.0.1:8000"
     /// ```
     #[cfg(feature = "admin")]
     pub async fn launch_admin_server(
@@ -874,10 +874,10 @@ mod tests {
     #[test]
     fn test_normalize_listen_addr() {
         assert_eq!(normalize_listen_addr(":5353"), "0.0.0.0:5353");
-        assert_eq!(normalize_listen_addr("127.0.0.1:8080"), "127.0.0.1:8080");
+        assert_eq!(normalize_listen_addr("127.0.0.1:8000"), "127.0.0.1:8000");
         assert_eq!(normalize_listen_addr("0.0.0.0:53"), "0.0.0.0:53");
         assert_eq!(normalize_listen_addr("[::1]:53"), "[::1]:53");
-        assert_eq!(normalize_listen_addr("localhost:8080"), "localhost:8080");
+        assert_eq!(normalize_listen_addr("localhost:8000"), "localhost:8000");
     }
 
     /// Test IPv6 address parsing
@@ -909,11 +909,11 @@ mod tests {
         let mut args = HashMap::new();
         args.insert(
             "listen".to_string(),
-            Value::String("127.0.0.1:8080".to_string()),
+            Value::String("127.0.0.1:8000".to_string()),
         );
 
         let addr = launcher.parse_listen_addr(&args, "0.0.0.0:53");
-        assert_eq!(addr, Some("127.0.0.1:8080".parse().unwrap()));
+        assert_eq!(addr, Some("127.0.0.1:8000".parse().unwrap()));
     }
 
     /// Test non-string entry value handling
@@ -1213,10 +1213,10 @@ mod tests {
         let launcher = ServerLauncher::new(registry);
 
         let mut args = HashMap::new();
-        args.insert("listen".to_string(), Value::String(":8080".to_string()));
+        args.insert("listen".to_string(), Value::String(":8000".to_string()));
 
         let addr = launcher.parse_listen_addr(&args, "0.0.0.0:53");
-        assert_eq!(addr, Some("0.0.0.0:8080".parse().unwrap()));
+        assert_eq!(addr, Some("0.0.0.0:8000".parse().unwrap()));
     }
 
     /// Test default address fallback
