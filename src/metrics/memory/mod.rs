@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use prometheus::{IntGauge, Opts};
 use std::time::Duration;
 use tokio::time;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::metrics::METRICS_REGISTRY;
 
@@ -206,7 +206,7 @@ fn collect_memory_metrics(has_cgroup: bool) {
                 PROCESS_CGROUP_MEMORY_LIMIT_BYTES.set(0);
             }
 
-            debug!(
+            trace!(
                 "Updated cgroup memory metrics: usage={}MB, limit={}",
                 cgroup_stats.usage_bytes / (1024 * 1024),
                 cgroup_stats
@@ -225,7 +225,7 @@ fn collect_memory_metrics(has_cgroup: bool) {
             PROCESS_RESIDENT_MEMORY_BYTES.set(proc_stats.rss_bytes as i64);
             PROCESS_VIRTUAL_MEMORY_BYTES.set(proc_stats.vms_bytes as i64);
 
-            debug!(
+            trace!(
                 "Updated /proc memory metrics: RSS={}MB, VMS={}MB",
                 proc_stats.rss_bytes / (1024 * 1024),
                 proc_stats.vms_bytes / (1024 * 1024)

@@ -72,7 +72,8 @@ build-all:
 # sudo apt install -y podman skopeo buildah podman-docker
 # 
 # make local PLATFORM=linux/arm/v7 EXTRA="--no-default-features --features log,cron,dot,doh,doq,admin,metrics"
-#
+# or
+# make local PLATFORM=linux/amd64 EXTRA='--features full'	
 PLATFORM ?= linux/arm/v7
 EXTRA ?= "--no-default-features --features log,cron"
 local: build-for
