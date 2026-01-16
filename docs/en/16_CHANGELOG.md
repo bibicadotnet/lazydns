@@ -2,6 +2,17 @@
 
 This file contains high-level release notes and migration guidance.
 
+## Release v0.2.70 - 2026-01-16
+
+Short: Grafana dashboard enhancements with cache hit rate visualizations.
+
+- added DNS cache hit rate time-series graph to Grafana dashboard for real-time cache performance monitoring
+- implemented cgroup memory statistics reader for container-aware metrics.
+- added memory metrics collection from /proc and cgroup, exposing them as Prometheus gauges.
+- enhanced metrics visualization capabilities for better cache performance analysis
+- change admin port to 8000, metrics to 8001 by default.
+
+
 ## Release v0.2.63 - 2026-01-12
 
 Short: Patch fixing logging/rotation compatibility and small rotation improvements.

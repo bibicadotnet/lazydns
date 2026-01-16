@@ -1,0 +1,229 @@
+# Prometheus Alert Rules for lazydns Memory Metrics
+
+groups:
+  - name: lazydns_memory
+    interval: 30s
+    rules:
+      # ============================================================================
+      # High Memory Usage Alerts (Container-aware)
+      # ============================================================================
+
+      - alert: LazyDNSHighMemoryUsage
+        expr: |
+          (lazydns_process_cgroup_memory_bytes / lazydns_process_cgroup_memory_limit_bytes) > 0.85
+          and
+          lazydns_process_cgroup_memory_limit_bytes > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: lazydns
+          category: memory
+        annotations:
+          summary: "lazydns high memory usage (cgroup)"
+          description: |
+            lazydns is using {{ $value | humanizePercentage }} of its cgroup memory limit.
+            Current: {{ with query "lazydns_process_cgroup_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            Limit: {{ with query "lazydns_process_cgroup_memory_limit_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            Consider scaling horizontally or increasing memory limits.
+
+      - alert: LazyDNSMemoryNearLimit
+        expr: |
+          (lazydns_process_cgroup_memory_bytes / lazydns_process_cgroup_memory_limit_bytes) > 0.95
+          and
+          lazydns_process_cgroup_memory_limit_bytes > 0
+        for: 2m
+        labels:
+          severity: critical
+          component: lazydns
+          category: memory
+        annotations:
+          summary: "lazydns memory near limit (cgroup)"
+          description: |
+            CRITICAL: lazydns is using {{ $value | humanizePercentage }} of its cgroup memory limit!
+            Current: {{ with query "lazydns_process_cgroup_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            Limit: {{ with query "lazydns_process_cgroup_memory_limit_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            Immediate action required: increase memory limit or reduce load.
+
+      # ============================================================================
+      # Sustained Memory Growth Alerts (Leak Detection)
+      # ============================================================================
+
+      - alert: LazyDNSMemoryLeakSuspected
+        expr: |
+          rate(lazydns_process_resident_memory_bytes[1h]) > 1048576
+        for: 6h
+        labels:
+          severity: warning
+          component: lazydns
+          category: memory
+        annotations:
+          summary: "lazydns possible memory leak detected"
+          description: |
+            RSS is growing at {{ $value | humanize }}B/s (sustained over 6 hours).
+            This may indicate a memory leak or cache misconfiguration.
+            Current RSS: {{ with query "lazydns_process_resident_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            Investigate cache size limits and plugin memory usage.
+
+      - alert: LazyDNSCgroupMemoryLeakSuspected
+        expr: |
+          rate(lazydns_process_cgroup_memory_bytes[2h]) > 524288
+          and
+          lazydns_process_cgroup_memory_limit_bytes > 0
+        for: 8h
+        labels:
+          severity: warning
+          component: lazydns
+          category: memory
+        annotations:
+          summary: "lazydns cgroup memory growing steadily"
+          description: |
+            cgroup memory usage is growing at {{ $value | humanize }}B/s (sustained over 8 hours).
+            Current: {{ with query "lazydns_process_cgroup_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            Consider investigating for memory leaks or adjusting cache configuration.
+
+      # ============================================================================
+      # Absolute Memory Thresholds (Bare-metal/Non-container)
+      # ============================================================================
+
+      - alert: LazyDNSHighRSS
+        expr: lazydns_process_resident_memory_bytes > 2147483648  # 2GB
+        for: 10m
+        labels:
+          severity: warning
+          component: lazydns
+          category: memory
+        annotations:
+          summary: "lazydns high RSS usage"
+          description: |
+            Resident memory (RSS) is {{ $value | humanize }}B (> 2GB for 10 minutes).
+            VMS: {{ with query "lazydns_process_virtual_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            Review cache configuration and query load.
+
+      - alert: LazyDNSVeryHighRSS
+        expr: lazydns_process_resident_memory_bytes > 4294967296  # 4GB
+        for: 5m
+        labels:
+          severity: critical
+          component: lazydns
+          category: memory
+        annotations:
+          summary: "lazydns very high RSS usage"
+          description: |
+            CRITICAL: Resident memory (RSS) is {{ $value | humanize }}B (> 4GB)!
+            VMS: {{ with query "lazydns_process_virtual_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            Immediate investigation required.
+
+      # ============================================================================
+      # Virtual Memory Alerts (Swap/Overcommit Detection)
+      # ============================================================================
+
+      - alert: LazyDNSHighVirtualMemory
+        expr: |
+          lazydns_process_virtual_memory_bytes / lazydns_process_resident_memory_bytes > 3
+          and
+          lazydns_process_resident_memory_bytes > 536870912  # Only alert if RSS > 512MB
+        for: 15m
+        labels:
+          severity: info
+          component: lazydns
+          category: memory
+        annotations:
+          summary: "lazydns high virtual memory ratio"
+          description: |
+            Virtual memory is {{ $value }}x larger than resident memory.
+            VMS: {{ with query "lazydns_process_virtual_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            RSS: {{ with query "lazydns_process_resident_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            This may indicate excessive memory mapping or swap usage.
+
+      # ============================================================================
+      # Container OOM Risk Alerts
+      # ============================================================================
+
+      - alert: LazyDNSOOMRisk
+        expr: |
+          (lazydns_process_cgroup_memory_bytes / lazydns_process_cgroup_memory_limit_bytes) > 0.98
+          and
+          lazydns_process_cgroup_memory_limit_bytes > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: lazydns
+          category: memory
+        annotations:
+          summary: "lazydns at risk of OOM kill"
+          description: |
+            CRITICAL: Memory usage at {{ $value | humanizePercentage }} of limit!
+            Container may be killed by OOM killer imminently.
+            Current: {{ with query "lazydns_process_cgroup_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            Limit: {{ with query "lazydns_process_cgroup_memory_limit_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            IMMEDIATE ACTION REQUIRED.
+
+      # ============================================================================
+      # Memory Metrics Collection Health
+      # ============================================================================
+
+      - alert: LazyDNSMemoryMetricsStale
+        expr: |
+          time() - timestamp(lazydns_process_resident_memory_bytes) > 60
+        for: 2m
+        labels:
+          severity: warning
+          component: lazydns
+          category: monitoring
+        annotations:
+          summary: "lazydns memory metrics are stale"
+          description: |
+            Memory metrics have not been updated for {{ $value }}s.
+            Last update: {{ with query "timestamp(lazydns_process_resident_memory_bytes)" }}{{ . | first | value }}{{ end }}
+            Memory metrics collector may have crashed or been disabled.
+
+      # ============================================================================
+      # Correlation Alerts (Memory + Load)
+      # ============================================================================
+
+      - alert: LazyDNSMemoryGrowthUnderLoad
+        expr: |
+          rate(lazydns_process_resident_memory_bytes[10m]) > 5242880  # 5MB/s
+          and
+          rate(dns_queries_total[5m]) > 1000  # High query rate
+        for: 5m
+        labels:
+          severity: info
+          component: lazydns
+          category: performance
+        annotations:
+          summary: "lazydns memory growing rapidly under load"
+          description: |
+            Memory is growing at {{ $value | humanize }}B/s while handling {{ with query "rate(dns_queries_total[5m])" }}{{ . | first | value | humanize }} queries/s{{ end }}.
+            Current RSS: {{ with query "lazydns_process_resident_memory_bytes" }}{{ . | first | value | humanize }}B{{ end }}
+            This is expected under high load but should stabilize after cache warm-up.
+
+# ============================================================================
+# Recording Rules (Pre-computed Metrics)
+# ============================================================================
+
+  - name: lazydns_memory_derived
+    interval: 15s
+    rules:
+      # Memory utilization percentage (container)
+      - record: lazydns:memory:cgroup_utilization_percent
+        expr: |
+          (lazydns_process_cgroup_memory_bytes / lazydns_process_cgroup_memory_limit_bytes) * 100
+
+      # Memory available (container)
+      - record: lazydns:memory:cgroup_available_bytes
+        expr: |
+          lazydns_process_cgroup_memory_limit_bytes - lazydns_process_cgroup_memory_bytes
+
+      # Memory growth rate (5m)
+      - record: lazydns:memory:rss_growth_rate_5m
+        expr: rate(lazydns_process_resident_memory_bytes[5m])
+
+      # Memory growth rate (1h)
+      - record: lazydns:memory:rss_growth_rate_1h
+        expr: rate(lazydns_process_resident_memory_bytes[1h])
+
+      # VMS/RSS ratio
+      - record: lazydns:memory:vms_rss_ratio
+        expr: |
+          lazydns_process_virtual_memory_bytes / lazydns_process_resident_memory_bytes

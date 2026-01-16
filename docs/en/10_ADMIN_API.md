@@ -49,7 +49,7 @@ Enable the Admin API in your `config.yaml`:
 ```yaml
 admin:
   enabled: true
-  addr: "127.0.0.1:8080"
+  addr: "127.0.0.1:8000"
 ```
 
 ### Configuration Options
@@ -57,7 +57,7 @@ admin:
 | Option    | Type    | Default          | Description                  |
 | --------- | ------- | ---------------- | ---------------------------- |
 | `enabled` | boolean | `false`          | Enable/disable the admin API |
-| `addr`    | string  | `127.0.0.1:8080` | Listen address and port      |
+| `addr`    | string  | `127.0.0.1:8000` | Listen address and port      |
 
 ### Environment Variables
 
@@ -68,7 +68,7 @@ You can override the admin configuration using environment variables:
 export ADMIN_ENABLED=true
 
 # Set the listen address
-export ADMIN_ADDR=0.0.0.0:8080
+export ADMIN_ADDR=0.0.0.0:8000
 
 # Start the server
 lazydns
@@ -83,7 +83,7 @@ Supported boolean values for `ADMIN_ENABLED`: `true`, `1`, `yes` (case-insensiti
 ```yaml
 admin:
   enabled: true
-  addr: "127.0.0.1:8080"
+  addr: "127.0.0.1:8000"
 ```
 
 #### Internal Network
@@ -91,7 +91,7 @@ admin:
 ```yaml
 admin:
   enabled: true
-  addr: "192.168.1.100:8080"
+  addr: "192.168.1.100:8000"
 ```
 
 #### All Interfaces (Use with Caution)
@@ -99,7 +99,7 @@ admin:
 ```yaml
 admin:
   enabled: true
-  addr: "0.0.0.0:8080"
+  addr: "0.0.0.0:8000"
 ```
 
 ## Security Considerations
@@ -112,14 +112,14 @@ admin:
 
 ### Security Recommendations
 
-1. **Bind to Localhost**: Use `127.0.0.1:8080` (default) for single-machine setups
+1. **Bind to Localhost**: Use `127.0.0.1:8000` (default) for single-machine setups
 2. **Firewall Rules**: Restrict access via network-level firewall
 3. **Reverse Proxy with Auth**: Use a reverse proxy (nginx, HAProxy) with authentication:
    ```nginx
    location /api/ {
        auth_basic "Admin API";
        auth_basic_user_file /etc/nginx/.htpasswd;
-       proxy_pass http://127.0.0.1:8080;
+       proxy_pass http://127.0.0.1:8000;
    }
    ```
 4. **VPN/Private Network**: Run the server on a private network, access via VPN
@@ -140,7 +140,7 @@ server {
         auth_basic "Admin API";
         auth_basic_user_file /etc/nginx/.htpasswd;
 
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -158,7 +158,7 @@ Returns basic information about the server's operational status.
 #### Request
 
 ```bash
-curl http://127.0.0.1:8080/api/server/stats
+curl http://127.0.0.1:8000/api/server/stats
 ```
 
 #### Response
@@ -193,7 +193,7 @@ Retrieves detailed statistics about cache performance and utilization.
 #### Request
 
 ```bash
-curl http://127.0.0.1:8080/api/cache/stats
+curl http://127.0.0.1:8000/api/cache/stats
 ```
 
 #### Response
@@ -256,7 +256,7 @@ Perform control operations on the cache system.
 **Clear Cache**
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/cache/control \
+curl -X POST http://127.0.0.1:8000/api/cache/control \
   -H "Content-Type: application/json" \
   -d '{"action": "clear"}'
 ```
@@ -325,7 +325,7 @@ Reload configuration from a file and validate it. This is a **hot-reload** opera
 **With Custom Path**
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/config/reload \
+curl -X POST http://127.0.0.1:8000/api/config/reload \
   -H "Content-Type: application/json" \
   -d '{"path": "/etc/lazydns/config.yaml"}'
 ```
@@ -333,7 +333,7 @@ curl -X POST http://127.0.0.1:8080/api/config/reload \
 **With Default Path**
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/config/reload \
+curl -X POST http://127.0.0.1:8000/api/config/reload \
   -H "Content-Type: application/json" \
   -d '{"path": null}'
 ```
@@ -341,7 +341,7 @@ curl -X POST http://127.0.0.1:8080/api/config/reload \
 Or:
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/config/reload \
+curl -X POST http://127.0.0.1:8000/api/config/reload \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -418,25 +418,25 @@ curl -X POST http://127.0.0.1:8080/api/config/reload \
 #### Check if server is running
 
 ```bash
-curl -s http://127.0.0.1:8080/api/server/stats | jq .
+curl -s http://127.0.0.1:8000/api/server/stats | jq .
 ```
 
 #### Get cache statistics and parse with jq
 
 ```bash
-curl -s http://127.0.0.1:8080/api/cache/stats | jq .
+curl -s http://127.0.0.1:8000/api/cache/stats | jq .
 ```
 
 #### Get only the hit rate
 
 ```bash
-curl -s http://127.0.0.1:8080/api/cache/stats | jq .hit_rate
+curl -s http://127.0.0.1:8000/api/cache/stats | jq .hit_rate
 ```
 
 #### Clear cache and show result
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/api/cache/control \
+curl -s -X POST http://127.0.0.1:8000/api/cache/control \
   -H "Content-Type: application/json" \
   -d '{"action": "clear"}' | jq .
 ```
@@ -444,14 +444,14 @@ curl -s -X POST http://127.0.0.1:8080/api/cache/control \
 #### Monitor cache in real-time (every 5 seconds)
 
 ```bash
-watch -n 5 'curl -s http://127.0.0.1:8080/api/cache/stats | jq .'
+watch -n 5 'curl -s http://127.0.0.1:8000/api/cache/stats | jq .'
 ```
 
 #### Reload config with error checking
 
 ```bash
 response=$(curl -s -w "\n%{http_code}" -X POST \
-  http://127.0.0.1:8080/api/config/reload \
+  http://127.0.0.1:8000/api/config/reload \
   -H "Content-Type: application/json" \
   -d '{}')
 
@@ -507,11 +507,11 @@ For production monitoring, use both:
 ```yaml
 admin:
   enabled: true
-  addr: "127.0.0.1:8080"
+  addr: "127.0.0.1:8000"
 
 monitoring:
   enabled: true
-  addr: "127.0.0.1:9090"
+  addr: "127.0.0.1:8001"
 ```
 
 #### Example Prometheus Scrape Config
@@ -523,7 +523,7 @@ global:
 scrape_configs:
   - job_name: "lazydns"
     static_configs:
-      - targets: ["localhost:9090"]
+      - targets: ["localhost:8001"]
 ```
 
 ### Grafana Dashboards
@@ -594,7 +594,7 @@ Notes:
 For quick, on-demand verification you can cross-check Prometheus metrics against the Admin API snapshot:
 
 ```bash
-curl http://127.0.0.1:8080/api/cache/stats | jq .
+curl http://127.0.0.1:8000/api/cache/stats | jq .
 # compare size/hits/misses with Prometheus values for sanity checks
 ```
 
@@ -639,10 +639,10 @@ curl http://127.0.0.1:8080/api/cache/stats | jq .
 grep -A 2 'admin:' config.yaml
 
 # Check if port is listening
-netstat -tlnp | grep 8080
+netstat -tlnp | grep 8000
 
 # Check firewall
-sudo ufw allow 8080
+sudo ufw allow 8000
 ```
 
 ### 404 Not Found on Cache Endpoints
@@ -674,7 +674,7 @@ plugins:
 **Solution**:
 
 - Clear cache during low-traffic periods
-- Monitor cache hit rate before clearing: `curl http://127.0.0.1:8080/api/cache/stats`
+- Monitor cache hit rate before clearing: `curl http://127.0.0.1:8000/api/cache/stats`
 - Use selective configuration reloads instead of full cache clear when possible
 
 ### Admin API Not Responding
@@ -685,7 +685,7 @@ plugins:
 
 ```bash
 # Test connectivity
-timeout 5 curl -v http://127.0.0.1:8080/api/server/stats
+timeout 5 curl -v http://127.0.0.1:8000/api/server/stats
 
 # Check server logs
 tail -f /var/log/lazydns/main.log
@@ -703,5 +703,5 @@ If you see mojibake (garbled characters) in responses, it's likely a terminal en
 ```bash
 # Force UTF-8
 export LANG=en_US.UTF-8
-curl http://127.0.0.1:8080/api/cache/stats | jq .
+curl http://127.0.0.1:8000/api/cache/stats | jq .
 ```

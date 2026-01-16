@@ -8,7 +8,7 @@
 #   --name lazydns \
 #   -p 53:53/udp -p 53:53/tcp \
 #   -p 853:853/tcp -p 443:443/tcp \
-#   -p 784:784/tcp -p 8080:8080/tcp -p 9090:9090/tcp \
+#   -p 784:784/tcp -p 8000:8000/tcp -p 8001:8001/tcp \
 #   -e TZ=Asia/Shanghai \
 #   -v /path/to/config:/etc/lazydns \
 #   lazywalker/lazydns:latest
@@ -51,19 +51,19 @@ ARG TZ=Asia/Shanghai
 RUN echo "$TZ" > /etc/timezone
 
 # Prepare application files
-ADD config.yaml /app/config.yaml
-RUN sed -i 's/5354/53/g' /app/config.yaml || true
-RUN sed -i 's/8443/443/g' /app/config.yaml || true
-RUN sed -i 's/8853/853/g' /app/config.yaml || true
-RUN sed -i 's/8784/784/g' /app/config.yaml || true
-
+RUN mkdir -p /etc/lazydns
+ADD config.yaml /etc/lazydns/config.yaml
+RUN sed -i 's/5354/53/g' /etc/lazydns/config.yaml || true
+RUN sed -i 's/8443/443/g' /etc/lazydns/config.yaml || true
+RUN sed -i 's/8853/853/g' /etc/lazydns/config.yaml || true
+RUN sed -i 's/8784/784/g' /etc/lazydns/config.yaml || true
 # Stage 2: Runtime (scratch - minimal)
 FROM scratch
 
 # Copy timezone and zoneinfo from the downloader stage
 COPY --from=downloader /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=downloader /etc/timezone /etc/timezone
-COPY --from=downloader /app /app
+COPY --from=downloader /etc/lazydns /etc/lazydns
 
 # Copy the binary
 COPY --from=downloader /lazydns /lazydns
@@ -84,16 +84,16 @@ EXPOSE 443/tcp
 EXPOSE 784/tcp
 
 # Expose HTTP management ports
-EXPOSE 8080/tcp
+EXPOSE 8000/tcp
 # Expose Prometheus metrics port
-EXPOSE 9090/tcp
+EXPOSE 8001/tcp
 
-WORKDIR /app
+WORKDIR /etc/lazydns
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD ["/lazydns", "--version"] || exit 1
 
 # Default command
-CMD ["/lazydns", "start", "-d", "/app"]
+CMD ["/lazydns", "start", "-d", "/etc/lazydns"]
 

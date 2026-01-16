@@ -1,0 +1,25 @@
+# Example configuration with memory metrics enabled
+
+# Monitoring server with memory metrics
+monitoring:
+  enabled: true
+  addr: "0.0.0.0:9091"
+  
+  # Memory metrics configuration (NEW)
+  memory_metrics:
+    enabled: true
+    interval_ms: 5000  # Sample every 5 seconds (default)
+
+# Logging configuration
+log:
+  level: info
+  console: true
+  format: text
+
+# Example plugins
+plugins:
+  - tag: example_forward
+    type: forward
+    args:
+      upstream:
+        - addr: "8.8.8.8:53"

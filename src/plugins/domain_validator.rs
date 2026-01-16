@@ -155,10 +155,12 @@ impl Plugin for DomainValidatorPlugin {
             .map(|q| q.qname().to_string())
             .unwrap_or_default();
 
-        // Check cache first (using read lock and peek to avoid write contention)
+        // Check cache first. Use write lock + get() so cache hits update LRU recency
+        // and hot items are kept in the cache. This trades some write contention for
+        // correct LRU behavior under heavy hit workloads.
         {
-            let cache = self.cache.read().await;
-            if let Some(result) = cache.peek(&qname) {
+            let mut cache = self.cache.write().await;
+            if let Some(result) = cache.get(&qname) {
                 #[cfg(feature = "metrics")]
                 {
                     crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_HITS_TOTAL.inc();
@@ -166,6 +168,12 @@ impl Plugin for DomainValidatorPlugin {
                     crate::metrics::DNS_DOMAIN_VALIDATION_DURATION_SECONDS.observe(duration);
                 }
                 return handle_result(*result, &qname, ctx);
+            } else {
+                // Cache miss - record it
+                #[cfg(feature = "metrics")]
+                {
+                    crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_MISSES_TOTAL.inc();
+                }
             }
         }
 
@@ -193,12 +201,22 @@ impl Plugin for DomainValidatorPlugin {
 
             #[cfg(feature = "metrics")]
             {
-                // LruCache::put returns `Some((k, v))` if an entry was evicted.
+                // Track cache size before put to detect evictions
+                let size_before = cache.len();
                 let evicted = cache.put(qname.clone(), result);
+                let size_after = cache.len();
+
+                // Increment eviction counter if:
+                // 1. put() explicitly returned Some (key override case), OR
+                // 2. cache was at capacity before and size didn't increase (new key evicted old)
                 if evicted.is_some() {
                     crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_EVICTIONS_TOTAL.inc();
+                } else if size_before >= 100 && size_after == size_before {
+                    // Cache was full, and size didn't increase = an eviction must have occurred
+                    crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_EVICTIONS_TOTAL.inc();
                 }
-                crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_SIZE.set(cache.len() as i64);
+
+                crate::metrics::DNS_DOMAIN_VALIDATION_CACHE_SIZE.set(size_after as i64);
             }
 
             #[cfg(not(feature = "metrics"))]

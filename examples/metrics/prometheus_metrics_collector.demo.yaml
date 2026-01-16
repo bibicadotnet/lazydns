@@ -18,14 +18,14 @@
 #   Build with metrics feature: cargo build --features metrics
 #
 # Usage:
-#   cargo run --features metrics -- -c examples/collector/prometheus_metrics_collector.demo.yaml -vv
+#   cargo run --features metrics -- -c examples/metrics/prometheus_metrics_collector.demo.yaml -vv
 #
 # Test with:
 #   dig @127.0.0.1 -p 5354 cloudflare.com A
 #   dig @127.0.0.1 -p 5354 google.com A
 #
 # View metrics:
-#   curl http://localhost:9090/metrics (if Prometheus is running)
+#   curl http://localhost:8001/metrics (if Prometheus is running)
 #   or access via the admin interface if configured
 #
 # Note: This demo uses an in-memory registry. For production use,
@@ -35,7 +35,7 @@
 metrics:
   # Enable monitoring server for Prometheus metrics and health checks
   enabled: true
-  # Listen address (default: 127.0.0.1:9090)
+  # Listen address (default: 127.0.0.1:8001)
   addr: ":9091"
 
 # Plugin execution flow

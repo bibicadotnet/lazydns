@@ -77,7 +77,7 @@ impl MonitoringServer {
     ///
     /// # Arguments
     ///
-    /// * `addr` - Address to bind to (e.g., "0.0.0.0:9090")
+    /// * `addr` - Address to bind to (e.g., "0.0.0.0:8001")
     ///
     /// # Example
     ///
@@ -85,7 +85,7 @@ impl MonitoringServer {
     /// use lazydns::server::monitoring::MonitoringServer;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let server = MonitoringServer::new("0.0.0.0:9090");
+    /// let server = MonitoringServer::new("0.0.0.0:8001");
     /// // server.run().await?;
     /// # Ok(())
     /// # }
@@ -316,14 +316,14 @@ mod tests {
 
     #[test]
     fn test_monitoring_server_creation() {
-        let server = MonitoringServer::new("127.0.0.1:9090");
-        assert_eq!(server.addr, "127.0.0.1:9090");
+        let server = MonitoringServer::new("127.0.0.1:8001");
+        assert_eq!(server.addr, "127.0.0.1:8001");
         assert_eq!(server.state.uptime_seconds(), 0);
     }
 
     #[test]
     fn test_monitoring_server_creation_with_string() {
-        let addr = "0.0.0.0:8080".to_string();
+        let addr = "0.0.0.0:8000".to_string();
         let server = MonitoringServer::new(addr.clone());
         assert_eq!(server.addr, addr);
     }
@@ -625,10 +625,10 @@ mod tests {
     async fn test_monitoring_server_bind_address_validation() {
         // Test that server creation accepts various valid address formats
         let valid_addresses = vec![
-            "127.0.0.1:9090",
-            "0.0.0.0:8080",
+            "127.0.0.1:8001",
+            "0.0.0.0:8000",
             "localhost:3000",
-            "[::1]:9090", // IPv6
+            "[::1]:8001", // IPv6
         ];
 
         for addr in valid_addresses {

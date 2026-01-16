@@ -307,7 +307,7 @@ pub struct AdminConfig {
     #[serde(default = "default_admin_enabled")]
     pub enabled: bool,
 
-    /// Listen address for admin API (e.g., "127.0.0.1:8080")
+    /// Listen address for admin API (e.g., "127.0.0.1:8000")
     #[serde(default = "default_admin_addr")]
     pub addr: String,
 }
@@ -317,7 +317,7 @@ fn default_admin_enabled() -> bool {
 }
 
 fn default_admin_addr() -> String {
-    "127.0.0.1:8080".to_string()
+    "127.0.0.1:8000".to_string()
 }
 
 impl Default for AdminConfig {
@@ -336,9 +336,42 @@ pub struct MonitoringConfig {
     #[serde(default = "default_monitoring_enabled")]
     pub enabled: bool,
 
-    /// Listen address for monitoring server (e.g., "127.0.0.1:9090")
+    /// Listen address for monitoring server (e.g., "127.0.0.1:8001")
     #[serde(default = "default_monitoring_addr")]
     pub addr: String,
+
+    /// Memory metrics collection configuration
+    #[serde(default)]
+    pub memory_metrics: MemoryMetricsConfig,
+}
+
+/// Memory metrics collection configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryMetricsConfig {
+    /// Enable memory metrics collection
+    #[serde(default = "default_memory_metrics_enabled")]
+    pub enabled: bool,
+
+    /// Sampling interval in milliseconds
+    #[serde(default = "default_memory_metrics_interval_ms")]
+    pub interval_ms: u64,
+}
+
+fn default_memory_metrics_enabled() -> bool {
+    true
+}
+
+fn default_memory_metrics_interval_ms() -> u64 {
+    5000 // 5 seconds
+}
+
+impl Default for MemoryMetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_memory_metrics_enabled(),
+            interval_ms: default_memory_metrics_interval_ms(),
+        }
+    }
 }
 
 fn default_monitoring_enabled() -> bool {
@@ -346,7 +379,7 @@ fn default_monitoring_enabled() -> bool {
 }
 
 fn default_monitoring_addr() -> String {
-    "127.0.0.1:9090".to_string()
+    "127.0.0.1:8001".to_string()
 }
 
 impl Default for MonitoringConfig {
@@ -354,6 +387,7 @@ impl Default for MonitoringConfig {
         Self {
             enabled: default_monitoring_enabled(),
             addr: default_monitoring_addr(),
+            memory_metrics: MemoryMetricsConfig::default(),
         }
     }
 }

@@ -693,7 +693,7 @@ impl ServerLauncher {
     /// # Configuration Parameters
     ///
     /// - `enabled`: Whether to start the admin server (default: false)
-    /// - `addr`: Listen address (default: "127.0.0.1:8080")
+    /// - `addr`: Listen address (default: "127.0.0.1:8000")
     ///
     /// # Behavior
     ///
@@ -708,7 +708,7 @@ impl ServerLauncher {
     /// ```yaml
     /// admin:
     ///   enabled: true
-    ///   addr: "127.0.0.1:8080"
+    ///   addr: "127.0.0.1:8000"
     /// ```
     #[cfg(feature = "admin")]
     pub async fn launch_admin_server(
@@ -761,6 +761,26 @@ impl ServerLauncher {
         info!("Starting monitoring server on {}", addr);
 
         let server = MonitoringServer::new(addr);
+
+        // Start memory metrics collector if configured in monitoring section
+        // This ensures the collector runs whenever the monitoring server is started
+        // and keeps collector lifecycle tied to monitoring behavior.
+        let mem_cfg = {
+            let cfg_read = config.read().await;
+            cfg_read.monitoring.memory_metrics.clone()
+        };
+        if mem_cfg.enabled {
+            info!(
+                "Starting memory metrics collector (interval: {}ms)",
+                mem_cfg.interval_ms
+            );
+            let mem_config = crate::metrics::memory::MemoryMetricsConfig {
+                enabled: mem_cfg.enabled,
+                interval_ms: mem_cfg.interval_ms,
+            };
+            let _memory_handle = crate::metrics::memory::start_memory_metrics_collector(mem_config);
+            // Note: handle is dropped but task continues running in background
+        }
 
         let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
 
@@ -854,10 +874,10 @@ mod tests {
     #[test]
     fn test_normalize_listen_addr() {
         assert_eq!(normalize_listen_addr(":5353"), "0.0.0.0:5353");
-        assert_eq!(normalize_listen_addr("127.0.0.1:8080"), "127.0.0.1:8080");
+        assert_eq!(normalize_listen_addr("127.0.0.1:8000"), "127.0.0.1:8000");
         assert_eq!(normalize_listen_addr("0.0.0.0:53"), "0.0.0.0:53");
         assert_eq!(normalize_listen_addr("[::1]:53"), "[::1]:53");
-        assert_eq!(normalize_listen_addr("localhost:8080"), "localhost:8080");
+        assert_eq!(normalize_listen_addr("localhost:8000"), "localhost:8000");
     }
 
     /// Test IPv6 address parsing
@@ -889,11 +909,11 @@ mod tests {
         let mut args = HashMap::new();
         args.insert(
             "listen".to_string(),
-            Value::String("127.0.0.1:8080".to_string()),
+            Value::String("127.0.0.1:8000".to_string()),
         );
 
         let addr = launcher.parse_listen_addr(&args, "0.0.0.0:53");
-        assert_eq!(addr, Some("127.0.0.1:8080".parse().unwrap()));
+        assert_eq!(addr, Some("127.0.0.1:8000".parse().unwrap()));
     }
 
     /// Test non-string entry value handling
@@ -987,6 +1007,14 @@ mod tests {
             // Wait for server to signal startup (should complete quickly)
             let started = tokio::time::timeout(std::time::Duration::from_secs(2), startup_rx).await;
             assert!(started.is_ok());
+
+            // Allow a few sampling intervals to elapse so the collector can register
+            // and populate metrics in the global registry.
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+            let mfs = crate::metrics::METRICS_REGISTRY.gather();
+            let names: Vec<_> = mfs.iter().map(|m| m.name()).collect();
+            assert!(names.contains(&"lazydns_process_resident_memory_bytes"));
         } else {
             panic!("Expected monitoring server to be launched");
         }
@@ -1185,10 +1213,10 @@ mod tests {
         let launcher = ServerLauncher::new(registry);
 
         let mut args = HashMap::new();
-        args.insert("listen".to_string(), Value::String(":8080".to_string()));
+        args.insert("listen".to_string(), Value::String(":8000".to_string()));
 
         let addr = launcher.parse_listen_addr(&args, "0.0.0.0:53");
-        assert_eq!(addr, Some("0.0.0.0:8080".parse().unwrap()));
+        assert_eq!(addr, Some("0.0.0.0:8000".parse().unwrap()));
     }
 
     /// Test default address fallback

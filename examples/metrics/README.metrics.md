@@ -16,7 +16,7 @@ A simple metrics collector that stores statistics in memory.
 
 **Usage:**
 ```bash
-cargo run -- -c examples/collector/metrics_collector.demo.yaml -vv
+cargo run -- -c examples/metrics/metrics_collector.demo.yaml -vv
 ```
 
 **Test:**
@@ -40,7 +40,7 @@ A Prometheus-compatible metrics collector that exposes metrics in Prometheus for
 
 **Usage:**
 ```bash
-cargo run --features metrics -- -c examples/collector/prometheus_metrics_collector.demo.yaml -vv
+cargo run --features metrics -- -c examples/metrics/prometheus_metrics_collector.demo.yaml -vv
 ```
 
 **Test:**

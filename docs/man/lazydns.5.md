@@ -38,7 +38,7 @@ configuration for the project version you run.
   ```yaml
   admin:
     enabled: true
-    addr: "127.0.0.1:8080"
+    addr: "127.0.0.1:8000"
   ```
 
 - `metrics` (mapping)
@@ -47,7 +47,7 @@ configuration for the project version you run.
   ```yaml
   metrics:
     enabled: true
-    addr: "127.0.0.1:9090"
+    addr: "127.0.0.1:8001"
   ```
 
 - `plugins` (sequence)
@@ -81,11 +81,11 @@ log:
 # Enable admin API and metrics
 admin:
   enabled: true
-  addr: "127.0.0.1:8080"
+  addr: "127.0.0.1:8000"
 
 metrics:
   enabled: true
-  addr: "127.0.0.1:9090"
+  addr: "127.0.0.1:8001"
 
 # Plugin list (each plugin is an object with `tag`, `type` and `args`)
 plugins:
