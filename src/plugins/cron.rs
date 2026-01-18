@@ -118,12 +118,23 @@ impl CronPlugin {
                         // compute next occurrence using cronexpr
                         // use system local time as the reference point
                         // build RFC3339 start time using `time` crate (local if available, otherwise UTC)
-                        let rfc3339 = OffsetDateTime::now_local()
-                            .unwrap_or_else(|_| OffsetDateTime::now_utc())
-                            .format(&Rfc3339)
-                            .unwrap_or_else(|_| {
-                                OffsetDateTime::now_utc().format(&Rfc3339).unwrap()
-                            });
+                        // Format current time as RFC3339, with fallback to UTC
+                        let now = OffsetDateTime::now_local()
+                            .unwrap_or_else(|_| OffsetDateTime::now_utc());
+                        let rfc3339 = now.format(&Rfc3339).unwrap_or_else(|e| {
+                            // This should never fail for valid OffsetDateTime, but handle gracefully
+                            warn!(job=%name, error=%e, "Failed to format time, using fallback");
+                            // Use a reasonable ISO format fallback
+                            format!(
+                                "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+                                now.year(),
+                                now.month() as u8,
+                                now.day(),
+                                now.hour(),
+                                now.minute(),
+                                now.second()
+                            )
+                        });
                         match ct.find_next(rfc3339.as_str()) {
                             Ok(mt) => {
                                 // mt to string may include zone suffix like "[Asia/Shanghai]"; strip it
@@ -231,7 +242,13 @@ impl CronPlugin {
             }
         });
 
-        let mut jobs = self.jobs.lock().unwrap();
+        // Lock the jobs mutex. If the lock is poisoned, it indicates a serious bug
+        // where a thread panicked while holding the lock - this should never happen
+        // in production and warrants a panic.
+        let mut jobs = self
+            .jobs
+            .lock()
+            .expect("CronPlugin jobs mutex poisoned - a thread panicked while holding the lock");
         jobs.push(JobHandle {
             _name: name,
             _stop_tx: job_stop_tx,
@@ -367,7 +384,14 @@ impl Shutdown for CronPlugin {
         let _ = self.stop_tx.send(true);
         // Take the job handles out of the mutex so we don't hold the
         // `MutexGuard` across an `.await` (the guard is not `Send`).
-        let jobs = std::mem::take(&mut *self.jobs.lock().unwrap());
+        // If the lock is poisoned, we still try to shut down gracefully.
+        let jobs = match self.jobs.lock() {
+            Ok(mut guard) => std::mem::take(&mut *guard),
+            Err(poisoned) => {
+                warn!("CronPlugin jobs mutex was poisoned, attempting recovery");
+                std::mem::take(&mut *poisoned.into_inner())
+            }
+        };
         for job in jobs {
             let _ = job.handle.await;
         }

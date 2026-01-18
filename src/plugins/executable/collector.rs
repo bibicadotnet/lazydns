@@ -64,7 +64,10 @@ impl MetricsCollectorPlugin {
     /// Calculate queries per second since last reset.
     pub fn queries_per_second(&self) -> f64 {
         let count = self.count() as f64;
-        let last_reset = self.last_reset.read().unwrap();
+        let last_reset = self
+            .last_reset
+            .read()
+            .expect("MetricsCollectorPlugin last_reset RwLock poisoned");
         let duration = last_reset.elapsed().as_secs_f64();
 
         if duration > 0.0 {
@@ -90,12 +93,19 @@ impl MetricsCollectorPlugin {
     pub fn reset(&self) {
         self.counter.store(0, Ordering::SeqCst);
         self.total_latency_ms.store(0, Ordering::SeqCst);
-        *self.last_reset.write().unwrap() = std::time::Instant::now();
+        *self
+            .last_reset
+            .write()
+            .expect("MetricsCollectorPlugin last_reset RwLock poisoned") =
+            std::time::Instant::now();
     }
 
     /// Get time since metrics were last reset.
     pub fn time_since_reset(&self) -> std::time::Duration {
-        self.last_reset.read().unwrap().elapsed()
+        self.last_reset
+            .read()
+            .expect("MetricsCollectorPlugin last_reset RwLock poisoned")
+            .elapsed()
     }
 }
 

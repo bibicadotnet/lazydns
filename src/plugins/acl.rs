@@ -11,6 +11,9 @@ use ipnet::IpNet;
 use std::net::IpAddr;
 use tracing::{debug, warn};
 
+/// Default localhost IP address for fallback when client IP is missing
+const LOCALHOST_IPV4: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1));
+
 /// ACL action to take when a rule matches
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AclAction {
@@ -139,12 +142,12 @@ impl QueryAclPlugin {
 #[async_trait]
 impl Plugin for QueryAclPlugin {
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        // Get client IP from metadata
+        // Get client IP from metadata, fall back to localhost constant
         let client_ip: IpAddr = match ctx.get_metadata::<IpAddr>("client_ip") {
             Some(ip) => *ip,
             None => {
                 warn!("No client IP in metadata, using localhost");
-                "127.0.0.1".parse().unwrap()
+                LOCALHOST_IPV4
             }
         };
 
@@ -194,16 +197,19 @@ impl Plugin for QueryAclPlugin {
                 "allow" => AclAction::Allow,
                 "deny" => AclAction::Deny,
                 _ => {
-                    return Err(crate::Error::Config(format!(
-                        "Invalid default action '{}', expected 'allow' or 'deny'",
-                        action_str
-                    )));
+                    return Err(crate::Error::InvalidConfigValue {
+                        field: "default".to_string(),
+                        value: action_str.clone(),
+                        reason: "expected 'allow' or 'deny'".to_string(),
+                    });
                 }
             },
             Some(_) => {
-                return Err(crate::Error::Config(
-                    "default action must be a string".to_string(),
-                ));
+                return Err(crate::Error::InvalidConfigValue {
+                    field: "default".to_string(),
+                    value: "(non-string)".to_string(),
+                    reason: "must be a string".to_string(),
+                });
             }
             None => AclAction::Deny, // Default to deny
         };
@@ -218,33 +224,44 @@ impl Plugin for QueryAclPlugin {
                     let network_str = match rule_map.get(Value::String("network".to_string())) {
                         Some(Value::String(s)) => s.clone(),
                         Some(_) => {
-                            return Err(crate::Error::Config(
-                                "rule network must be a string".to_string(),
-                            ));
+                            return Err(crate::Error::InvalidConfigValue {
+                                field: "network".to_string(),
+                                value: "(non-string)".to_string(),
+                                reason: "must be a string".to_string(),
+                            });
                         }
                         None => {
-                            return Err(crate::Error::Config(
-                                "rule must have a network field".to_string(),
-                            ));
+                            return Err(crate::Error::MissingConfigField {
+                                field: "network".to_string(),
+                                context: "acl rule".to_string(),
+                            });
                         }
                     };
 
-                    let network: IpNet = network_str.parse().map_err(|e| {
-                        crate::Error::Config(format!("Invalid network '{}': {}", network_str, e))
-                    })?;
+                    let network: IpNet =
+                        network_str
+                            .parse()
+                            .map_err(|e| crate::Error::InvalidConfigValue {
+                                field: "network".to_string(),
+                                value: network_str.clone(),
+                                reason: format!("{}", e),
+                            })?;
 
                     // Parse action
                     let action_str = match rule_map.get(Value::String("action".to_string())) {
                         Some(Value::String(s)) => s.clone(),
                         Some(_) => {
-                            return Err(crate::Error::Config(
-                                "rule action must be a string".to_string(),
-                            ));
+                            return Err(crate::Error::InvalidConfigValue {
+                                field: "action".to_string(),
+                                value: "(non-string)".to_string(),
+                                reason: "must be a string".to_string(),
+                            });
                         }
                         None => {
-                            return Err(crate::Error::Config(
-                                "rule must have an action field".to_string(),
-                            ));
+                            return Err(crate::Error::MissingConfigField {
+                                field: "action".to_string(),
+                                context: "acl rule".to_string(),
+                            });
                         }
                     };
 
@@ -252,10 +269,11 @@ impl Plugin for QueryAclPlugin {
                         "allow" => AclAction::Allow,
                         "deny" => AclAction::Deny,
                         _ => {
-                            return Err(crate::Error::Config(format!(
-                                "Invalid rule action '{}', expected 'allow' or 'deny'",
-                                action_str
-                            )));
+                            return Err(crate::Error::InvalidConfigValue {
+                                field: "action".to_string(),
+                                value: action_str.clone(),
+                                reason: "expected 'allow' or 'deny'".to_string(),
+                            });
                         }
                     };
 

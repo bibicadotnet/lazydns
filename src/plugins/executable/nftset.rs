@@ -58,10 +58,11 @@ impl NftSetPlugin {
     pub fn quick_setup(s: &str) -> Result<Self> {
         let fs: Vec<&str> = s.split_whitespace().collect();
         if fs.len() > 2 {
-            return Err(crate::Error::Other(format!(
-                "expect no more than 2 fields, got {}",
-                fs.len()
-            )));
+            return Err(crate::Error::InvalidConfigValue {
+                field: "nftset".to_string(),
+                value: s.to_string(),
+                reason: format!("expect no more than 2 fields, got {}", fs.len()),
+            });
         }
         let mut args = NftSetArgs {
             ipv4: None,
@@ -70,14 +71,19 @@ impl NftSetPlugin {
         for args_str in fs {
             let ss: Vec<&str> = args_str.split(',').collect();
             if ss.len() != 5 {
-                return Err(crate::Error::Other(format!(
-                    "invalid args, expect 5 fields, got {}",
-                    ss.len()
-                )));
+                return Err(crate::Error::InvalidConfigValue {
+                    field: "nftset".to_string(),
+                    value: args_str.to_string(),
+                    reason: format!("expect 5 comma-separated fields, got {}", ss.len()),
+                });
             }
             let m: i32 = ss[4]
                 .parse()
-                .map_err(|e| crate::Error::Other(format!("invalid mask, {}", e)))?;
+                .map_err(|e| crate::Error::InvalidConfigValue {
+                    field: "mask".to_string(),
+                    value: ss[4].to_string(),
+                    reason: format!("{}", e),
+                })?;
             let sa = SetArgs {
                 table_family: Some(ss[0].to_string()),
                 table: Some(ss[1].to_string()),
@@ -87,7 +93,11 @@ impl NftSetPlugin {
             match ss[3] {
                 "ipv4_addr" => args.ipv4 = Some(sa),
                 "ipv6_addr" => args.ipv6 = Some(sa),
-                other => return Err(crate::Error::Other(format!("invalid ip type, {}", other))),
+                other => {
+                    return Err(crate::Error::InvalidAddress {
+                        input: format!("unsupported ip type: {}", other),
+                    });
+                }
             }
         }
         Ok(NftSetPlugin::new(args))

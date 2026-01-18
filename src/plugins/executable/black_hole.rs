@@ -32,7 +32,9 @@ impl BlackholePlugin {
             } else if let Ok(a6) = s.parse::<Ipv6Addr>() {
                 ipv6.push(a6);
             } else {
-                return Err(crate::Error::Other(format!("invalid ip: {}", s)));
+                return Err(crate::Error::InvalidAddress {
+                    input: s.to_string(),
+                });
             }
         }
         Ok(Self { ipv4, ipv6 })

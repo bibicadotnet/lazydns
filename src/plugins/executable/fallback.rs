@@ -73,12 +73,18 @@ impl FallbackPlugin {
 
     /// Resolve pending child names using provided plugin registry map
     pub fn resolve_children(&self, registry: &std::collections::HashMap<String, Arc<dyn Plugin>>) {
-        let mut pending = self.pending.write().unwrap();
+        let mut pending = self
+            .pending
+            .write()
+            .expect("FallbackPlugin pending RwLock poisoned");
         if pending.is_empty() {
             return;
         }
 
-        let mut resolved = self.plugins.write().unwrap();
+        let mut resolved = self
+            .plugins
+            .write()
+            .expect("FallbackPlugin plugins RwLock poisoned");
 
         for name in pending.drain(..) {
             if let Some(p) = registry.get(&name).cloned() {
@@ -92,12 +98,18 @@ impl FallbackPlugin {
 
     /// Return how many resolved child plugins there are (public helper)
     pub fn resolved_child_count(&self) -> usize {
-        self.plugins.read().unwrap().len()
+        self.plugins
+            .read()
+            .expect("FallbackPlugin plugins RwLock poisoned")
+            .len()
     }
 
     /// Return how many pending child names remain (public helper)
     pub fn pending_child_count(&self) -> usize {
-        self.pending.read().unwrap().len()
+        self.pending
+            .read()
+            .expect("FallbackPlugin pending RwLock poisoned")
+            .len()
     }
 
     /// Check if we should try the next plugin
@@ -121,8 +133,8 @@ impl FallbackPlugin {
 
 impl fmt::Debug for FallbackPlugin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let resolved_count = self.plugins.read().unwrap().len();
-        let pending_count = self.pending.read().unwrap().len();
+        let resolved_count = self.plugins.read().map(|g| g.len()).unwrap_or(0);
+        let pending_count = self.pending.read().map(|g| g.len()).unwrap_or(0);
         f.debug_struct("FallbackPlugin")
             .field("resolved_children", &resolved_count)
             .field("pending_children", &pending_count)
@@ -142,7 +154,12 @@ impl Plugin for FallbackPlugin {
     }
 
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
-        let plugins = { self.plugins.read().unwrap().clone() };
+        let plugins = {
+            self.plugins
+                .read()
+                .expect("FallbackPlugin plugins RwLock poisoned")
+                .clone()
+        };
 
         debug!("Fallback: plugin count = {}", plugins.len());
         debug!(

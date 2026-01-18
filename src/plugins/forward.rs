@@ -282,14 +282,20 @@ impl Forward {
             }
             Ok(Err(e)) => {
                 warn!("Error receiving from upstream {}: {}", upstream_addr, e);
-                return Err(crate::Error::Other(e.to_string()));
+                return Err(crate::Error::Connection {
+                    address: upstream_addr.to_string(),
+                    reason: e.to_string(),
+                });
             }
             Err(_) => {
                 warn!(
                     "Timeout waiting for response from upstream {}",
                     upstream_addr
                 );
-                return Err(crate::Error::Other("Query timeout".to_string()));
+                return Err(crate::Error::UpstreamTimeout {
+                    upstream: upstream_addr.to_string(),
+                    timeout_ms: self.timeout.as_millis() as u64,
+                });
             }
         };
 

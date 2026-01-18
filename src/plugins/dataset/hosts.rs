@@ -120,10 +120,10 @@ impl Hosts {
             }
 
             if ips.is_empty() {
-                return Err(Error::Config(format!(
-                    "No valid IP found in hosts line: {}",
-                    line
-                )));
+                return Err(Error::FileParse {
+                    path: "hosts".to_string(),
+                    reason: format!("No valid IP found in line: {}", line),
+                });
             }
 
             for &hostname in &hostnames {
@@ -146,8 +146,10 @@ impl Hosts {
 
     #[allow(dead_code)]
     pub fn load_file(&self, path: &str) -> Result<()> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| Error::Config(format!("Failed to read hosts file '{}': {}", path, e)))?;
+        let content = std::fs::read_to_string(path).map_err(|e| Error::FileParse {
+            path: path.to_string(),
+            reason: format!("Failed to read: {}", e),
+        })?;
         self.load_from_string(&content)
     }
 }

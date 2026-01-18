@@ -33,17 +33,18 @@ impl ArbitraryPlugin {
                 if let Some(rr) = Self::parse_rr_line(&line) {
                     m.entry(rr.name().to_string()).or_default().push(rr);
                 } else {
-                    return Err(crate::Error::Other(format!(
-                        "failed to parse rule #{}: {}",
-                        i, line
-                    )));
+                    return Err(crate::Error::FileParse {
+                        path: format!("inline rule #{}", i),
+                        reason: format!("failed to parse: {}", line),
+                    });
                 }
             }
         }
         if let Some(files) = args.files {
             for file in files {
-                let b = fs::read_to_string(&file).map_err(|e| {
-                    crate::Error::Other(format!("failed to read file {}: {}", file, e))
+                let b = fs::read_to_string(&file).map_err(|e| crate::Error::FileParse {
+                    path: file.clone(),
+                    reason: format!("failed to read: {}", e),
                 })?;
                 for (i, line) in b.lines().enumerate() {
                     let line = line.trim();
@@ -53,11 +54,10 @@ impl ArbitraryPlugin {
                     if let Some(rr) = Self::parse_rr_line(line) {
                         m.entry(rr.name().to_string()).or_default().push(rr);
                     } else {
-                        return Err(crate::Error::Other(format!(
-                            "failed to parse rr in file {} line {}",
-                            file,
-                            i + 1
-                        )));
+                        return Err(crate::Error::FileParse {
+                            path: file.clone(),
+                            reason: format!("failed to parse line {}", i + 1),
+                        });
                     }
                 }
             }
