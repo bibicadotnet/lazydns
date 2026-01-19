@@ -45,3 +45,48 @@ impl From<EnqueueError> for Error {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_enqueue_error_display() {
+        let already_processing = EnqueueError::AlreadyProcessing;
+        assert_eq!(format!("{}", already_processing), "Already processing");
+
+        let queue_full = EnqueueError::QueueFull;
+        assert_eq!(format!("{}", queue_full), "Queue full");
+
+        let closed = EnqueueError::Closed;
+        assert_eq!(format!("{}", closed), "Coordinator closed");
+    }
+
+    #[test]
+    fn test_enqueue_error_debug() {
+        let error = EnqueueError::AlreadyProcessing;
+        let debug_str = format!("{:?}", error);
+        assert!(debug_str.contains("AlreadyProcessing"));
+    }
+
+    #[test]
+    fn test_enqueue_error_to_lazydns_error() {
+        let error: Error = EnqueueError::AlreadyProcessing.into();
+        assert!(matches!(error, Error::Plugin(_)));
+
+        let error: Error = EnqueueError::QueueFull.into();
+        assert!(matches!(error, Error::Plugin(_)));
+
+        let error: Error = EnqueueError::Closed.into();
+        assert!(matches!(error, Error::Plugin(_)));
+    }
+
+    #[test]
+    fn test_enqueue_error_std_error() {
+        use std::error::Error as StdError;
+
+        let error = EnqueueError::AlreadyProcessing;
+        // Ensure it implements std::error::Error
+        let _: &dyn StdError = &error;
+    }
+}

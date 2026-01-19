@@ -169,6 +169,63 @@ mod tests {
     use super::*;
     use crate::dns::types::{RecordClass, RecordType};
 
+    #[test]
+    fn test_black_hole_new_ipv4_only() {
+        let plugin = BlackholePlugin::new_from_strs(["192.0.2.1", "192.0.2.2"]).unwrap();
+        assert_eq!(plugin.ipv4.len(), 2);
+        assert_eq!(plugin.ipv6.len(), 0);
+    }
+
+    #[test]
+    fn test_black_hole_new_ipv6_only() {
+        let plugin = BlackholePlugin::new_from_strs(["2001:db8::1", "2001:db8::2"]).unwrap();
+        assert_eq!(plugin.ipv4.len(), 0);
+        assert_eq!(plugin.ipv6.len(), 2);
+    }
+
+    #[test]
+    fn test_black_hole_new_mixed() {
+        let plugin = BlackholePlugin::new_from_strs(["192.0.2.1", "2001:db8::1"]).unwrap();
+        assert_eq!(plugin.ipv4.len(), 1);
+        assert_eq!(plugin.ipv6.len(), 1);
+    }
+
+    #[test]
+    fn test_black_hole_new_empty() {
+        let plugin = BlackholePlugin::new_from_strs(Vec::<String>::new()).unwrap();
+        assert_eq!(plugin.ipv4.len(), 0);
+        assert_eq!(plugin.ipv6.len(), 0);
+    }
+
+    #[test]
+    fn test_black_hole_new_invalid_ip() {
+        let result = BlackholePlugin::new_from_strs(["not-an-ip"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_black_hole_debug() {
+        let plugin = BlackholePlugin::new_from_strs(["1.2.3.4", "::1"]).unwrap();
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("BlackHolePlugin"));
+        assert!(debug_str.contains("ipv4_count"));
+        assert!(debug_str.contains("ipv6_count"));
+    }
+
+    #[test]
+    fn test_black_hole_name() {
+        let plugin = BlackholePlugin::new_from_strs(["0.0.0.0"]).unwrap();
+        assert_eq!(plugin.name(), "blackhole");
+    }
+
+    #[test]
+    fn test_black_hole_aliases() {
+        let aliases = BlackholePlugin::aliases();
+        assert!(aliases.contains(&"sinkhole"));
+        assert!(aliases.contains(&"black_hole"));
+        assert!(aliases.contains(&"null_dns"));
+    }
+
     #[tokio::test]
     async fn test_black_hole_a() {
         let plugin = BlackholePlugin::new_from_strs(["192.0.2.1"]).unwrap();
@@ -189,6 +246,81 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_black_hole_aaaa() {
+        let plugin = BlackholePlugin::new_from_strs(["2001:db8::1"]).unwrap();
+        let mut req = Message::new();
+        req.add_question(crate::dns::question::Question::new(
+            "example.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answer_count(), 1);
+        match resp.answers()[0].rdata() {
+            RData::AAAA(_) => {}
+            _ => panic!("expected AAAA"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_black_hole_multiple_answers() {
+        let plugin =
+            BlackholePlugin::new_from_strs(["192.0.2.1", "192.0.2.2", "192.0.2.3"]).unwrap();
+        let mut req = Message::new();
+        req.add_question(crate::dns::question::Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answer_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_black_hole_no_matching_type() {
+        let plugin = BlackholePlugin::new_from_strs(["192.0.2.1"]).unwrap(); // Only IPv4
+        let mut req = Message::new();
+        req.add_question(crate::dns::question::Question::new(
+            "example.com".to_string(),
+            RecordType::AAAA, // But query is for AAAA
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        // Should not set response
+        assert!(ctx.response().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_black_hole_no_questions() {
+        let plugin = BlackholePlugin::new_from_strs(["192.0.2.1"]).unwrap();
+        let req = Message::new(); // No questions
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        // Should not set response
+        assert!(ctx.response().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_black_hole_empty_config() {
+        let plugin = BlackholePlugin::new_from_strs(Vec::<String>::new()).unwrap();
+        let mut req = Message::new();
+        req.add_question(crate::dns::question::Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        // No IPs configured, should not set response
+        assert!(ctx.response().is_none());
+    }
+
     #[test]
     fn test_exec_plugin_quick_setup() {
         // Test that ExecPlugin::quick_setup works correctly
@@ -205,5 +337,30 @@ mod tests {
             <BlackholePlugin as ExecPlugin>::quick_setup("blackhole", "192.0.2.1,2001:db8::1")
                 .unwrap();
         assert_eq!(plugin.name(), "blackhole");
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup_aliases() {
+        // Test that aliases work
+        let plugin = <BlackholePlugin as ExecPlugin>::quick_setup("sinkhole", "0.0.0.0").unwrap();
+        assert_eq!(plugin.name(), "blackhole");
+
+        let plugin = <BlackholePlugin as ExecPlugin>::quick_setup("black_hole", "0.0.0.0").unwrap();
+        assert_eq!(plugin.name(), "blackhole");
+
+        let plugin = <BlackholePlugin as ExecPlugin>::quick_setup("null_dns", "0.0.0.0").unwrap();
+        assert_eq!(plugin.name(), "blackhole");
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup_empty_ips() {
+        let plugin = <BlackholePlugin as ExecPlugin>::quick_setup("blackhole", "").unwrap();
+        assert_eq!(plugin.name(), "blackhole");
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup_invalid_ip() {
+        let result = <BlackholePlugin as ExecPlugin>::quick_setup("blackhole", "not-an-ip");
+        assert!(result.is_err());
     }
 }

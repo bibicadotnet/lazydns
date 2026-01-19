@@ -266,4 +266,55 @@ mod tests {
         assert_eq!(config.udp_addr, Some(udp));
         assert_eq!(config.tcp_addr, Some(tcp));
     }
+
+    #[test]
+    fn test_with_tcp_addr() {
+        let addr = SocketAddr::from_str("192.0.2.1:53").unwrap();
+        let config = ServerConfig::default().with_tcp_addr(addr);
+        assert_eq!(config.tcp_addr, Some(addr));
+    }
+
+    #[test]
+    fn test_with_max_udp_size() {
+        let config = ServerConfig::default().with_max_udp_size(4096);
+        assert_eq!(config.max_udp_size, 4096);
+    }
+
+    #[test]
+    fn test_with_max_tcp_size() {
+        let config = ServerConfig::default().with_max_tcp_size(32768);
+        assert_eq!(config.max_tcp_size, 32768);
+    }
+
+    #[test]
+    fn test_with_cert_paths() {
+        let config = ServerConfig::default().with_cert_paths(
+            "/etc/ssl/cert.pem".to_string(),
+            "/etc/ssl/key.pem".to_string(),
+        );
+        assert_eq!(config.cert_path, Some("/etc/ssl/cert.pem".to_string()));
+        assert_eq!(config.key_path, Some("/etc/ssl/key.pem".to_string()));
+    }
+
+    #[test]
+    fn test_with_doh_path() {
+        let config = ServerConfig::default().with_doh_path("/dns".to_string());
+        assert_eq!(config.doh_path, Some("/dns".to_string()));
+    }
+
+    #[test]
+    fn test_config_debug() {
+        let config = ServerConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("ServerConfig"));
+        assert!(debug_str.contains("max_connections"));
+        assert!(debug_str.contains("timeout"));
+    }
+
+    #[test]
+    fn test_config_clone() {
+        let config = ServerConfig::default().with_max_connections(500);
+        let cloned = config.clone();
+        assert_eq!(cloned.max_connections, 500);
+    }
 }

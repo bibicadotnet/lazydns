@@ -549,4 +549,185 @@ mod tests {
         assert!(format!("{}", rdata).contains("example.com"));
         assert!(format!("{}", rdata).contains("3 bytes"));
     }
+
+    #[test]
+    fn test_soa_record() {
+        let rdata = RData::soa(
+            "ns1.example.com".to_string(),
+            "admin.example.com".to_string(),
+            2024010101,
+            3600,
+            600,
+            604800,
+            86400,
+        );
+
+        if let RData::SOA {
+            mname,
+            rname,
+            serial,
+            refresh,
+            retry,
+            expire,
+            minimum,
+        } = &rdata
+        {
+            assert_eq!(mname, "ns1.example.com");
+            assert_eq!(rname, "admin.example.com");
+            assert_eq!(*serial, 2024010101);
+            assert_eq!(*refresh, 3600);
+            assert_eq!(*retry, 600);
+            assert_eq!(*expire, 604800);
+            assert_eq!(*minimum, 86400);
+        } else {
+            panic!("Expected SOA record");
+        }
+
+        let display = format!("{}", rdata);
+        assert!(display.contains("ns1.example.com"));
+        assert!(display.contains("admin.example.com"));
+    }
+
+    #[test]
+    fn test_caa_record() {
+        let rdata = RData::caa(0, "issue".to_string(), "letsencrypt.org".to_string());
+
+        if let RData::CAA { flags, tag, value } = &rdata {
+            assert_eq!(*flags, 0);
+            assert_eq!(tag, "issue");
+            assert_eq!(value, "letsencrypt.org");
+        } else {
+            panic!("Expected CAA record");
+        }
+
+        let display = format!("{}", rdata);
+        assert!(display.contains("issue"));
+        assert!(display.contains("letsencrypt.org"));
+    }
+
+    #[test]
+    fn test_unknown_record() {
+        let rdata = RData::Unknown(vec![0x01, 0x02, 0x03]);
+        let display = format!("{}", rdata);
+        assert!(display.contains("3 bytes"));
+    }
+
+    #[test]
+    fn test_ds_record() {
+        let rdata = RData::DS {
+            key_tag: 12345,
+            algorithm: 8,
+            digest_type: 2,
+            digest: vec![0xab, 0xcd],
+        };
+        let display = format!("{}", rdata);
+        assert!(display.contains("12345"));
+    }
+
+    #[test]
+    fn test_dnskey_record() {
+        let rdata = RData::DNSKEY {
+            flags: 257,
+            protocol: 3,
+            algorithm: 8,
+            public_key: vec![0x01, 0x02],
+        };
+        let display = format!("{}", rdata);
+        assert!(display.contains("257"));
+    }
+
+    #[test]
+    fn test_nsec_record() {
+        let rdata = RData::NSEC {
+            next_domain: "example.com".to_string(),
+            type_bitmaps: vec![0x01],
+        };
+        let display = format!("{}", rdata);
+        assert!(display.contains("example.com"));
+    }
+
+    #[test]
+    fn test_nsec3_record() {
+        let rdata = RData::NSEC3 {
+            hash_algorithm: 1,
+            flags: 0,
+            iterations: 10,
+            salt: vec![0xab],
+            next_hashed: vec![0xcd],
+            type_bitmaps: vec![0x01],
+        };
+        let display = format!("{}", rdata);
+        // Display format is "hash_algorithm iterations ..."
+        assert!(display.contains("1"));
+        assert!(display.contains("10"));
+    }
+
+    #[test]
+    fn test_nsec3param_record() {
+        let rdata = RData::NSEC3PARAM {
+            hash_algorithm: 1,
+            flags: 0,
+            iterations: 10,
+            salt: vec![0xab],
+        };
+        let display = format!("{}", rdata);
+        // Display format is "hash_algorithm iterations ..."
+        assert!(display.contains("1"));
+        assert!(display.contains("10"));
+    }
+
+    #[test]
+    fn test_rrsig_record() {
+        let rdata = RData::RRSIG {
+            type_covered: 1,
+            algorithm: 8,
+            labels: 2,
+            original_ttl: 3600,
+            expiration: 1234567890,
+            inception: 1234500000,
+            key_tag: 12345,
+            signer_name: "example.com".to_string(),
+            signature: vec![0x01, 0x02],
+        };
+        let display = format!("{}", rdata);
+        assert!(display.contains("example.com"));
+    }
+
+    #[test]
+    fn test_opt_record() {
+        let rdata = RData::OPT {
+            extended_rcode: 0,
+            version: 0,
+            flags: 0x8000, // DO bit
+            options: vec![],
+        };
+        let display = format!("{}", rdata);
+        assert!(display.contains("EDNS"));
+        assert!(display.contains("v0"));
+    }
+
+    #[test]
+    fn test_rdata_clone() {
+        let original = RData::A(Ipv4Addr::new(1, 2, 3, 4));
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_rdata_eq() {
+        let rdata1 = RData::A(Ipv4Addr::new(1, 2, 3, 4));
+        let rdata2 = RData::A(Ipv4Addr::new(1, 2, 3, 4));
+        let rdata3 = RData::A(Ipv4Addr::new(5, 6, 7, 8));
+
+        assert_eq!(rdata1, rdata2);
+        assert_ne!(rdata1, rdata3);
+    }
+
+    #[test]
+    fn test_rdata_debug() {
+        let rdata = RData::A(Ipv4Addr::new(192, 168, 1, 1));
+        let debug_str = format!("{:?}", rdata);
+        assert!(debug_str.contains("A"));
+        assert!(debug_str.contains("192"));
+    }
 }

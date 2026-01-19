@@ -441,7 +441,65 @@ impl Plugin for HostsPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv4Addr;
+    use crate::dns::RecordClass;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn test_hosts_new() {
+        let hosts = Hosts::new();
+        assert!(hosts.is_empty());
+        assert_eq!(hosts.len(), 0);
+    }
+
+    #[test]
+    fn test_hosts_default() {
+        let hosts = Hosts::default();
+        assert!(hosts.is_empty());
+    }
+
+    #[test]
+    fn test_hosts_debug() {
+        let hosts = Hosts::new();
+        hosts.add_host("example.com".to_string(), Ipv4Addr::new(1, 2, 3, 4).into());
+        let debug_str = format!("{:?}", hosts);
+        assert!(debug_str.contains("Hosts"));
+        assert!(debug_str.contains("entries"));
+    }
+
+    #[test]
+    fn test_add_host_ipv4() {
+        let hosts = Hosts::new();
+        let ip = Ipv4Addr::new(127, 0, 0, 1);
+        hosts.add_host("localhost".to_string(), ip.into());
+
+        let ips = hosts.get_ips("localhost").unwrap();
+        assert_eq!(ips.len(), 1);
+        assert_eq!(ips[0], IpAddr::V4(ip));
+    }
+
+    #[test]
+    fn test_add_host_ipv6() {
+        let hosts = Hosts::new();
+        let ip = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
+        hosts.add_host("localhost".to_string(), ip.into());
+
+        let ips = hosts.get_ips("localhost").unwrap();
+        assert_eq!(ips.len(), 1);
+        assert_eq!(ips[0], IpAddr::V6(ip));
+    }
+
+    #[test]
+    fn test_add_host_multiple_ips() {
+        let hosts = Hosts::new();
+        let ip4 = Ipv4Addr::new(127, 0, 0, 1);
+        let ip6 = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
+
+        hosts.add_host("localhost".to_string(), ip4.into());
+        hosts.add_host("localhost".to_string(), ip6.into());
+
+        let ips = hosts.get_ips("localhost").unwrap();
+        assert_eq!(ips.len(), 2);
+    }
 
     #[test]
     fn test_case_insensitive() {
@@ -456,7 +514,217 @@ mod tests {
         assert!(hosts.get_ips("Example.Com.").is_some());
     }
 
-    // Other tests omitted for brevity; preserved in moved file
+    #[test]
+    fn test_trailing_dot_normalized() {
+        let hosts = Hosts::new();
+        let ip = Ipv4Addr::new(1, 2, 3, 4);
+
+        hosts.add_host("example.com.".to_string(), ip.into());
+
+        assert!(hosts.get_ips("example.com").is_some());
+        assert!(hosts.get_ips("example.com.").is_some());
+    }
+
+    #[test]
+    fn test_remove_host() {
+        let hosts = Hosts::new();
+        let ip = Ipv4Addr::new(1, 2, 3, 4);
+
+        hosts.add_host("example.com".to_string(), ip.into());
+        assert!(!hosts.is_empty());
+
+        let removed = hosts.remove_host("example.com");
+        assert!(removed);
+        assert!(hosts.is_empty());
+    }
+
+    #[test]
+    fn test_remove_host_not_found() {
+        let hosts = Hosts::new();
+        let removed = hosts.remove_host("nonexistent.com");
+        assert!(!removed);
+    }
+
+    #[test]
+    fn test_get_ips_not_found() {
+        let hosts = Hosts::new();
+        assert!(hosts.get_ips("nonexistent.com").is_none());
+    }
+
+    #[test]
+    fn test_clear() {
+        let hosts = Hosts::new();
+        hosts.add_host("a.com".to_string(), Ipv4Addr::new(1, 1, 1, 1).into());
+        hosts.add_host("b.com".to_string(), Ipv4Addr::new(2, 2, 2, 2).into());
+        assert_eq!(hosts.len(), 2);
+
+        hosts.clear();
+        assert!(hosts.is_empty());
+    }
+
+    #[test]
+    fn test_load_from_string_simple() {
+        let hosts = Hosts::new();
+        let content = "127.0.0.1 localhost";
+        hosts.load_from_string(content).unwrap();
+
+        let ips = hosts.get_ips("localhost").unwrap();
+        assert_eq!(ips.len(), 1);
+        assert_eq!(ips[0], IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    }
+
+    #[test]
+    fn test_load_from_string_multiple_hosts_per_line() {
+        let hosts = Hosts::new();
+        let content = "127.0.0.1 localhost loopback";
+        hosts.load_from_string(content).unwrap();
+
+        assert!(hosts.get_ips("localhost").is_some());
+        assert!(hosts.get_ips("loopback").is_some());
+    }
+
+    #[test]
+    fn test_load_from_string_comments() {
+        let hosts = Hosts::new();
+        let content = r#"
+# This is a comment
+127.0.0.1 localhost
+# Another comment
+"#;
+        hosts.load_from_string(content).unwrap();
+        assert_eq!(hosts.len(), 1);
+    }
+
+    #[test]
+    fn test_load_from_string_empty_lines() {
+        let hosts = Hosts::new();
+        let content = r#"
+
+127.0.0.1 localhost
+
+192.168.1.1 router
+
+"#;
+        hosts.load_from_string(content).unwrap();
+        assert_eq!(hosts.len(), 2);
+    }
+
+    #[test]
+    fn test_load_from_string_ipv6() {
+        let hosts = Hosts::new();
+        let content = "::1 localhost";
+        hosts.load_from_string(content).unwrap();
+
+        let ips = hosts.get_ips("localhost").unwrap();
+        assert_eq!(ips.len(), 1);
+        assert!(matches!(ips[0], IpAddr::V6(_)));
+    }
+
+    #[test]
+    fn test_load_from_string_no_ip_error() {
+        let hosts = Hosts::new();
+        let content = "not-an-ip localhost";
+        let result = hosts.load_from_string(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_from_string_replaces_previous() {
+        let hosts = Hosts::new();
+        hosts.add_host("old.com".to_string(), Ipv4Addr::new(1, 1, 1, 1).into());
+
+        let content = "2.2.2.2 new.com";
+        hosts.load_from_string(content).unwrap();
+
+        // Old entry should be gone
+        assert!(hosts.get_ips("old.com").is_none());
+        assert!(hosts.get_ips("new.com").is_some());
+    }
+
+    #[test]
+    fn test_load_file_nonexistent() {
+        let hosts = Hosts::new();
+        let result = hosts.load_file("/nonexistent/path/hosts.txt");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_file_valid() {
+        use std::io::Write;
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(tmp.as_file(), "127.0.0.1 localhost").unwrap();
+
+        let hosts = Hosts::new();
+        hosts.load_file(tmp.path().to_str().unwrap()).unwrap();
+
+        assert!(hosts.get_ips("localhost").is_some());
+    }
+
+    #[test]
+    fn test_hosts_plugin_new() {
+        let plugin = HostsPlugin::new();
+        assert!(plugin.hosts.is_empty());
+        assert!(plugin.files.is_empty());
+        assert!(!plugin.auto_reload);
+    }
+
+    #[test]
+    fn test_hosts_plugin_default() {
+        let plugin = HostsPlugin::default();
+        assert!(plugin.hosts.is_empty());
+    }
+
+    #[test]
+    fn test_hosts_plugin_with_files() {
+        let plugin = HostsPlugin::new().with_files(vec!["/etc/hosts".to_string()]);
+        assert_eq!(plugin.files.len(), 1);
+    }
+
+    #[test]
+    fn test_hosts_plugin_with_auto_reload() {
+        let plugin = HostsPlugin::new().with_auto_reload(true);
+        assert!(plugin.auto_reload);
+    }
+
+    #[test]
+    fn test_hosts_plugin_add_host() {
+        let plugin = HostsPlugin::new();
+        plugin.add_host("example.com".to_string(), Ipv4Addr::new(1, 2, 3, 4).into());
+        assert!(!plugin.hosts.is_empty());
+    }
+
+    #[test]
+    fn test_hosts_plugin_deref() {
+        let plugin = HostsPlugin::new();
+        plugin.add_host("test.com".to_string(), Ipv4Addr::new(1, 1, 1, 1).into());
+
+        // Test Deref trait
+        let hosts: &Hosts = &plugin;
+        assert!(hosts.get_ips("test.com").is_some());
+    }
+
+    #[test]
+    fn test_hosts_plugin_debug() {
+        let plugin = HostsPlugin::new();
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("HostsPlugin"));
+    }
+
+    #[test]
+    fn test_hosts_plugin_start_watcher_no_files() {
+        let plugin = HostsPlugin::new().with_auto_reload(true);
+        // Should not panic when no files
+        plugin.start_file_watcher();
+    }
+
+    #[test]
+    fn test_hosts_plugin_start_watcher_disabled() {
+        let plugin = HostsPlugin::new()
+            .with_files(vec!["/etc/hosts".to_string()])
+            .with_auto_reload(false);
+        // Should not start watcher when disabled
+        plugin.start_file_watcher();
+    }
 
     #[tokio::test]
     async fn test_hosts_plugin_shutdown_stops_watcher() {
@@ -475,5 +743,88 @@ mod tests {
 
         // Shutdown should stop watcher without panic
         Shutdown::shutdown(&plugin).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_hosts_plugin_execute_found_ipv4() {
+        let plugin = HostsPlugin::new();
+        plugin.add_host("test.local".to_string(), Ipv4Addr::new(10, 0, 0, 1).into());
+
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "test.local".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(request);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+        assert!(!resp.answers().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_hosts_plugin_execute_found_ipv6() {
+        let plugin = HostsPlugin::new();
+        plugin.add_host(
+            "test.local".to_string(),
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1).into(),
+        );
+
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "test.local".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(request);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+        assert!(!resp.answers().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_hosts_plugin_execute_not_found() {
+        let plugin = HostsPlugin::new();
+
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "unknown.local".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(request);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        // No response set when not found
+        assert!(ctx.response().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_hosts_plugin_execute_wrong_type() {
+        let plugin = HostsPlugin::new();
+        plugin.add_host("test.local".to_string(), Ipv4Addr::new(10, 0, 0, 1).into());
+
+        // Query for AAAA but only IPv4 is available
+        let mut request = Message::new();
+        request.add_question(Question::new(
+            "test.local".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(request);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        // Should return empty response (no matching records)
+        if let Some(resp) = ctx.response() {
+            assert!(resp.answers().is_empty());
+        }
     }
 }

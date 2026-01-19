@@ -48,3 +48,52 @@ impl ConditionBuilder for QnameBuilder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_qname_builder_name() {
+        let builder = QnameBuilder;
+        assert_eq!(builder.name(), "qname");
+    }
+
+    #[test]
+    fn test_qname_invalid_format() {
+        let builder = QnameBuilder;
+        let plugin_builder = PluginBuilder::new();
+
+        // Invalid format (missing qname prefix)
+        let result = builder.build("invalid_format", &plugin_builder);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_qname_plugin_not_found() {
+        let builder = QnameBuilder;
+        let plugin_builder = PluginBuilder::new();
+
+        // Plugin doesn't exist - should return a condition that always returns false
+        let result = builder.build("qname nonexistent", &plugin_builder);
+        assert!(result.is_ok());
+
+        let condition = result.unwrap();
+        let ctx = Context::new(crate::dns::Message::new());
+        assert!(!condition(&ctx));
+    }
+
+    #[test]
+    fn test_qname_with_dollar_prefix() {
+        let builder = QnameBuilder;
+        let plugin_builder = PluginBuilder::new();
+
+        // With $ prefix - should also work (plugin not found case)
+        let result = builder.build("qname $my_domain_set", &plugin_builder);
+        assert!(result.is_ok());
+
+        let condition = result.unwrap();
+        let ctx = Context::new(crate::dns::Message::new());
+        assert!(!condition(&ctx));
+    }
+}

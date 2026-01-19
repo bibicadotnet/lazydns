@@ -297,6 +297,80 @@ mod tests {
     use crate::dns::types::{RecordClass, RecordType};
     use crate::dns::{Message, ResourceRecord};
 
+    #[test]
+    fn test_nftset_new() {
+        let args = NftSetArgs {
+            ipv4: None,
+            ipv6: None,
+        };
+        let plugin = NftSetPlugin::new(args);
+        assert_eq!(plugin.name(), "nftset");
+    }
+
+    #[test]
+    fn test_nftset_debug() {
+        let args = NftSetArgs {
+            ipv4: Some(SetArgs {
+                table_family: Some("inet".into()),
+                table: Some("t".into()),
+                set: Some("s".into()),
+                mask: Some(24),
+            }),
+            ipv6: None,
+        };
+        let plugin = NftSetPlugin::new(args);
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("NftSetPlugin"));
+    }
+
+    #[test]
+    fn test_nftset_quick_setup_ipv4() {
+        let plugin = NftSetPlugin::quick_setup("inet,my_table,my_set,ipv4_addr,24").unwrap();
+        assert_eq!(plugin.name(), "nftset");
+        assert!(plugin.args.ipv4.is_some());
+        assert!(plugin.args.ipv6.is_none());
+    }
+
+    #[test]
+    fn test_nftset_quick_setup_ipv6() {
+        let plugin = NftSetPlugin::quick_setup("inet,my_table,my_set,ipv6_addr,64").unwrap();
+        assert_eq!(plugin.name(), "nftset");
+        assert!(plugin.args.ipv4.is_none());
+        assert!(plugin.args.ipv6.is_some());
+    }
+
+    #[test]
+    fn test_nftset_quick_setup_both() {
+        let plugin =
+            NftSetPlugin::quick_setup("inet,t1,s1,ipv4_addr,24 inet,t2,s2,ipv6_addr,64").unwrap();
+        assert!(plugin.args.ipv4.is_some());
+        assert!(plugin.args.ipv6.is_some());
+    }
+
+    #[test]
+    fn test_nftset_quick_setup_too_many_fields() {
+        let result = NftSetPlugin::quick_setup("a,b,c,d,24 e,f,g,h,32 i,j,k,l,48");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nftset_quick_setup_wrong_parts() {
+        let result = NftSetPlugin::quick_setup("inet,my_table,my_set");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nftset_quick_setup_invalid_mask() {
+        let result = NftSetPlugin::quick_setup("inet,t,s,ipv4_addr,notanumber");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nftset_quick_setup_invalid_addr_type() {
+        let result = NftSetPlugin::quick_setup("inet,t,s,invalid_type,24");
+        assert!(result.is_err());
+    }
+
     #[tokio::test]
     async fn test_nftset_v4_add() {
         let sa = SetArgs {
@@ -327,10 +401,135 @@ mod tests {
         assert_eq!(added.len(), 1);
     }
 
+    #[tokio::test]
+    async fn test_nftset_v6_add() {
+        let sa = SetArgs {
+            table_family: Some("inet".into()),
+            table: Some("t".into()),
+            set: Some("s".into()),
+            mask: Some(64),
+        };
+        let args = NftSetArgs {
+            ipv4: None,
+            ipv6: Some(sa),
+        };
+        let plugin = NftSetPlugin::new(args);
+        let mut msg = Message::new();
+        msg.add_answer(ResourceRecord::new(
+            "example.com".into(),
+            RecordType::AAAA,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::AAAA("2001:db8::1".parse().unwrap()),
+        ));
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        let added = ctx
+            .get_metadata::<Vec<(String, String)>>("nftset_added_v6")
+            .unwrap();
+        assert_eq!(added.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_nftset_no_response() {
+        let args = NftSetArgs {
+            ipv4: Some(SetArgs {
+                table_family: None,
+                table: None,
+                set: None,
+                mask: Some(24),
+            }),
+            ipv6: None,
+        };
+        let plugin = NftSetPlugin::new(args);
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        // No response set
+        plugin.execute(&mut ctx).await.unwrap();
+        // Should not add any entries
+        let added = ctx.get_metadata::<Vec<(String, String)>>("nftset_added_v4");
+        assert!(added.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_nftset_no_matching_records() {
+        let args = NftSetArgs {
+            ipv4: Some(SetArgs {
+                table_family: None,
+                table: None,
+                set: None,
+                mask: Some(24),
+            }),
+            ipv6: None,
+        };
+        let plugin = NftSetPlugin::new(args);
+        let mut msg = Message::new();
+        msg.add_answer(ResourceRecord::new(
+            "example.com".into(),
+            RecordType::CNAME,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::CNAME("target.com".into()),
+        ));
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        // No matching A/AAAA records
+        let added = ctx.get_metadata::<Vec<(String, String)>>("nftset_added_v4");
+        assert!(added.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_nftset_disabled_config() {
+        let args = NftSetArgs {
+            ipv4: None,
+            ipv6: None,
+        };
+        let plugin = NftSetPlugin::new(args);
+        let mut msg = Message::new();
+        msg.add_answer(ResourceRecord::new(
+            "example.com".into(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::A("192.0.2.1".parse().unwrap()),
+        ));
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        // No config for ipv4, should not add
+        let added = ctx.get_metadata::<Vec<(String, String)>>("nftset_added_v4");
+        assert!(added.is_none());
+    }
+
     #[test]
     fn test_nftset_exec_plugin() {
         // Test ExecPlugin quick_setup
         let plugin = NftSetPlugin::quick_setup("inet,my_table,my_set,ipv4_addr,24").unwrap();
         assert_eq!(plugin.name(), "nftset");
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup_wrong_prefix() {
+        let result = <NftSetPlugin as ExecPlugin>::quick_setup("wrong", "inet,t,s,ipv4_addr,24");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup_both_families() {
+        let result = <NftSetPlugin as ExecPlugin>::quick_setup(
+            "nftset",
+            "inet,t1,s1,ipv4_addr,24,inet,t2,s2,ipv6_addr,64",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_exec_plugin_quick_setup_invalid_count() {
+        let result = <NftSetPlugin as ExecPlugin>::quick_setup(
+            "nftset",
+            "inet,t,s,ipv4_addr", // Only 4 parts
+        );
+        assert!(result.is_err());
     }
 }

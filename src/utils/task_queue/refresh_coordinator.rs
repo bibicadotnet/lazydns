@@ -340,4 +340,42 @@ mod tests {
         let _ = coordinator.shutdown().await;
         debug!("Test passed: coordinator created and shutdown successfully");
     }
+
+    #[tokio::test]
+    async fn test_refresh_coordinator_multiple_workers() {
+        let coordinator = RefreshCoordinator::new(4, 100);
+
+        {
+            let handles = coordinator.worker_handles.lock().await;
+            assert_eq!(handles.len(), 4, "Should have 4 worker handles");
+        }
+
+        let _ = coordinator.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_stats_initial_values() {
+        let coordinator = RefreshCoordinator::new(1, 10);
+        let stats = coordinator.stats();
+
+        assert_eq!(stats.total_enqueued(), 0);
+        assert_eq!(stats.total_processed(), 0);
+        assert_eq!(stats.total_failed(), 0);
+        assert_eq!(stats.total_rejected(), 0);
+        assert_eq!(stats.total_dedup_skipped(), 0);
+
+        let _ = coordinator.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_stats_arc_clone() {
+        let coordinator = RefreshCoordinator::new(1, 10);
+        let stats1 = coordinator.stats();
+        let stats2 = coordinator.stats();
+
+        // Both should point to the same underlying stats
+        assert_eq!(Arc::strong_count(&stats1), Arc::strong_count(&stats2));
+
+        let _ = coordinator.shutdown().await;
+    }
 }

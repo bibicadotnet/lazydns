@@ -280,6 +280,45 @@ mod tests {
     use crate::dns::types::{RecordClass, RecordType};
     use crate::dns::{Message, RData, ResourceRecord};
 
+    #[test]
+    fn test_ros_addrlist_new() {
+        let plugin = RosAddrlistPlugin::new("test_list");
+        assert_eq!(plugin.list_name, "test_list");
+        assert!(plugin.track_responses);
+        assert!(plugin.server.is_none());
+        assert!(plugin.user.is_none());
+        assert!(plugin.passwd.is_none());
+        assert!(plugin.mask4.is_none());
+        assert!(plugin.mask6.is_none());
+    }
+
+    #[test]
+    fn test_ros_addrlist_builder_pattern() {
+        let plugin = RosAddrlistPlugin::new("blocked")
+            .track_responses(false)
+            .with_server("http://localhost:8080")
+            .with_auth("admin", "password")
+            .with_masks(Some(24), Some(64))
+            .with_mask4(16)
+            .with_mask6(48);
+
+        assert_eq!(plugin.list_name, "blocked");
+        assert!(!plugin.track_responses);
+        assert_eq!(plugin.server.as_deref(), Some("http://localhost:8080"));
+        assert_eq!(plugin.user.as_deref(), Some("admin"));
+        assert_eq!(plugin.passwd.as_deref(), Some("password"));
+        assert_eq!(plugin.mask4, Some(16));
+        assert_eq!(plugin.mask6, Some(48));
+    }
+
+    #[test]
+    fn test_ros_addrlist_debug() {
+        let plugin = RosAddrlistPlugin::new("test");
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("RosAddrListPlugin"));
+        assert!(debug_str.contains("test"));
+    }
+
     #[tokio::test]
     async fn test_ros_addrlist_extract_ips() {
         let plugin = RosAddrlistPlugin::new("test_list");
@@ -349,6 +388,52 @@ mod tests {
         ctx.set_response(Some(response));
 
         // Should not extract any IPs
+        plugin.execute(&mut ctx).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_ros_addrlist_no_response() {
+        let plugin = RosAddrlistPlugin::new("test_list");
+
+        let mut ctx = Context::new(Message::new());
+        // No response set
+
+        // Should handle gracefully
+        plugin.execute(&mut ctx).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_ros_addrlist_empty_response() {
+        let plugin = RosAddrlistPlugin::new("test_list");
+
+        let mut ctx = Context::new(Message::new());
+        let response = Message::new(); // Empty response with no answers
+        ctx.set_response(Some(response));
+
+        // Should handle gracefully
+        plugin.execute(&mut ctx).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_ros_addrlist_with_masks() {
+        let plugin = RosAddrlistPlugin::new("test_list")
+            .with_mask4(24)
+            .with_mask6(64);
+
+        let mut ctx = Context::new(Message::new());
+        let mut response = Message::new();
+
+        response.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            RData::A("192.0.2.100".parse().unwrap()),
+        ));
+
+        ctx.set_response(Some(response));
+
+        // Should apply mask when extracting
         plugin.execute(&mut ctx).await.unwrap();
     }
 }

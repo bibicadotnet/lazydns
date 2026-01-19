@@ -295,7 +295,48 @@ impl ReverseLookupPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // test only uses parse_ptr
+    use crate::dns::{Message, Question, RData, RecordClass, RecordType, ResourceRecord};
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn test_reverse_lookup_args_default() {
+        let args = ReverseLookupArgs::default();
+        assert_eq!(args.size, 64 * 1024);
+        assert!(args.handle_ptr);
+        assert_eq!(args.ttl, 7200);
+    }
+
+    #[test]
+    fn test_reverse_lookup_new() {
+        let plugin = ReverseLookupPlugin::new(ReverseLookupArgs::default());
+        assert_eq!(plugin.name(), "reverse_lookup");
+    }
+
+    #[test]
+    fn test_reverse_lookup_debug() {
+        let plugin = ReverseLookupPlugin::new(ReverseLookupArgs::default());
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("ReverseLookup"));
+    }
+
+    #[test]
+    fn test_reverse_lookup_quick_setup_default() {
+        let plugin = ReverseLookupPlugin::quick_setup("");
+        assert_eq!(plugin.name(), "reverse_lookup");
+    }
+
+    #[test]
+    fn test_reverse_lookup_quick_setup_with_size() {
+        let plugin = ReverseLookupPlugin::quick_setup("1000");
+        assert_eq!(plugin.args.size, 1000);
+    }
+
+    #[test]
+    fn test_reverse_lookup_quick_setup_invalid() {
+        let plugin = ReverseLookupPlugin::quick_setup("not-a-number");
+        // Should use default size
+        assert_eq!(plugin.args.size, 64 * 1024);
+    }
 
     #[tokio::test]
     async fn test_parse_ipv4_ptr() {
@@ -305,10 +346,34 @@ mod tests {
     }
 
     #[test]
-    fn test_save_ips_after_and_lookup_cached() {
-        use crate::dns::{Message, Question, RData, RecordClass, RecordType, ResourceRecord};
-        use std::net::Ipv4Addr;
+    fn test_parse_ipv4_ptr_no_trailing_dot() {
+        let s = "1.0.0.127.in-addr.arpa";
+        let ip = ReverseLookupPlugin::parse_ptr(s).unwrap();
+        assert_eq!(ip.to_string(), "127.0.0.1");
+    }
 
+    #[test]
+    fn test_parse_ipv4_ptr_invalid() {
+        let s = "1.2.3.in-addr.arpa"; // Only 3 octets
+        assert!(ReverseLookupPlugin::parse_ptr(s).is_none());
+    }
+
+    #[test]
+    fn test_parse_ipv6_ptr() {
+        // ::1 in nibble format
+        let s = "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa";
+        let ip = ReverseLookupPlugin::parse_ptr(s);
+        assert!(ip.is_some());
+    }
+
+    #[test]
+    fn test_parse_unknown_suffix() {
+        let s = "example.com";
+        assert!(ReverseLookupPlugin::parse_ptr(s).is_none());
+    }
+
+    #[test]
+    fn test_save_ips_after_and_lookup_cached() {
         // Build request with single question
         let mut req = Message::new();
         req.add_question(Question::new(
@@ -341,9 +406,33 @@ mod tests {
         assert_eq!(got, "example.com");
     }
 
+    #[test]
+    fn test_save_ips_after_ipv6() {
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+
+        let mut resp = Message::new();
+        resp.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+            300,
+            RData::AAAA("2001:db8::1".parse().unwrap()),
+        ));
+
+        let rl = ReverseLookupPlugin::new(ReverseLookupArgs::default());
+        rl.save_ips_after(&req, &resp);
+
+        let ip: IpAddr = "2001:db8::1".parse().unwrap();
+        assert!(rl.lookup_cached(&ip).is_some());
+    }
+
     #[tokio::test]
     async fn test_reverse_lookup_answers_ptr() {
-        use crate::dns::{Question, RecordClass, RecordType};
         use std::time::Duration;
         use std::time::Instant;
 
@@ -376,5 +465,75 @@ mod tests {
             resp.answers()[0].rdata(),
             &RData::PTR("example.com".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn test_reverse_lookup_ptr_not_found() {
+        let plugin = ReverseLookupPlugin::new(ReverseLookupArgs::default());
+
+        let mut msg = Message::new();
+        msg.add_question(Question::new(
+            "1.0.0.10.in-addr.arpa".to_string(),
+            RecordType::PTR,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(msg);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        // No response should be set when not found in cache
+        assert!(ctx.response().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_reverse_lookup_ptr_disabled() {
+        use std::time::Duration;
+        use std::time::Instant;
+
+        let args = ReverseLookupArgs {
+            handle_ptr: false,
+            ..Default::default()
+        };
+        let plugin = ReverseLookupPlugin::new(args);
+
+        // Pre-fill cache
+        plugin.cache.insert(
+            "10.0.0.1".to_string(),
+            (
+                "example.com".to_string(),
+                Instant::now() + Duration::from_secs(60),
+            ),
+        );
+
+        let mut msg = Message::new();
+        msg.add_question(Question::new(
+            "1.0.0.10.in-addr.arpa".to_string(),
+            RecordType::PTR,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(msg);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        // Should not answer when handle_ptr is false
+        assert!(ctx.response().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_reverse_lookup_non_ptr_query() {
+        let plugin = ReverseLookupPlugin::new(ReverseLookupArgs::default());
+
+        let mut msg = Message::new();
+        msg.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A, // Not a PTR query
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(msg);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        // Should not set response for non-PTR queries
+        assert!(ctx.response().is_none());
     }
 }

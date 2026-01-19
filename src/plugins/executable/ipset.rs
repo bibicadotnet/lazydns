@@ -257,6 +257,80 @@ mod tests {
     use crate::dns::types::{RecordClass, RecordType};
     use crate::dns::{Message, ResourceRecord};
 
+    #[test]
+    fn test_ipset_args_default() {
+        let args = IpSetArgs::default();
+        assert!(args.set_name4.is_none());
+        assert!(args.set_name6.is_none());
+        assert_eq!(args.mask4, Some(24));
+        assert_eq!(args.mask6, Some(32));
+    }
+
+    #[test]
+    fn test_ipset_new() {
+        let args = IpSetArgs {
+            set_name4: Some("test".into()),
+            set_name6: None,
+            mask4: Some(24),
+            mask6: None,
+        };
+        let plugin = IpSetPlugin::new(args);
+        assert_eq!(plugin.name(), "ipset");
+    }
+
+    #[test]
+    fn test_ipset_debug() {
+        let args = IpSetArgs::default();
+        let plugin = IpSetPlugin::new(args);
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("IpSetPlugin"));
+    }
+
+    #[test]
+    fn test_ipset_quick_setup_ipv4() {
+        let plugin = IpSetPlugin::quick_setup("myset,inet,24").unwrap();
+        assert!(plugin.args.set_name4.is_some());
+        assert!(plugin.args.set_name6.is_none());
+    }
+
+    #[test]
+    fn test_ipset_quick_setup_ipv6() {
+        let plugin = IpSetPlugin::quick_setup("myset,inet6,64").unwrap();
+        assert!(plugin.args.set_name4.is_none());
+        assert!(plugin.args.set_name6.is_some());
+    }
+
+    #[test]
+    fn test_ipset_quick_setup_both() {
+        let plugin = IpSetPlugin::quick_setup("set4,inet,24 set6,inet6,64").unwrap();
+        assert!(plugin.args.set_name4.is_some());
+        assert!(plugin.args.set_name6.is_some());
+    }
+
+    #[test]
+    fn test_ipset_quick_setup_invalid_count() {
+        let result = IpSetPlugin::quick_setup("set4,inet");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ipset_quick_setup_too_many() {
+        let result = IpSetPlugin::quick_setup("a,b,c d,e,f g,h,i");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ipset_quick_setup_invalid_mask() {
+        let result = IpSetPlugin::quick_setup("set,inet,notanumber");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ipset_quick_setup_invalid_family() {
+        let result = IpSetPlugin::quick_setup("set,invalid,24");
+        assert!(result.is_err());
+    }
+
     #[tokio::test]
     async fn test_ipset_v4_prefix() {
         let args = IpSetArgs {
@@ -283,10 +357,122 @@ mod tests {
         assert_eq!(added.len(), 1);
     }
 
+    #[tokio::test]
+    async fn test_ipset_v6_prefix() {
+        let args = IpSetArgs {
+            set_name4: None,
+            set_name6: Some("myset6".into()),
+            mask4: None,
+            mask6: Some(64),
+        };
+        let plugin = IpSetPlugin::new(args);
+        let mut msg = Message::new();
+        msg.add_answer(ResourceRecord::new(
+            "example.com".into(),
+            RecordType::AAAA,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::AAAA("2001:db8::1".parse().unwrap()),
+        ));
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        let added = ctx
+            .get_metadata::<Vec<(String, String)>>("ipset_added")
+            .unwrap();
+        assert_eq!(added.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_ipset_no_response() {
+        let args = IpSetArgs {
+            set_name4: Some("myset".into()),
+            set_name6: None,
+            mask4: Some(24),
+            mask6: None,
+        };
+        let plugin = IpSetPlugin::new(args);
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        // No response set
+        plugin.execute(&mut ctx).await.unwrap();
+        let added = ctx.get_metadata::<Vec<(String, String)>>("ipset_added");
+        assert!(added.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_ipset_no_matching_records() {
+        let args = IpSetArgs {
+            set_name4: Some("myset".into()),
+            set_name6: None,
+            mask4: Some(24),
+            mask6: None,
+        };
+        let plugin = IpSetPlugin::new(args);
+        let mut msg = Message::new();
+        msg.add_answer(ResourceRecord::new(
+            "example.com".into(),
+            RecordType::CNAME,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::CNAME("target.com".into()),
+        ));
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        let added = ctx.get_metadata::<Vec<(String, String)>>("ipset_added");
+        assert!(added.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_ipset_disabled_config() {
+        let args = IpSetArgs {
+            set_name4: None,
+            set_name6: None,
+            mask4: Some(24),
+            mask6: Some(64),
+        };
+        let plugin = IpSetPlugin::new(args);
+        let mut msg = Message::new();
+        msg.add_answer(ResourceRecord::new(
+            "example.com".into(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::A("192.0.2.1".parse().unwrap()),
+        ));
+        let mut ctx = crate::plugin::Context::new(crate::dns::Message::new());
+        ctx.set_response(Some(msg));
+        plugin.execute(&mut ctx).await.unwrap();
+        // No set names configured
+        let added = ctx.get_metadata::<Vec<(String, String)>>("ipset_added");
+        assert!(added.is_none());
+    }
+
     #[test]
     fn test_ipset_exec_plugin() {
         // Test ExecPlugin quick_setup
         let plugin = IpSetPlugin::quick_setup("test_set,inet,24").unwrap();
         assert_eq!(plugin.name(), "ipset");
+    }
+
+    #[test]
+    fn test_exec_plugin_wrong_prefix() {
+        let result = <IpSetPlugin as ExecPlugin>::quick_setup("wrong", "set,inet,24");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_exec_plugin_both_families() {
+        let result =
+            <IpSetPlugin as ExecPlugin>::quick_setup("ipset", "set4,inet,24,set6,inet6,64");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_exec_plugin_invalid_count() {
+        let result = <IpSetPlugin as ExecPlugin>::quick_setup(
+            "ipset", "set,inet", // Only 2 parts
+        );
+        assert!(result.is_err());
     }
 }

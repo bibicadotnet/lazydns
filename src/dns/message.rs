@@ -497,4 +497,147 @@ mod tests {
         assert_eq!(message.question_count(), 1);
         assert_eq!(message.answer_count(), 1);
     }
+
+    #[test]
+    fn test_authority_section() {
+        let mut message = Message::new();
+        message.add_authority(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::NS,
+            RecordClass::IN,
+            86400,
+            RData::NS("ns1.example.com".to_string()),
+        ));
+
+        assert_eq!(message.authority_count(), 1);
+        assert_eq!(message.authority().len(), 1);
+        assert_eq!(message.authority()[0].name(), "example.com");
+    }
+
+    #[test]
+    fn test_additional_section() {
+        let mut message = Message::new();
+        message.add_additional(ResourceRecord::new(
+            "ns1.example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            3600,
+            RData::A(Ipv4Addr::new(192, 0, 2, 1)),
+        ));
+
+        assert_eq!(message.additional_count(), 1);
+        assert_eq!(message.additional().len(), 1);
+    }
+
+    #[test]
+    fn test_message_clone() {
+        let mut message = Message::new();
+        message.set_id(5678);
+        message.add_question(Question::new(
+            "test.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let cloned = message.clone();
+        assert_eq!(cloned.id(), 5678);
+        assert_eq!(cloned.question_count(), 1);
+    }
+
+    #[test]
+    fn test_message_debug() {
+        let message = Message::new();
+        let debug_str = format!("{:?}", message);
+        assert!(debug_str.contains("Message"));
+    }
+
+    #[test]
+    fn test_questions_mut() {
+        let mut message = Message::new();
+        message.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let questions = message.questions_mut();
+        assert_eq!(questions.len(), 1);
+        questions.clear();
+        assert_eq!(message.question_count(), 0);
+    }
+
+    #[test]
+    fn test_answers_mut() {
+        let mut message = Message::new();
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            RData::A(Ipv4Addr::new(1, 2, 3, 4)),
+        ));
+
+        let answers = message.answers_mut();
+        assert_eq!(answers.len(), 1);
+    }
+
+    #[test]
+    fn test_authority_mut() {
+        let mut message = Message::new();
+        let auth = message.authority_mut();
+        auth.push(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::NS,
+            RecordClass::IN,
+            86400,
+            RData::NS("ns1.example.com".to_string()),
+        ));
+        assert_eq!(message.authority_count(), 1);
+    }
+
+    #[test]
+    fn test_additional_mut() {
+        let mut message = Message::new();
+        let additional = message.additional_mut();
+        additional.push(ResourceRecord::new(
+            "ns1.example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            3600,
+            RData::A(Ipv4Addr::new(192, 0, 2, 1)),
+        ));
+        assert_eq!(message.additional_count(), 1);
+    }
+
+    #[test]
+    fn test_clear_authority() {
+        let mut message = Message::new();
+        message.add_authority(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::NS,
+            RecordClass::IN,
+            86400,
+            RData::NS("ns1.example.com".to_string()),
+        ));
+
+        assert_eq!(message.authority_count(), 1);
+        message.clear_authority();
+        assert_eq!(message.authority_count(), 0);
+    }
+
+    #[test]
+    fn test_clear_additional() {
+        let mut message = Message::new();
+        message.add_additional(ResourceRecord::new(
+            "ns1.example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            3600,
+            RData::A(Ipv4Addr::new(192, 0, 2, 1)),
+        ));
+
+        assert_eq!(message.additional_count(), 1);
+        message.clear_additional();
+        assert_eq!(message.additional_count(), 0);
+    }
 }

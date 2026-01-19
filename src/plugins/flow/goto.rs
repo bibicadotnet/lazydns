@@ -53,6 +53,26 @@ mod tests {
     use super::*;
     use crate::dns::Message;
 
+    #[test]
+    fn test_goto_new() {
+        let plugin = GotoPlugin::new("target");
+        assert_eq!(plugin.label, "target");
+    }
+
+    #[test]
+    fn test_goto_name() {
+        let plugin = GotoPlugin::new("label");
+        assert_eq!(plugin.name(), "goto");
+    }
+
+    #[test]
+    fn test_goto_debug() {
+        let plugin = GotoPlugin::new("test_label");
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("GotoPlugin"));
+        assert!(debug_str.contains("test_label"));
+    }
+
     #[tokio::test]
     async fn test_goto_sets_label_and_return() {
         let plugin = GotoPlugin::new("target");
@@ -67,5 +87,35 @@ mod tests {
             ctx.get_metadata::<bool>(crate::plugin::RETURN_FLAG),
             Some(&true)
         );
+    }
+
+    #[test]
+    fn test_goto_quick_setup() {
+        let plugin = <GotoPlugin as ExecPlugin>::quick_setup("goto", "my_label").unwrap();
+        assert_eq!(plugin.name(), "goto");
+    }
+
+    #[test]
+    fn test_goto_quick_setup_wrong_prefix() {
+        let result = <GotoPlugin as ExecPlugin>::quick_setup("wrong", "label");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_goto_quick_setup_empty_label() {
+        let result = <GotoPlugin as ExecPlugin>::quick_setup("goto", "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_goto_quick_setup_whitespace_only() {
+        let result = <GotoPlugin as ExecPlugin>::quick_setup("goto", "   ");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_goto_quick_setup_trims_whitespace() {
+        let plugin = <GotoPlugin as ExecPlugin>::quick_setup("goto", "  my_label  ").unwrap();
+        assert_eq!(plugin.name(), "goto");
     }
 }
