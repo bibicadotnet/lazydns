@@ -124,4 +124,92 @@ mod tests {
         assert_eq!(refused.rcode, 5);
         assert_eq!(servfail.rcode, 2);
     }
+
+    #[test]
+    fn test_reject_debug() {
+        let plugin = RejectPlugin::new(3);
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("RejectPlugin"));
+    }
+
+    #[test]
+    fn test_reject_quick_setup_default() {
+        let plugin = <RejectPlugin as ExecPlugin>::quick_setup("reject", "").unwrap();
+        assert_eq!(plugin.name(), "reject");
+    }
+
+    #[test]
+    fn test_reject_quick_setup_nxdomain() {
+        let plugin = <RejectPlugin as ExecPlugin>::quick_setup("reject", "nxdomain").unwrap();
+        assert_eq!(plugin.name(), "reject");
+    }
+
+    #[test]
+    fn test_reject_quick_setup_nx() {
+        let plugin = <RejectPlugin as ExecPlugin>::quick_setup("reject", "nx").unwrap();
+        assert_eq!(plugin.name(), "reject");
+    }
+
+    #[test]
+    fn test_reject_quick_setup_refused() {
+        let plugin = <RejectPlugin as ExecPlugin>::quick_setup("reject", "refused").unwrap();
+        assert_eq!(plugin.name(), "reject");
+    }
+
+    #[test]
+    fn test_reject_quick_setup_ref() {
+        let plugin = <RejectPlugin as ExecPlugin>::quick_setup("reject", "ref").unwrap();
+        assert_eq!(plugin.name(), "reject");
+    }
+
+    #[test]
+    fn test_reject_quick_setup_servfail() {
+        let plugin = <RejectPlugin as ExecPlugin>::quick_setup("reject", "servfail").unwrap();
+        assert_eq!(plugin.name(), "reject");
+    }
+
+    #[test]
+    fn test_reject_quick_setup_serv() {
+        let plugin = <RejectPlugin as ExecPlugin>::quick_setup("reject", "serv").unwrap();
+        assert_eq!(plugin.name(), "reject");
+    }
+
+    #[test]
+    fn test_reject_quick_setup_numeric() {
+        let plugin = <RejectPlugin as ExecPlugin>::quick_setup("reject", "4").unwrap();
+        assert_eq!(plugin.name(), "reject");
+    }
+
+    #[test]
+    fn test_reject_quick_setup_wrong_prefix() {
+        let result = <RejectPlugin as ExecPlugin>::quick_setup("wrong", "nxdomain");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reject_quick_setup_invalid_arg() {
+        let result = <RejectPlugin as ExecPlugin>::quick_setup("reject", "invalid");
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_reject_copies_questions() {
+        use crate::dns::{Question, RecordClass, RecordType};
+        let plugin = RejectPlugin::nxdomain();
+
+        let mut request = Message::new();
+        request.set_id(100);
+        request.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let mut ctx = Context::new(request);
+        plugin.execute(&mut ctx).await.unwrap();
+
+        let response = ctx.response().unwrap();
+        assert_eq!(response.question_count(), 1);
+        assert_eq!(response.questions()[0].qname(), "example.com");
+    }
 }

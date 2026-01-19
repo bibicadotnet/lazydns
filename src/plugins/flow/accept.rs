@@ -55,4 +55,29 @@ mod tests {
 
         assert_eq!(ctx.get_metadata::<bool>(RETURN_FLAG), Some(&true));
     }
+
+    #[test]
+    fn test_accept_plugin_debug() {
+        let plugin = AcceptPlugin::new();
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("AcceptPlugin"));
+    }
+
+    #[test]
+    fn test_accept_plugin_default() {
+        let plugin = AcceptPlugin::new();
+        assert_eq!(plugin.name(), "accept");
+    }
+
+    #[test]
+    fn test_accept_quick_setup() {
+        let plugin = AcceptPlugin::quick_setup("accept", "").unwrap();
+        assert_eq!(plugin.name(), "accept");
+    }
+
+    #[test]
+    fn test_accept_quick_setup_invalid_prefix() {
+        let result = AcceptPlugin::quick_setup("invalid", "");
+        assert!(result.is_err());
+    }
 }

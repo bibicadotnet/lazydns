@@ -35,6 +35,14 @@ pub struct DotServer {
     handler: Arc<dyn RequestHandler>,
 }
 
+impl std::fmt::Debug for DotServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DotServer")
+            .field("addr", &self.addr)
+            .finish_non_exhaustive()
+    }
+}
+
 impl DotServer {
     /// Create a new DoT server
     ///
@@ -299,6 +307,218 @@ mod tests {
             Error::Io(_) => {}
             other => panic!("expected Io error, got: {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_dot_server_new() {
+        use rcgen::generate_simple_self_signed;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.cert.pem();
+        let key_pem = cert.signing_key.serialize_pem();
+
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(cert_pem.as_bytes()).unwrap();
+        let cert_path = cert_file.path().to_path_buf();
+
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_path_buf();
+
+        let tls = crate::server::TlsConfig::from_files(cert_path, key_path).unwrap();
+
+        struct DummyHandler;
+        #[async_trait::async_trait]
+        impl crate::server::RequestHandler for DummyHandler {
+            async fn handle(
+                &self,
+                ctx: crate::server::RequestContext,
+            ) -> crate::Result<crate::dns::Message> {
+                let req = ctx.into_message();
+                Ok(req)
+            }
+        }
+
+        let server = DotServer::new("127.0.0.1:8853", tls, Arc::new(DummyHandler));
+        assert_eq!(server.addr, "127.0.0.1:8853");
+    }
+
+    #[tokio::test]
+    async fn test_dot_server_from_config_missing_addr() {
+        let config = crate::server::ServerConfig {
+            tcp_addr: None, // Explicitly clear the default address
+            ..Default::default()
+        };
+        let result = DotServer::from_config(config).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::Config(msg) => assert!(msg.contains("TCP address not configured")),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dot_server_from_config_missing_tls() {
+        let config = crate::server::ServerConfig {
+            tcp_addr: Some("127.0.0.1:853".parse().unwrap()),
+            ..Default::default()
+        };
+        let result = DotServer::from_config(config).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::Config(msg) => assert!(msg.contains("TLS config not configured")),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dot_server_from_config_missing_handler() {
+        use rcgen::generate_simple_self_signed;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.cert.pem();
+        let key_pem = cert.signing_key.serialize_pem();
+
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(cert_pem.as_bytes()).unwrap();
+        let cert_path = cert_file.path().to_path_buf();
+
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_path_buf();
+
+        let tls = crate::server::TlsConfig::from_files(cert_path, key_path).unwrap();
+
+        let config = crate::server::ServerConfig {
+            tcp_addr: Some("127.0.0.1:853".parse().unwrap()),
+            tls_config: Some(tls),
+            ..Default::default()
+        };
+
+        let result = DotServer::from_config(config).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::Config(msg) => assert!(msg.contains("Handler not configured")),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dot_server_from_config_complete() {
+        use rcgen::generate_simple_self_signed;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.cert.pem();
+        let key_pem = cert.signing_key.serialize_pem();
+
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(cert_pem.as_bytes()).unwrap();
+        let cert_path = cert_file.path().to_path_buf();
+
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_path_buf();
+
+        let tls = crate::server::TlsConfig::from_files(cert_path, key_path).unwrap();
+
+        struct DummyHandler;
+        #[async_trait::async_trait]
+        impl crate::server::RequestHandler for DummyHandler {
+            async fn handle(
+                &self,
+                ctx: crate::server::RequestContext,
+            ) -> crate::Result<crate::dns::Message> {
+                let req = ctx.into_message();
+                Ok(req)
+            }
+        }
+
+        let config = crate::server::ServerConfig {
+            tcp_addr: Some("127.0.0.1:853".parse().unwrap()),
+            tls_config: Some(tls),
+            handler: Some(Arc::new(DummyHandler)),
+            ..Default::default()
+        };
+
+        let result = DotServer::from_config(config).await;
+        assert!(result.is_ok());
+        let server = result.unwrap();
+        assert_eq!(server.addr, "127.0.0.1:853");
+    }
+
+    #[test]
+    fn test_parse_request_with_query() {
+        // Minimal valid DNS query: 12-byte header + question
+        let mut data = vec![
+            0x00, 0x01, // ID
+            0x01, 0x00, // Flags: standard query, recursion desired
+            0x00, 0x01, // QDCOUNT: 1
+            0x00, 0x00, // ANCOUNT: 0
+            0x00, 0x00, // NSCOUNT: 0
+            0x00, 0x00, // ARCOUNT: 0
+        ];
+        // Question: example.com A IN
+        data.extend_from_slice(&[
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', // "example"
+            0x03, b'c', b'o', b'm', // "com"
+            0x00, // Root label
+            0x00, 0x01, // QTYPE: A
+            0x00, 0x01, // QCLASS: IN
+        ]);
+
+        let result = DotServer::parse_request(&data);
+        assert!(result.is_ok());
+        let message = result.unwrap();
+        assert_eq!(message.id(), 1);
+        assert_eq!(message.question_count(), 1);
+        assert!(message.recursion_desired());
+    }
+
+    #[test]
+    fn test_serialize_response_with_answer() {
+        use std::net::Ipv4Addr;
+
+        let mut message = crate::dns::Message::new();
+        message.set_id(1234);
+        message.set_response(true);
+        message.add_question(crate::dns::Question::new(
+            "example.com".to_string(),
+            crate::dns::RecordType::A,
+            crate::dns::RecordClass::IN,
+        ));
+        message.add_answer(crate::dns::ResourceRecord::new(
+            "example.com".to_string(),
+            crate::dns::RecordType::A,
+            crate::dns::RecordClass::IN,
+            300,
+            crate::dns::RData::A(Ipv4Addr::new(93, 184, 216, 34)),
+        ));
+
+        let result = DotServer::serialize_response(&message);
+        assert!(result.is_ok());
+        let data = result.unwrap();
+        // Verify we get more than just header (has question + answer)
+        assert!(data.len() > 12);
+
+        // Re-parse to verify roundtrip
+        let parsed = DotServer::parse_request(&data).unwrap();
+        assert_eq!(parsed.id(), 1234);
+        assert!(parsed.is_response());
+        assert_eq!(parsed.answer_count(), 1);
+    }
+
+    #[test]
+    fn test_parse_request_truncated_header() {
+        // Less than 12 bytes
+        let data = vec![0x00, 0x01, 0x02];
+        let result = DotServer::parse_request(&data);
+        assert!(result.is_err());
     }
 
     // Integration tests moved to tests/integration_tls_doh_dot.rs

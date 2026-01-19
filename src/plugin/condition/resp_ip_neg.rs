@@ -48,3 +48,52 @@ impl ConditionBuilder for RespIpNegBuilder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resp_ip_neg_builder_name() {
+        let builder = RespIpNegBuilder;
+        assert_eq!(builder.name(), "!resp_ip");
+    }
+
+    #[test]
+    fn test_resp_ip_neg_invalid_format() {
+        let builder = RespIpNegBuilder;
+        let plugin_builder = PluginBuilder::new();
+
+        // Invalid format (missing !resp_ip prefix)
+        let result = builder.build("invalid_format", &plugin_builder);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resp_ip_neg_plugin_not_found() {
+        let builder = RespIpNegBuilder;
+        let plugin_builder = PluginBuilder::new();
+
+        // Plugin doesn't exist - negation should return true
+        let result = builder.build("!resp_ip nonexistent", &plugin_builder);
+        assert!(result.is_ok());
+
+        let condition = result.unwrap();
+        let ctx = Context::new(crate::dns::Message::new());
+        assert!(condition(&ctx)); // Negated - should be true
+    }
+
+    #[test]
+    fn test_resp_ip_neg_with_dollar_prefix() {
+        let builder = RespIpNegBuilder;
+        let plugin_builder = PluginBuilder::new();
+
+        // With $ prefix - should also work (plugin not found case)
+        let result = builder.build("!resp_ip $my_ip_set", &plugin_builder);
+        assert!(result.is_ok());
+
+        let condition = result.unwrap();
+        let ctx = Context::new(crate::dns::Message::new());
+        assert!(condition(&ctx)); // Negated - should be true
+    }
+}

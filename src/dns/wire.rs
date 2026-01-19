@@ -411,6 +411,12 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_empty_data() {
+        let result = parse_message(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_roundtrip_response() {
         let mut message = Message::new();
         message.set_id(5678);
@@ -424,5 +430,763 @@ mod tests {
         assert_eq!(parsed.id(), 5678);
         assert!(parsed.is_response());
         assert!(parsed.recursion_available());
+    }
+
+    #[test]
+    fn test_roundtrip_with_a_record() {
+        use std::net::Ipv4Addr;
+
+        let mut message = Message::new();
+        message.set_id(1111);
+        message.set_response(true);
+        message.add_question(Question::new(
+            "test.example".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        message.add_answer(ResourceRecord::new(
+            "test.example".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::A(Ipv4Addr::new(192, 168, 1, 1)),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.id(), 1111);
+        assert_eq!(parsed.answer_count(), 1);
+        let answer = &parsed.answers()[0];
+        assert_eq!(answer.rtype(), RecordType::A);
+        match answer.rdata() {
+            crate::dns::RData::A(ip) => assert_eq!(*ip, Ipv4Addr::new(192, 168, 1, 1)),
+            _ => panic!("Expected A record"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_with_aaaa_record() {
+        use std::net::Ipv6Addr;
+
+        let mut message = Message::new();
+        message.set_id(2222);
+        message.set_response(true);
+        message.add_question(Question::new(
+            "test.example".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+        message.add_answer(ResourceRecord::new(
+            "test.example".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::AAAA(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.answer_count(), 1);
+        match parsed.answers()[0].rdata() {
+            crate::dns::RData::AAAA(ip) => {
+                assert_eq!(*ip, Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))
+            }
+            _ => panic!("Expected AAAA record"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_with_cname_record() {
+        let mut message = Message::new();
+        message.set_id(3333);
+        message.set_response(true);
+        message.add_answer(ResourceRecord::new(
+            "alias.example".to_string(),
+            RecordType::CNAME,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::CNAME("target.example".to_string()),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.answer_count(), 1);
+        match parsed.answers()[0].rdata() {
+            crate::dns::RData::CNAME(name) => assert_eq!(name, "target.example"),
+            _ => panic!("Expected CNAME record"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_with_mx_record() {
+        let mut message = Message::new();
+        message.set_id(4444);
+        message.set_response(true);
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::MX,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::MX {
+                preference: 10,
+                exchange: "mail.example.com".to_string(),
+            },
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.answer_count(), 1);
+        match parsed.answers()[0].rdata() {
+            crate::dns::RData::MX {
+                preference,
+                exchange,
+            } => {
+                assert_eq!(preference, &10);
+                assert_eq!(exchange, "mail.example.com");
+            }
+            _ => panic!("Expected MX record"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_with_ns_record() {
+        let mut message = Message::new();
+        message.set_id(5555);
+        message.set_response(true);
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::NS,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::NS("ns1.example.com".to_string()),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.answer_count(), 1);
+        match parsed.answers()[0].rdata() {
+            crate::dns::RData::NS(ns) => assert_eq!(ns, "ns1.example.com"),
+            _ => panic!("Expected NS record"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_with_ptr_record() {
+        let mut message = Message::new();
+        message.set_id(6666);
+        message.set_response(true);
+        message.add_answer(ResourceRecord::new(
+            "1.0.168.192.in-addr.arpa".to_string(),
+            RecordType::PTR,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::PTR("host.example.com".to_string()),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.answer_count(), 1);
+        match parsed.answers()[0].rdata() {
+            crate::dns::RData::PTR(ptr) => assert_eq!(ptr, "host.example.com"),
+            _ => panic!("Expected PTR record"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_with_txt_record() {
+        let mut message = Message::new();
+        message.set_id(7777);
+        message.set_response(true);
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::TXT,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::TXT(vec!["v=spf1 include:example.com".to_string()]),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.answer_count(), 1);
+        match parsed.answers()[0].rdata() {
+            crate::dns::RData::TXT(texts) => {
+                assert!(!texts.is_empty());
+                assert!(texts[0].contains("spf1"));
+            }
+            _ => panic!("Expected TXT record"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_with_soa_record() {
+        let mut message = Message::new();
+        message.set_id(8888);
+        message.set_response(true);
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::SOA,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::SOA {
+                mname: "ns1.example.com".to_string(),
+                rname: "admin.example.com".to_string(),
+                serial: 2024010101,
+                refresh: 3600,
+                retry: 600,
+                expire: 604800,
+                minimum: 86400,
+            },
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.answer_count(), 1);
+        match parsed.answers()[0].rdata() {
+            crate::dns::RData::SOA {
+                mname,
+                rname,
+                serial,
+                refresh,
+                retry,
+                expire,
+                minimum,
+            } => {
+                assert_eq!(mname, "ns1.example.com");
+                assert_eq!(rname, "admin.example.com");
+                assert_eq!(serial, &2024010101);
+                assert_eq!(refresh, &3600);
+                assert_eq!(retry, &600);
+                assert_eq!(expire, &604800);
+                assert_eq!(minimum, &86400);
+            }
+            _ => panic!("Expected SOA record"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_nxdomain() {
+        let mut message = Message::new();
+        message.set_id(9999);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::NXDomain);
+        message.add_question(Question::new(
+            "nonexistent.example".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::NXDomain);
+    }
+
+    #[test]
+    fn test_roundtrip_servfail() {
+        let mut message = Message::new();
+        message.set_id(1010);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::ServFail);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::ServFail);
+    }
+
+    #[test]
+    fn test_roundtrip_refused() {
+        let mut message = Message::new();
+        message.set_id(1111);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::Refused);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::Refused);
+    }
+
+    #[test]
+    fn test_roundtrip_authoritative() {
+        let mut message = Message::new();
+        message.set_id(1212);
+        message.set_response(true);
+        message.set_authoritative(true);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert!(parsed.is_authoritative());
+    }
+
+    #[test]
+    fn test_roundtrip_truncated() {
+        let mut message = Message::new();
+        message.set_id(1313);
+        message.set_response(true);
+        message.set_truncated(true);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert!(parsed.is_truncated());
+    }
+
+    #[test]
+    fn test_roundtrip_multiple_questions() {
+        let mut message = Message::new();
+        message.set_id(1414);
+        message.set_query(true);
+        message.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        message.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.question_count(), 2);
+    }
+
+    #[test]
+    fn test_roundtrip_authority_section() {
+        let mut message = Message::new();
+        message.set_id(1515);
+        message.set_response(true);
+        message.add_authority(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::NS,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::NS("ns1.example.com".to_string()),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.authority_count(), 1);
+    }
+
+    #[test]
+    fn test_roundtrip_additional_section() {
+        use std::net::Ipv4Addr;
+
+        let mut message = Message::new();
+        message.set_id(1616);
+        message.set_response(true);
+        message.add_additional(ResourceRecord::new(
+            "ns1.example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::A(Ipv4Addr::new(192, 0, 2, 1)),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.additional_count(), 1);
+    }
+
+    #[test]
+    fn test_serialize_invalid_domain_name() {
+        let mut message = Message::new();
+        message.set_id(1717);
+        // Empty domain name should still serialize (hickory handles this)
+        message.add_question(Question::new(
+            "".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        // This may or may not error depending on hickory-proto behavior
+        let _ = serialize_message(&message);
+    }
+
+    #[test]
+    fn test_roundtrip_formerr() {
+        let mut message = Message::new();
+        message.set_id(1818);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::FormErr);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::FormErr);
+    }
+
+    #[test]
+    fn test_roundtrip_notimp() {
+        let mut message = Message::new();
+        message.set_id(1919);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::NotImp);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::NotImp);
+    }
+
+    #[test]
+    fn test_roundtrip_yxdomain() {
+        // YXDomain maps to ServFail when converting from hickory
+        let mut message = Message::new();
+        message.set_id(2020);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::YXDomain);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        // YXDomain maps to ServFail when coming back from hickory
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::ServFail);
+    }
+
+    #[test]
+    fn test_roundtrip_yxrrset() {
+        let mut message = Message::new();
+        message.set_id(2121);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::YXRRSet);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        // YXRRSet maps to ServFail when coming back from hickory
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::ServFail);
+    }
+
+    #[test]
+    fn test_roundtrip_nxrrset() {
+        let mut message = Message::new();
+        message.set_id(2222);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::NXRRSet);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        // NXRRSet maps to ServFail when coming back from hickory
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::ServFail);
+    }
+
+    #[test]
+    fn test_roundtrip_notauth() {
+        let mut message = Message::new();
+        message.set_id(2323);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::NotAuth);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        // NotAuth maps to Refused when coming back from hickory
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::Refused);
+    }
+
+    #[test]
+    fn test_roundtrip_notzone() {
+        let mut message = Message::new();
+        message.set_id(2424);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::NotZone);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        // NotZone maps to ServFail when coming back from hickory
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::ServFail);
+    }
+
+    #[test]
+    fn test_roundtrip_unknown_rcode() {
+        let mut message = Message::new();
+        message.set_id(2525);
+        message.set_response(true);
+        message.set_response_code(crate::dns::ResponseCode::Unknown(99));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        // Unknown codes map to ServFail
+        assert_eq!(parsed.response_code(), crate::dns::ResponseCode::ServFail);
+    }
+
+    #[test]
+    fn test_roundtrip_opcode_status() {
+        let mut message = Message::new();
+        message.set_id(2626);
+        message.set_query(true);
+        message.set_opcode(crate::dns::OpCode::Status);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.opcode(), crate::dns::OpCode::Status);
+    }
+
+    #[test]
+    fn test_roundtrip_opcode_notify() {
+        let mut message = Message::new();
+        message.set_id(2727);
+        message.set_query(true);
+        message.set_opcode(crate::dns::OpCode::Notify);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.opcode(), crate::dns::OpCode::Notify);
+    }
+
+    #[test]
+    fn test_roundtrip_opcode_update() {
+        let mut message = Message::new();
+        message.set_id(2828);
+        message.set_query(true);
+        message.set_opcode(crate::dns::OpCode::Update);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.opcode(), crate::dns::OpCode::Update);
+    }
+
+    #[test]
+    fn test_roundtrip_opcode_iquery() {
+        let mut message = Message::new();
+        message.set_id(2929);
+        message.set_query(true);
+        message.set_opcode(crate::dns::OpCode::IQuery);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        // IQuery maps to Query in hickory
+        assert_eq!(parsed.opcode(), crate::dns::OpCode::Query);
+    }
+
+    #[test]
+    fn test_roundtrip_opcode_unknown() {
+        let mut message = Message::new();
+        message.set_id(3030);
+        message.set_query(true);
+        message.set_opcode(crate::dns::OpCode::Unknown(15));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        // Unknown opcode maps to Query
+        assert_eq!(parsed.opcode(), crate::dns::OpCode::Query);
+    }
+
+    #[test]
+    fn test_unsupported_record_skipped() {
+        // Create a message with a record type that we support and serialize it
+        // Then verify unsupported record types in our internal format are handled
+        let mut message = Message::new();
+        message.set_id(3131);
+        message.set_response(true);
+
+        // Add an A record (supported)
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::A(std::net::Ipv4Addr::new(192, 168, 1, 1)),
+        ));
+
+        // Add an unknown/unsupported RData type
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::Unknown(99),
+            RecordClass::IN,
+            300,
+            crate::dns::RData::Unknown(vec![1, 2, 3, 4]),
+        ));
+
+        // Serialize - unsupported records should be skipped, not error
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        // Only the supported A record should be in the response
+        assert_eq!(parsed.answer_count(), 1);
+        match parsed.answers()[0].rdata() {
+            crate::dns::RData::A(ip) => {
+                assert_eq!(*ip, std::net::Ipv4Addr::new(192, 168, 1, 1))
+            }
+            _ => panic!("Expected A record"),
+        }
+    }
+
+    #[test]
+    fn test_convert_to_hickory_invalid_cname() {
+        let mut message = Message::new();
+        message.set_id(3232);
+        message.set_response(true);
+
+        // Invalid domain name (contains invalid characters)
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::CNAME,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::CNAME("invalid..name".to_string()),
+        ));
+
+        // This may or may not error depending on hickory-proto strictness
+        let result = serialize_message(&message);
+        // We just verify it doesn't panic - error handling may vary
+        let _ = result;
+    }
+
+    #[test]
+    fn test_multiple_txt_strings() {
+        let mut message = Message::new();
+        message.set_id(3333);
+        message.set_response(true);
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::TXT,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::TXT(vec![
+                "first string".to_string(),
+                "second string".to_string(),
+                "third string".to_string(),
+            ]),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.answer_count(), 1);
+        match parsed.answers()[0].rdata() {
+            crate::dns::RData::TXT(texts) => {
+                assert_eq!(texts.len(), 3);
+                assert_eq!(texts[0], "first string");
+                assert_eq!(texts[1], "second string");
+                assert_eq!(texts[2], "third string");
+            }
+            _ => panic!("Expected TXT record"),
+        }
+    }
+
+    #[test]
+    fn test_different_record_classes() {
+        let mut message = Message::new();
+        message.set_id(3434);
+        message.set_response(true);
+        message.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::CH, // Chaosnet class
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.question_count(), 1);
+        // Note: hickory-proto may normalize some classes; we just verify roundtrip succeeds
+        // The class may be preserved as CH or may be normalized
+        let qclass = parsed.questions()[0].qclass();
+        assert!(
+            qclass == RecordClass::CH || qclass == RecordClass::IN,
+            "Expected CH or IN, got {:?}",
+            qclass
+        );
+    }
+
+    #[test]
+    fn test_all_header_flags() {
+        let mut message = Message::new();
+        message.set_id(3535);
+        message.set_response(true);
+        message.set_authoritative(true);
+        message.set_truncated(true);
+        message.set_recursion_desired(true);
+        message.set_recursion_available(true);
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert!(parsed.is_response());
+        assert!(parsed.is_authoritative());
+        assert!(parsed.is_truncated());
+        assert!(parsed.recursion_desired());
+        assert!(parsed.recursion_available());
+    }
+
+    #[test]
+    fn test_complex_message_all_sections() {
+        use std::net::{Ipv4Addr, Ipv6Addr};
+
+        let mut message = Message::new();
+        message.set_id(3636);
+        message.set_response(true);
+        message.set_authoritative(true);
+        message.set_response_code(crate::dns::ResponseCode::NoError);
+
+        // Question
+        message.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+
+        // Answer section
+        message.add_answer(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+            300,
+            crate::dns::RData::A(Ipv4Addr::new(93, 184, 216, 34)),
+        ));
+
+        // Authority section
+        message.add_authority(ResourceRecord::new(
+            "example.com".to_string(),
+            RecordType::NS,
+            RecordClass::IN,
+            86400,
+            crate::dns::RData::NS("ns1.example.com".to_string()),
+        ));
+
+        // Additional section
+        message.add_additional(ResourceRecord::new(
+            "ns1.example.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+            3600,
+            crate::dns::RData::AAAA(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 53)),
+        ));
+
+        let wire_data = serialize_message(&message).unwrap();
+        let parsed = parse_message(&wire_data).unwrap();
+
+        assert_eq!(parsed.id(), 3636);
+        assert!(parsed.is_response());
+        assert!(parsed.is_authoritative());
+        assert_eq!(parsed.question_count(), 1);
+        assert_eq!(parsed.answer_count(), 1);
+        assert_eq!(parsed.authority_count(), 1);
+        assert_eq!(parsed.additional_count(), 1);
     }
 }

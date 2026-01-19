@@ -197,5 +197,228 @@ mod tests {
         }
     }
 
-    // Other tests preserved from original file...
+    #[tokio::test]
+    async fn test_arbitrary_aaaa_record() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com AAAA 2001:db8::1".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answer_count(), 1);
+        match resp.answers()[0].rdata() {
+            RData::AAAA(_) => {}
+            _ => panic!("expected AAAA"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_arbitrary_cname_record() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["alias.com CNAME target.com".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "alias.com".to_string(),
+            RecordType::CNAME,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        assert!(ctx.response().is_some());
+        let resp = ctx.response().unwrap();
+        assert_eq!(resp.answer_count(), 1);
+        match resp.answers()[0].rdata() {
+            RData::CNAME(name) => assert_eq!(name, "target.com"),
+            _ => panic!("expected CNAME"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_arbitrary_with_in_class() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com IN A 10.0.0.1".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        assert!(!plugin.map.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_arbitrary_trailing_dot() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com. A 192.0.2.2".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "example.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        assert!(ctx.response().is_some());
+    }
+
+    #[test]
+    fn test_arbitrary_parse_invalid_rule() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["invalid".to_string()]), // Too few parts
+            files: None,
+        };
+        let result = ArbitraryPlugin::new(args);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_arbitrary_parse_invalid_ip() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com A not-an-ip".to_string()]),
+            files: None,
+        };
+        let result = ArbitraryPlugin::new(args);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_arbitrary_parse_unknown_type() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com MX mail.example.com".to_string()]),
+            files: None,
+        };
+        let result = ArbitraryPlugin::new(args);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_arbitrary_empty_rules() {
+        let args = ArbitraryArgs {
+            rules: Some(vec![]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        assert!(plugin.map.is_empty());
+    }
+
+    #[test]
+    fn test_arbitrary_none_rules() {
+        let args = ArbitraryArgs {
+            rules: None,
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        assert!(plugin.map.is_empty());
+    }
+
+    #[test]
+    fn test_arbitrary_debug() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com A 1.2.3.4".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let debug_str = format!("{:?}", plugin);
+        assert!(debug_str.contains("Arbitrary"));
+        assert!(debug_str.contains("rules_count"));
+    }
+
+    #[tokio::test]
+    async fn test_arbitrary_no_question() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com A 1.2.3.4".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let req = Message::new(); // No question
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        // Should still set response with first entry
+        assert!(ctx.response().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_arbitrary_not_found() {
+        let args = ArbitraryArgs {
+            rules: Some(vec!["example.com A 1.2.3.4".to_string()]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        let mut req = Message::new();
+        req.add_question(Question::new(
+            "other.com".to_string(),
+            RecordType::A,
+            RecordClass::IN,
+        ));
+        let mut ctx = Context::new(req);
+        plugin.execute(&mut ctx).await.unwrap();
+        // Not found in map
+        assert!(ctx.response().is_none());
+    }
+
+    #[test]
+    fn test_arbitrary_multiple_records_same_domain() {
+        let args = ArbitraryArgs {
+            rules: Some(vec![
+                "example.com A 1.1.1.1".to_string(),
+                "example.com A 2.2.2.2".to_string(),
+            ]),
+            files: None,
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        assert_eq!(plugin.map.get("example.com").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_arbitrary_file_not_found() {
+        let args = ArbitraryArgs {
+            rules: None,
+            files: Some(vec!["/nonexistent/path.txt".to_string()]),
+        };
+        let result = ArbitraryPlugin::new(args);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_arbitrary_file_with_comments() {
+        use std::io::Write;
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(tmp.as_file(), "# This is a comment").unwrap();
+        writeln!(tmp.as_file(), "; Another comment").unwrap();
+        writeln!(tmp.as_file()).unwrap();
+        writeln!(tmp.as_file(), "example.com A 1.2.3.4").unwrap();
+
+        let args = ArbitraryArgs {
+            rules: None,
+            files: Some(vec![tmp.path().to_str().unwrap().to_string()]),
+        };
+        let plugin = ArbitraryPlugin::new(args).unwrap();
+        assert_eq!(plugin.map.len(), 1);
+    }
+
+    #[test]
+    fn test_arbitrary_file_invalid_line() {
+        use std::io::Write;
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(tmp.as_file(), "invalid").unwrap();
+
+        let args = ArbitraryArgs {
+            rules: None,
+            files: Some(vec![tmp.path().to_str().unwrap().to_string()]),
+        };
+        let result = ArbitraryPlugin::new(args);
+        assert!(result.is_err());
+    }
 }

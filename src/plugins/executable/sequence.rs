@@ -212,27 +212,97 @@ mod tests {
     use crate::plugin::Context;
     use std::sync::Arc;
 
-    #[tokio::test]
-    async fn sequence_executes_in_order() {
-        #[derive(Debug)]
-        struct Recorder {
-            order: Arc<std::sync::Mutex<Vec<&'static str>>>,
-            label: &'static str,
+    #[derive(Debug)]
+    struct Recorder {
+        order: Arc<std::sync::Mutex<Vec<&'static str>>>,
+        label: &'static str,
+    }
+
+    #[async_trait]
+    impl Plugin for Recorder {
+        async fn execute(&self, ctx: &mut Context) -> Result<()> {
+            ctx.set_metadata("seen", true);
+            self.order.lock().unwrap().push(self.label);
+            Ok(())
         }
+
+        fn name(&self) -> &str {
+            self.label
+        }
+    }
+
+    #[test]
+    fn test_sequence_new() {
+        let seq = SequencePlugin::new(vec![]);
+        assert_eq!(seq.name(), "sequence");
+    }
+
+    #[test]
+    fn test_sequence_with_steps() {
+        let seq = SequencePlugin::with_steps(vec![]);
+        assert!(seq.tag.is_none());
+    }
+
+    #[test]
+    fn test_sequence_with_steps_and_tag() {
+        let seq = SequencePlugin::with_steps_and_tag(vec![], Some("my_tag".to_string()));
+        assert_eq!(seq.tag, Some("my_tag".to_string()));
+    }
+
+    #[test]
+    fn test_sequence_debug() {
+        let seq = SequencePlugin::new(vec![]);
+        let debug_str = format!("{:?}", seq);
+        assert!(debug_str.contains("SequencePlugin"));
+    }
+
+    #[test]
+    fn test_sequence_step_exec_debug() {
+        #[derive(Debug)]
+        struct DummyPlugin;
 
         #[async_trait]
-        impl Plugin for Recorder {
-            async fn execute(&self, ctx: &mut Context) -> Result<()> {
-                ctx.set_metadata("seen", true);
-                self.order.lock().unwrap().push(self.label);
+        impl Plugin for DummyPlugin {
+            async fn execute(&self, _ctx: &mut Context) -> Result<()> {
                 Ok(())
             }
-
             fn name(&self) -> &str {
-                self.label
+                "dummy"
             }
         }
 
+        let step = SequenceStep::Exec(Arc::new(DummyPlugin));
+        let debug_str = format!("{:?}", step);
+        assert!(debug_str.contains("Exec"));
+    }
+
+    #[test]
+    fn test_sequence_step_if_debug() {
+        #[derive(Debug)]
+        struct DummyPlugin;
+
+        #[async_trait]
+        impl Plugin for DummyPlugin {
+            async fn execute(&self, _ctx: &mut Context) -> Result<()> {
+                Ok(())
+            }
+            fn name(&self) -> &str {
+                "dummy"
+            }
+        }
+
+        let step = SequenceStep::If {
+            condition: Arc::new(|_| true),
+            action: Arc::new(DummyPlugin),
+            desc: "always true".to_string(),
+        };
+        let debug_str = format!("{:?}", step);
+        assert!(debug_str.contains("If"));
+        assert!(debug_str.contains("always true"));
+    }
+
+    #[tokio::test]
+    async fn sequence_executes_in_order() {
         let order = Arc::new(std::sync::Mutex::new(Vec::new()));
         let seq = SequencePlugin::new(vec![
             Arc::new(Recorder {
@@ -250,5 +320,100 @@ mod tests {
 
         let logged = order.lock().unwrap().clone();
         assert_eq!(logged, vec!["one", "two"]);
+    }
+
+    #[tokio::test]
+    async fn test_sequence_conditional_step_true() {
+        #[derive(Debug)]
+        struct SetFlag;
+
+        #[async_trait]
+        impl Plugin for SetFlag {
+            async fn execute(&self, ctx: &mut Context) -> Result<()> {
+                ctx.set_metadata("flag_set", true);
+                Ok(())
+            }
+            fn name(&self) -> &str {
+                "set_flag"
+            }
+        }
+
+        let seq = SequencePlugin::with_steps(vec![SequenceStep::If {
+            condition: Arc::new(|_| true),
+            action: Arc::new(SetFlag),
+            desc: "always true".to_string(),
+        }]);
+
+        let mut ctx = Context::new(Message::new());
+        seq.execute(&mut ctx).await.unwrap();
+
+        assert_eq!(ctx.get_metadata::<bool>("flag_set"), Some(&true));
+    }
+
+    #[tokio::test]
+    async fn test_sequence_conditional_step_false() {
+        #[derive(Debug)]
+        struct SetFlag;
+
+        #[async_trait]
+        impl Plugin for SetFlag {
+            async fn execute(&self, ctx: &mut Context) -> Result<()> {
+                ctx.set_metadata("flag_set", true);
+                Ok(())
+            }
+            fn name(&self) -> &str {
+                "set_flag"
+            }
+        }
+
+        let seq = SequencePlugin::with_steps(vec![SequenceStep::If {
+            condition: Arc::new(|_| false),
+            action: Arc::new(SetFlag),
+            desc: "always false".to_string(),
+        }]);
+
+        let mut ctx = Context::new(Message::new());
+        seq.execute(&mut ctx).await.unwrap();
+
+        assert!(ctx.get_metadata::<bool>("flag_set").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_sequence_stops_on_return_flag() {
+        let order = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        #[derive(Debug)]
+        struct SetReturnFlag {
+            order: Arc<std::sync::Mutex<Vec<&'static str>>>,
+        }
+
+        #[async_trait]
+        impl Plugin for SetReturnFlag {
+            async fn execute(&self, ctx: &mut Context) -> Result<()> {
+                self.order.lock().unwrap().push("first");
+                ctx.set_metadata(RETURN_FLAG, true);
+                Ok(())
+            }
+            fn name(&self) -> &str {
+                "set_return"
+            }
+        }
+
+        let seq = SequencePlugin::new(vec![
+            Arc::new(SetReturnFlag {
+                order: order.clone(),
+            }),
+            Arc::new(Recorder {
+                order: order.clone(),
+                label: "should_not_run",
+            }),
+        ]);
+
+        let mut ctx = Context::new(Message::new());
+        seq.execute(&mut ctx).await.unwrap();
+
+        let logged = order.lock().unwrap().clone();
+        // Only "first" should be logged, "should_not_run" should be skipped
+        assert_eq!(logged, vec!["first"]);
     }
 }

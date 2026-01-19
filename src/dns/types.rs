@@ -416,6 +416,30 @@ impl fmt::Display for ResponseCode {
 mod tests {
     use super::*;
 
+    // RecordType tests
+    #[test]
+    fn test_record_type_from_u16_known_types() {
+        assert_eq!(RecordType::from_u16(1), RecordType::A);
+        assert_eq!(RecordType::from_u16(2), RecordType::NS);
+        assert_eq!(RecordType::from_u16(5), RecordType::CNAME);
+        assert_eq!(RecordType::from_u16(6), RecordType::SOA);
+        assert_eq!(RecordType::from_u16(12), RecordType::PTR);
+        assert_eq!(RecordType::from_u16(15), RecordType::MX);
+        assert_eq!(RecordType::from_u16(16), RecordType::TXT);
+        assert_eq!(RecordType::from_u16(28), RecordType::AAAA);
+        assert_eq!(RecordType::from_u16(33), RecordType::SRV);
+        assert_eq!(RecordType::from_u16(41), RecordType::OPT);
+        assert_eq!(RecordType::from_u16(43), RecordType::DS);
+        assert_eq!(RecordType::from_u16(46), RecordType::RRSIG);
+        assert_eq!(RecordType::from_u16(47), RecordType::NSEC);
+        assert_eq!(RecordType::from_u16(48), RecordType::DNSKEY);
+        assert_eq!(RecordType::from_u16(50), RecordType::NSEC3);
+        assert_eq!(RecordType::from_u16(51), RecordType::NSEC3PARAM);
+        assert_eq!(RecordType::from_u16(64), RecordType::SVCB);
+        assert_eq!(RecordType::from_u16(65), RecordType::HTTPS);
+        assert_eq!(RecordType::from_u16(257), RecordType::CAA);
+    }
+
     #[test]
     fn test_record_type_conversions() {
         assert_eq!(RecordType::from_u16(1), RecordType::A);
@@ -434,15 +458,72 @@ mod tests {
     }
 
     #[test]
-    fn test_record_type_display() {
-        assert_eq!(format!("{}", RecordType::SVCB), "SVCB");
-        assert_eq!(format!("{}", RecordType::HTTPS), "HTTPS");
+    fn test_record_type_to_u16_all() {
+        assert_eq!(RecordType::A.to_u16(), 1);
+        assert_eq!(RecordType::NS.to_u16(), 2);
+        assert_eq!(RecordType::CNAME.to_u16(), 5);
+        assert_eq!(RecordType::SOA.to_u16(), 6);
+        assert_eq!(RecordType::PTR.to_u16(), 12);
+        assert_eq!(RecordType::MX.to_u16(), 15);
+        assert_eq!(RecordType::TXT.to_u16(), 16);
+        assert_eq!(RecordType::AAAA.to_u16(), 28);
+        assert_eq!(RecordType::SRV.to_u16(), 33);
+        assert_eq!(RecordType::OPT.to_u16(), 41);
+        assert_eq!(RecordType::DS.to_u16(), 43);
+        assert_eq!(RecordType::RRSIG.to_u16(), 46);
+        assert_eq!(RecordType::NSEC.to_u16(), 47);
+        assert_eq!(RecordType::DNSKEY.to_u16(), 48);
+        assert_eq!(RecordType::NSEC3.to_u16(), 50);
+        assert_eq!(RecordType::NSEC3PARAM.to_u16(), 51);
+        assert_eq!(RecordType::SVCB.to_u16(), 64);
+        assert_eq!(RecordType::HTTPS.to_u16(), 65);
+        assert_eq!(RecordType::CAA.to_u16(), 257);
+        assert_eq!(RecordType::Unknown(12345).to_u16(), 12345);
     }
 
     #[test]
+    fn test_record_type_display() {
+        assert_eq!(format!("{}", RecordType::A), "A");
+        assert_eq!(format!("{}", RecordType::NS), "NS");
+        assert_eq!(format!("{}", RecordType::CNAME), "CNAME");
+        assert_eq!(format!("{}", RecordType::SOA), "SOA");
+        assert_eq!(format!("{}", RecordType::PTR), "PTR");
+        assert_eq!(format!("{}", RecordType::MX), "MX");
+        assert_eq!(format!("{}", RecordType::TXT), "TXT");
+        assert_eq!(format!("{}", RecordType::AAAA), "AAAA");
+        assert_eq!(format!("{}", RecordType::SRV), "SRV");
+        assert_eq!(format!("{}", RecordType::OPT), "OPT");
+        assert_eq!(format!("{}", RecordType::DS), "DS");
+        assert_eq!(format!("{}", RecordType::RRSIG), "RRSIG");
+        assert_eq!(format!("{}", RecordType::NSEC), "NSEC");
+        assert_eq!(format!("{}", RecordType::DNSKEY), "DNSKEY");
+        assert_eq!(format!("{}", RecordType::NSEC3), "NSEC3");
+        assert_eq!(format!("{}", RecordType::NSEC3PARAM), "NSEC3PARAM");
+        assert_eq!(format!("{}", RecordType::SVCB), "SVCB");
+        assert_eq!(format!("{}", RecordType::HTTPS), "HTTPS");
+        assert_eq!(format!("{}", RecordType::CAA), "CAA");
+        assert_eq!(format!("{}", RecordType::Unknown(999)), "TYPE999");
+    }
+
+    #[test]
+    fn test_record_type_roundtrip() {
+        for val in [
+            1u16, 2, 5, 6, 12, 15, 16, 28, 33, 41, 43, 46, 47, 48, 50, 51, 64, 65, 257,
+        ] {
+            let rt = RecordType::from_u16(val);
+            assert_eq!(rt.to_u16(), val);
+        }
+    }
+
+    // RecordClass tests
+    #[test]
     fn test_record_class_conversions() {
         assert_eq!(RecordClass::from_u16(1), RecordClass::IN);
+        assert_eq!(RecordClass::from_u16(3), RecordClass::CH);
+        assert_eq!(RecordClass::from_u16(4), RecordClass::HS);
         assert_eq!(RecordClass::IN.to_u16(), 1);
+        assert_eq!(RecordClass::CH.to_u16(), 3);
+        assert_eq!(RecordClass::HS.to_u16(), 4);
 
         // Test unknown class
         let unknown = RecordClass::from_u16(255);
@@ -451,19 +532,88 @@ mod tests {
     }
 
     #[test]
-    fn test_opcode_conversions() {
-        assert_eq!(OpCode::from_u8(0), OpCode::Query);
-        assert_eq!(OpCode::from_u8(5), OpCode::Update);
-        assert_eq!(OpCode::Query.to_u8(), 0);
-        assert_eq!(OpCode::Update.to_u8(), 5);
+    fn test_record_class_display() {
+        assert_eq!(format!("{}", RecordClass::IN), "IN");
+        assert_eq!(format!("{}", RecordClass::CH), "CH");
+        assert_eq!(format!("{}", RecordClass::HS), "HS");
+        assert_eq!(format!("{}", RecordClass::Unknown(100)), "CLASS100");
     }
 
     #[test]
+    fn test_record_class_roundtrip() {
+        for val in [1u16, 3, 4] {
+            let rc = RecordClass::from_u16(val);
+            assert_eq!(rc.to_u16(), val);
+        }
+    }
+
+    // OpCode tests
+    #[test]
+    fn test_opcode_conversions() {
+        assert_eq!(OpCode::from_u8(0), OpCode::Query);
+        assert_eq!(OpCode::from_u8(1), OpCode::IQuery);
+        assert_eq!(OpCode::from_u8(2), OpCode::Status);
+        assert_eq!(OpCode::from_u8(4), OpCode::Notify);
+        assert_eq!(OpCode::from_u8(5), OpCode::Update);
+        assert_eq!(OpCode::from_u8(15), OpCode::Unknown(15));
+        assert_eq!(OpCode::Query.to_u8(), 0);
+        assert_eq!(OpCode::IQuery.to_u8(), 1);
+        assert_eq!(OpCode::Status.to_u8(), 2);
+        assert_eq!(OpCode::Notify.to_u8(), 4);
+        assert_eq!(OpCode::Update.to_u8(), 5);
+        assert_eq!(OpCode::Unknown(15).to_u8(), 15);
+    }
+
+    #[test]
+    fn test_opcode_roundtrip() {
+        for val in [0u8, 1, 2, 4, 5] {
+            let op = OpCode::from_u8(val);
+            assert_eq!(op.to_u8(), val);
+        }
+    }
+
+    // ResponseCode tests
+    #[test]
     fn test_response_code_conversions() {
         assert_eq!(ResponseCode::from_u8(0), ResponseCode::NoError);
+        assert_eq!(ResponseCode::from_u8(1), ResponseCode::FormErr);
+        assert_eq!(ResponseCode::from_u8(2), ResponseCode::ServFail);
         assert_eq!(ResponseCode::from_u8(3), ResponseCode::NXDomain);
+        assert_eq!(ResponseCode::from_u8(4), ResponseCode::NotImp);
+        assert_eq!(ResponseCode::from_u8(5), ResponseCode::Refused);
+        assert_eq!(ResponseCode::from_u8(6), ResponseCode::YXDomain);
+        assert_eq!(ResponseCode::from_u8(7), ResponseCode::YXRRSet);
+        assert_eq!(ResponseCode::from_u8(8), ResponseCode::NXRRSet);
+        assert_eq!(ResponseCode::from_u8(9), ResponseCode::NotAuth);
+        assert_eq!(ResponseCode::from_u8(10), ResponseCode::NotZone);
+        assert_eq!(ResponseCode::from_u8(99), ResponseCode::Unknown(99));
         assert_eq!(ResponseCode::NoError.to_u8(), 0);
         assert_eq!(ResponseCode::NXDomain.to_u8(), 3);
+        assert_eq!(ResponseCode::Unknown(99).to_u8(), 99);
+    }
+
+    #[test]
+    fn test_response_code_display() {
+        assert_eq!(format!("{}", ResponseCode::NoError), "NOERROR");
+        assert_eq!(format!("{}", ResponseCode::FormErr), "FORMERR");
+        assert_eq!(format!("{}", ResponseCode::ServFail), "SERVFAIL");
+        assert_eq!(format!("{}", ResponseCode::NXDomain), "NXDOMAIN");
+        assert_eq!(format!("{}", ResponseCode::NotImp), "NOTIMP");
+        assert_eq!(format!("{}", ResponseCode::Refused), "REFUSED");
+        assert_eq!(format!("{}", ResponseCode::YXDomain), "YXDOMAIN");
+        assert_eq!(format!("{}", ResponseCode::YXRRSet), "YXRRSET");
+        assert_eq!(format!("{}", ResponseCode::NXRRSet), "NXRRSET");
+        assert_eq!(format!("{}", ResponseCode::NotAuth), "NOTAUTH");
+        assert_eq!(format!("{}", ResponseCode::NotZone), "NOTZONE");
+        assert_eq!(format!("{}", ResponseCode::Unknown(42)), "RCODE42");
+    }
+
+    #[test]
+    fn test_response_code_roundtrip() {
+        for val in 0u8..=10 {
+            let rc = ResponseCode::from_u8(val);
+            assert_eq!(rc.to_u8(), val);
+        }
     }
 
     #[test]
