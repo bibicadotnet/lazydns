@@ -36,6 +36,16 @@ pub struct DoqServer {
     handler: Arc<dyn RequestHandler>,
 }
 
+impl std::fmt::Debug for DoqServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DoqServer")
+            .field("addr", &self.addr)
+            .field("cert_path", &self.cert_path)
+            .field("key_path", &self.key_path)
+            .finish_non_exhaustive()
+    }
+}
+
 impl DoqServer {
     /// Create a new `DoqServer`.
     ///
@@ -274,5 +284,285 @@ mod tests {
         let cfg = build_quic_server_config(&cert_path, &key_path).expect("build quic cfg");
         // Basic sanity: ensure conversion succeeded (cfg constructed)
         let _ = cfg;
+    }
+
+    #[test]
+    fn test_build_quic_server_config_missing_cert() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        // Generate a valid key file but use non-existent cert path
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let key_pem = cert.signing_key.serialize_pem();
+
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_str().unwrap().to_string();
+
+        let result = build_quic_server_config("/nonexistent/cert.pem", &key_path);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::Error::Config(msg) => assert!(msg.contains("Failed to read cert")),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_quic_server_config_missing_key() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        // Generate a valid cert file but use non-existent key path
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.cert.pem();
+
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(cert_pem.as_bytes()).unwrap();
+        let cert_path = cert_file.path().to_str().unwrap().to_string();
+
+        let result = build_quic_server_config(&cert_path, "/nonexistent/key.pem");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::Error::Config(msg) => assert!(msg.contains("Failed to read key")),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_quic_server_config_invalid_cert_pem() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        // Create files with invalid PEM content
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(b"not valid PEM content").unwrap();
+        let cert_path = cert_file.path().to_str().unwrap().to_string();
+
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let key_pem = cert.signing_key.serialize_pem();
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_str().unwrap().to_string();
+
+        let result = build_quic_server_config(&cert_path, &key_path);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::Error::Config(msg) => {
+                assert!(
+                    msg.contains("No certificates found"),
+                    "Expected 'No certificates found', got: {}",
+                    msg
+                );
+            }
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_quic_server_config_empty_cert_file() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        // Create empty cert file
+        let cert_file = NamedTempFile::new().unwrap();
+        let cert_path = cert_file.path().to_str().unwrap().to_string();
+
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let key_pem = cert.signing_key.serialize_pem();
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_str().unwrap().to_string();
+
+        let result = build_quic_server_config(&cert_path, &key_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_quic_server_config_empty_key_file() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.cert.pem();
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(cert_pem.as_bytes()).unwrap();
+        let cert_path = cert_file.path().to_str().unwrap().to_string();
+
+        // Create empty key file
+        let key_file = NamedTempFile::new().unwrap();
+        let key_path = key_file.path().to_str().unwrap().to_string();
+
+        let result = build_quic_server_config(&cert_path, &key_path);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::Error::Config(msg) => {
+                assert!(
+                    msg.contains("No private key found"),
+                    "Expected 'No private key found', got: {}",
+                    msg
+                );
+            }
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_doq_server_new() {
+        struct DummyHandler;
+        #[async_trait::async_trait]
+        impl RequestHandler for DummyHandler {
+            async fn handle(
+                &self,
+                ctx: crate::server::RequestContext,
+            ) -> crate::Result<crate::dns::Message> {
+                let req = ctx.into_message();
+                Ok(req)
+            }
+        }
+
+        let server = DoqServer::new(
+            "127.0.0.1:8853",
+            "/path/to/cert.pem",
+            "/path/to/key.pem",
+            Arc::new(DummyHandler),
+        );
+
+        assert_eq!(server.addr, "127.0.0.1:8853");
+        assert_eq!(server.cert_path, "/path/to/cert.pem");
+        assert_eq!(server.key_path, "/path/to/key.pem");
+    }
+
+    #[tokio::test]
+    async fn test_doq_server_from_config_missing_addr() {
+        let config = crate::server::ServerConfig {
+            tcp_addr: None, // Explicitly clear the default address
+            ..Default::default()
+        };
+        let result = DoqServer::from_config(config).await;
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        match &err {
+            crate::Error::Config(msg) => assert!(
+                msg.contains("Address not configured"),
+                "Expected error message to contain 'Address not configured', got: {}",
+                msg
+            ),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_doq_server_from_config_missing_cert() {
+        let config = crate::server::ServerConfig {
+            tcp_addr: Some("127.0.0.1:8853".parse().unwrap()),
+            ..Default::default()
+        };
+        let result = DoqServer::from_config(config).await;
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        match &err {
+            crate::Error::Config(msg) => assert!(msg.contains("Cert path not configured")),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_doq_server_from_config_missing_key() {
+        let config = crate::server::ServerConfig {
+            tcp_addr: Some("127.0.0.1:8853".parse().unwrap()),
+            cert_path: Some("/path/to/cert.pem".to_string()),
+            ..Default::default()
+        };
+        let result = DoqServer::from_config(config).await;
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        match &err {
+            crate::Error::Config(msg) => assert!(msg.contains("Key path not configured")),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_doq_server_from_config_missing_handler() {
+        let config = crate::server::ServerConfig {
+            tcp_addr: Some("127.0.0.1:8853".parse().unwrap()),
+            cert_path: Some("/path/to/cert.pem".to_string()),
+            key_path: Some("/path/to/key.pem".to_string()),
+            ..Default::default()
+        };
+        let result = DoqServer::from_config(config).await;
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        match &err {
+            crate::Error::Config(msg) => assert!(msg.contains("Handler not configured")),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_doq_server_run_invalid_address() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        // Generate valid cert/key
+        let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let cert_pem = cert.cert.pem();
+        let key_pem = cert.signing_key.serialize_pem();
+
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(cert_pem.as_bytes()).unwrap();
+        let cert_path = cert_file.path().to_str().unwrap().to_string();
+
+        let mut key_file = NamedTempFile::new().unwrap();
+        key_file.write_all(key_pem.as_bytes()).unwrap();
+        let key_path = key_file.path().to_str().unwrap().to_string();
+
+        struct DummyHandler;
+        #[async_trait::async_trait]
+        impl RequestHandler for DummyHandler {
+            async fn handle(
+                &self,
+                ctx: crate::server::RequestContext,
+            ) -> crate::Result<crate::dns::Message> {
+                let req = ctx.into_message();
+                Ok(req)
+            }
+        }
+
+        // Invalid address should fail to parse
+        let server = DoqServer::new(
+            "not-a-valid-addr",
+            cert_path,
+            key_path,
+            Arc::new(DummyHandler),
+        );
+        let result = server.run().await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::Error::Config(msg) => assert!(msg.contains("Invalid DoQ bind address")),
+            other => panic!("Expected Config error, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_doq_server_from_config_complete() {
+        struct DummyHandler;
+        #[async_trait::async_trait]
+        impl RequestHandler for DummyHandler {
+            async fn handle(
+                &self,
+                ctx: crate::server::RequestContext,
+            ) -> crate::Result<crate::dns::Message> {
+                let req = ctx.into_message();
+                Ok(req)
+            }
+        }
+
+        let config = crate::server::ServerConfig {
+            tcp_addr: Some("127.0.0.1:8853".parse().unwrap()),
+            cert_path: Some("/path/to/cert.pem".to_string()),
+            key_path: Some("/path/to/key.pem".to_string()),
+            handler: Some(Arc::new(DummyHandler)),
+            ..Default::default()
+        };
+
+        let result = DoqServer::from_config(config).await;
+        assert!(result.is_ok());
+        let server = result.unwrap();
+        assert_eq!(server.addr, "127.0.0.1:8853");
     }
 }
