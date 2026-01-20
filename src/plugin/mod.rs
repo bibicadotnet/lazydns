@@ -80,7 +80,7 @@ impl RequestHandler for PluginHandler {
         }
 
         // Set protocol metadata
-        ctx.set_metadata("protocol", req_ctx.protocol);
+        ctx.set_metadata("protocol", req_ctx.protocol.to_string());
 
         // Check if this is a background lazy refresh (marked by special ID)
         if req_ctx.message.id() == 0xFFFF {

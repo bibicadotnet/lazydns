@@ -43,6 +43,18 @@ pub enum Protocol {
     DoQ,
 }
 
+impl std::fmt::Display for Protocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Protocol::Udp => write!(f, "udp"),
+            Protocol::Tcp => write!(f, "tcp"),
+            Protocol::DoH => write!(f, "doh"),
+            Protocol::DoT => write!(f, "dot"),
+            Protocol::DoQ => write!(f, "doq"),
+        }
+    }
+}
+
 /// Request processing context
 ///
 /// Contains all information needed to process a DNS request,

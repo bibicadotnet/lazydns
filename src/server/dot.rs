@@ -169,8 +169,12 @@ impl DotServer {
                 request.question_count()
             );
 
-            // Create request context (DoT doesn't provide client address reliably)
-            let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoT);
+            // Create request context with client address
+            let ctx = crate::server::RequestContext::with_client(
+                request,
+                peer_addr,
+                crate::server::Protocol::DoT,
+            );
 
             // Handle request
             let response = handler.handle(ctx).await?;

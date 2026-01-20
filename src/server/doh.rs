@@ -28,7 +28,7 @@ use crate::server::{RequestHandler, Server, ServerConfig, TlsConfig};
 use axum::{
     Router,
     body::Bytes,
-    extract::{Query as AxumQuery, State},
+    extract::{ConnectInfo, Query as AxumQuery, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::post,
@@ -39,6 +39,7 @@ use axum_server::bind_rustls as axum_bind_rustls;
 use axum_server::tls_rustls::RustlsConfig as AxumRustlsConfig;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{debug, info, trace};
 
@@ -107,10 +108,11 @@ impl DohServer {
     pub async fn run(self) -> Result<()> {
         let handler = Arc::clone(&self.handler);
 
-        // Create router
+        // Create router with ConnectInfo support for client address tracking
         let app = Router::new()
             .route(&self.path, post(handle_post_query).get(handle_get_query))
-            .with_state(handler);
+            .with_state(handler)
+            .into_make_service_with_connect_info::<SocketAddr>();
 
         info!(
             "DoH server listening on {} (path: {})",
@@ -139,7 +141,7 @@ impl DohServer {
                 .map_err(|e| Error::Config(format!("Invalid bind address: {}", e)))?;
 
             axum_bind_rustls(bind_addr, axum_tls)
-                .serve(app.into_make_service())
+                .serve(app)
                 .await
                 .map_err(|e| Error::Other(format!("Server error: {}", e)))?;
         }
@@ -194,6 +196,30 @@ impl Server for DohServer {
     }
 }
 
+/// Extract client address from DoH HTTP request
+///
+/// First tries to get the real client IP from X-Forwarded-For header (for proxied requests),
+/// then falls back to the direct connection address from ConnectInfo.
+fn extract_client_addr(
+    headers: &HeaderMap,
+    connect_addr: Option<SocketAddr>,
+) -> Option<SocketAddr> {
+    // Try X-Forwarded-For header (for proxied requests)
+    if let Some(forwarded) = headers
+        .get("x-forwarded-for")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .and_then(|ip_str| ip_str.trim().parse::<std::net::IpAddr>().ok())
+    {
+        // Use port from connect_addr if available, otherwise use port 443 (default HTTPS)
+        let port = connect_addr.map(|a| a.port()).unwrap_or(443);
+        return Some(SocketAddr::new(forwarded, port));
+    }
+
+    // Fall back to direct connection address
+    connect_addr
+}
+
 /// Handle DoH GET requests (RFC 8484 Section 4.1)
 ///
 /// Expected behavior:
@@ -210,11 +236,15 @@ impl Server for DohServer {
 /// so it can map directly to HTTP status codes and body bytes.
 async fn handle_get_query(
     State(handler): State<Arc<dyn RequestHandler>>,
+    ConnectInfo(connect_addr): ConnectInfo<SocketAddr>,
     AxumQuery(params): AxumQuery<HashMap<String, String>>,
-    _headers: HeaderMap,
+    headers: HeaderMap,
 ) -> Response {
     // GET requests use ?dns= query parameter with base64url-encoded DNS message (RFC 8484 Section 4.1)
     debug!("Handling DoH GET request");
+
+    // Extract client address
+    let client_addr = extract_client_addr(&headers, Some(connect_addr));
 
     // Extract the 'dns' parameter
     let dns_param = match params.get("dns") {
@@ -264,8 +294,12 @@ async fn handle_get_query(
         request.question_count()
     );
 
-    // Create request context (DoH doesn't have reliable client IP)
-    let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoH);
+    // Create request context with client address
+    let ctx = crate::server::RequestContext::with_client(
+        request,
+        client_addr,
+        crate::server::Protocol::DoH,
+    );
 
     // Process query
     let response = match handler.handle(ctx).await {
@@ -320,10 +354,14 @@ async fn handle_get_query(
 /// an `axum::Response`.
 async fn handle_post_query(
     State(handler): State<Arc<dyn RequestHandler>>,
+    ConnectInfo(connect_addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
     debug!("Handling DoH POST request");
+
+    // Extract client address
+    let client_addr = extract_client_addr(&headers, Some(connect_addr));
     // Verify content type
     if let Some(content_type) = headers.get(header::CONTENT_TYPE) {
         if content_type != "application/dns-message" {
@@ -361,8 +399,12 @@ async fn handle_post_query(
         request.question_count()
     );
 
-    // Create request context
-    let ctx = crate::server::RequestContext::new(request, crate::server::Protocol::DoH);
+    // Create request context with client address
+    let ctx = crate::server::RequestContext::with_client(
+        request,
+        client_addr,
+        crate::server::Protocol::DoH,
+    );
 
     // Process query
     let response = match handler.handle(ctx).await {
@@ -489,8 +531,10 @@ mod tests {
         let mut params = HashMap::new();
         params.insert("dns".to_string(), encoded);
 
+        let connect_addr = "127.0.0.1:12345".parse().unwrap();
         let resp = handle_get_query(
             State(Arc::new(TestHandler)),
+            ConnectInfo(connect_addr),
             AxumQuery(params),
             HeaderMap::new(),
         )
@@ -518,8 +562,10 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, "application/dns-message".parse().unwrap());
 
+        let connect_addr = "127.0.0.1:12345".parse().unwrap();
         let resp = handle_post_query(
             State(Arc::new(TestHandler)),
+            ConnectInfo(connect_addr),
             headers,
             AxumBytes::from(data.clone()),
         )
@@ -544,8 +590,14 @@ mod tests {
         let data = crate::dns::wire::serialize_message(&req).unwrap();
 
         let headers = HeaderMap::new();
-        let resp =
-            handle_post_query(State(Arc::new(TestHandler)), headers, AxumBytes::from(data)).await;
+        let connect_addr = "127.0.0.1:12345".parse().unwrap();
+        let resp = handle_post_query(
+            State(Arc::new(TestHandler)),
+            ConnectInfo(connect_addr),
+            headers,
+            AxumBytes::from(data),
+        )
+        .await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 
@@ -558,8 +610,14 @@ mod tests {
 
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, "text/plain".parse().unwrap());
-        let resp =
-            handle_post_query(State(Arc::new(TestHandler)), headers, AxumBytes::from(data)).await;
+        let connect_addr = "127.0.0.1:12345".parse().unwrap();
+        let resp = handle_post_query(
+            State(Arc::new(TestHandler)),
+            ConnectInfo(connect_addr),
+            headers,
+            AxumBytes::from(data),
+        )
+        .await;
         assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
     }
 
@@ -575,8 +633,10 @@ mod tests {
     #[tokio::test]
     async fn test_handle_get_query_missing_param() {
         let params: HashMap<String, String> = HashMap::new();
+        let connect_addr = "127.0.0.1:12345".parse().unwrap();
         let resp = handle_get_query(
             State(Arc::new(TestHandler)),
+            ConnectInfo(connect_addr),
             AxumQuery(params),
             HeaderMap::new(),
         )
@@ -588,8 +648,10 @@ mod tests {
     async fn test_handle_get_query_invalid_base64() {
         let mut params = HashMap::new();
         params.insert("dns".to_string(), "!!not_base64!!".to_string());
+        let connect_addr = "127.0.0.1:12345".parse().unwrap();
         let resp = handle_get_query(
             State(Arc::new(TestHandler)),
+            ConnectInfo(connect_addr),
             AxumQuery(params),
             HeaderMap::new(),
         )
@@ -603,8 +665,10 @@ mod tests {
         let encoded = URL_SAFE_NO_PAD.encode(&bad);
         let mut params = HashMap::new();
         params.insert("dns".to_string(), encoded);
+        let connect_addr = "127.0.0.1:12345".parse().unwrap();
         let resp = handle_get_query(
             State(Arc::new(TestHandler)),
+            ConnectInfo(connect_addr),
             AxumQuery(params),
             HeaderMap::new(),
         )
@@ -623,8 +687,10 @@ mod tests {
         let mut params = HashMap::new();
         params.insert("dns".to_string(), encoded);
 
+        let connect_addr = "127.0.0.1:12345".parse().unwrap();
         let resp_get = handle_get_query(
             State(Arc::new(TestHandlerErr)),
+            ConnectInfo(connect_addr),
             AxumQuery(params.clone()),
             HeaderMap::new(),
         )
@@ -634,8 +700,10 @@ mod tests {
         // POST
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, "application/dns-message".parse().unwrap());
+        let connect_addr = "127.0.0.1:12345".parse().unwrap();
         let resp_post = handle_post_query(
             State(Arc::new(TestHandlerErr)),
+            ConnectInfo(connect_addr),
             headers,
             AxumBytes::from(data),
         )
