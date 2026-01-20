@@ -41,6 +41,10 @@ Accepted prefixes for exec quick-setup: `blackhole`, `black_hole`, `sinkhole`, `
 - For AAAA queries, configured IPv6 addresses are returned as AAAA records.
 - TTL used in records defaults to 300 seconds (as constructed by the plugin).
 
+## Audit Integration
+
+When matching a query and returning a response, this plugin will trigger a `blocked_domain_query` security event if the `audit` feature is enabled.
+
 ## Aliases
 
 - `blackhole`, `black_hole`, `sinkhole`, `null_dns` are all recognized aliases; the plugin registers these for convenience.

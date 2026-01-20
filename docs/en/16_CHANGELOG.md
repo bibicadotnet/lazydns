@@ -2,10 +2,9 @@
 
 This file contains high-level release notes and migration guidance.
 
-## Release v0.2.70 - 2026-01-16
+## Release v0.2.70 - 2026-01-20
 
-Short: Grafana dashboard enhancements with cache hit rate visualizations.
-
+- feat: audit implementation
 - added DNS cache hit rate time-series graph to Grafana dashboard for real-time cache performance monitoring
 - implemented cgroup memory statistics reader for container-aware metrics.
 - added memory metrics collection from /proc and cgroup, exposing them as Prometheus gauges.

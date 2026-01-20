@@ -865,6 +865,46 @@ impl ForwardPlugin {
                         self.core.max_attempts,
                         e
                     );
+
+                    #[cfg(feature = "audit")]
+                    // Log upstream failure or query timeout event
+                    if let Some(q) = request.questions().first() {
+                        let qname = q.qname().to_string();
+                        let client_ip = ctx.get_metadata::<std::net::IpAddr>("client_ip").copied();
+
+                        match &e {
+                            crate::Error::UpstreamTimeout {
+                                upstream,
+                                timeout_ms,
+                            } => {
+                                crate::plugins::AUDIT_LOGGER
+                                    .log_security_event(
+                                        crate::plugins::SecurityEventType::QueryTimeout,
+                                        format!(
+                                            "Timeout waiting for response from upstream {} ({} ms)",
+                                            upstream, timeout_ms
+                                        ),
+                                        client_ip,
+                                        Some(qname),
+                                    )
+                                    .await;
+                            }
+                            _ => {
+                                crate::plugins::AUDIT_LOGGER
+                                    .log_security_event(
+                                        crate::plugins::SecurityEventType::UpstreamFailure,
+                                        format!(
+                                            "Upstream server {} failed: {}",
+                                            self.core.upstreams[upstream_idx].addr, e
+                                        ),
+                                        client_ip,
+                                        Some(qname.clone()),
+                                    )
+                                    .await;
+                            }
+                        }
+                    }
+
                     last_error = Some(e);
                     attempts += 1;
 

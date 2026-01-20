@@ -162,6 +162,21 @@ impl Plugin for QueryAclPlugin {
             AclAction::Deny => {
                 warn!("ACL: Denied query from {}", client_ip);
 
+                #[cfg(feature = "audit")]
+                // Log ACL denied security event
+                if let Some(q) = ctx.request().questions().first() {
+                    let qname = q.qname().to_string();
+
+                    crate::plugins::AUDIT_LOGGER
+                        .log_security_event(
+                            crate::plugins::SecurityEventType::AclDenied,
+                            format!("Query denied by ACL rule from {}", client_ip),
+                            Some(client_ip),
+                            Some(qname),
+                        )
+                        .await;
+                }
+
                 // Create REFUSED response
                 let mut response = crate::dns::Message::new();
                 response.set_id(ctx.request().id());

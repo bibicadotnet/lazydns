@@ -167,7 +167,7 @@ impl Plugin for DomainValidatorPlugin {
                     let duration = start.elapsed().as_secs_f64();
                     crate::metrics::DNS_DOMAIN_VALIDATION_DURATION_SECONDS.observe(duration);
                 }
-                return handle_result(*result, &qname, ctx);
+                return handle_result(*result, &qname, ctx).await;
             } else {
                 // Cache miss - record it
                 #[cfg(feature = "metrics")]
@@ -232,7 +232,7 @@ impl Plugin for DomainValidatorPlugin {
             crate::metrics::DNS_DOMAIN_VALIDATION_DURATION_SECONDS.observe(duration);
         }
 
-        handle_result(result, &qname, ctx)
+        handle_result(result, &qname, ctx).await
     }
 
     fn name(&self) -> &str {
@@ -267,26 +267,70 @@ impl Plugin for DomainValidatorPlugin {
     }
 }
 
-fn handle_result(result: ValidationResult, qname: &str, ctx: &mut Context) -> Result<()> {
+async fn handle_result(result: ValidationResult, qname: &str, ctx: &mut Context) -> Result<()> {
     match result {
         ValidationResult::Valid => Ok(()),
         ValidationResult::Blacklisted => {
             warn!("Rejected blacklisted domain: {}", qname);
+
+            #[cfg(feature = "audit")]
+            crate::plugins::AUDIT_LOGGER
+                .log_security_event(
+                    crate::plugins::SecurityEventType::BlockedDomainQuery,
+                    format!("Blacklisted domain rejected: {}", qname),
+                    ctx.get_metadata::<std::net::IpAddr>("client_ip").copied(),
+                    Some(qname.to_string()),
+                )
+                .await;
+
             set_refused_response(ctx);
             Ok(())
         }
         ValidationResult::InvalidChars => {
             debug!("Rejected domain with invalid characters: {}", qname);
+
+            #[cfg(feature = "audit")]
+            crate::plugins::AUDIT_LOGGER
+                .log_security_event(
+                    crate::plugins::SecurityEventType::MalformedQuery,
+                    format!("Domain with invalid characters rejected: {}", qname),
+                    ctx.get_metadata::<std::net::IpAddr>("client_ip").copied(),
+                    Some(qname.to_string()),
+                )
+                .await;
+
             set_refused_response(ctx);
             Ok(())
         }
         ValidationResult::InvalidLength => {
             debug!("Rejected domain with invalid length: {}", qname);
+
+            #[cfg(feature = "audit")]
+            crate::plugins::AUDIT_LOGGER
+                .log_security_event(
+                    crate::plugins::SecurityEventType::MalformedQuery,
+                    format!("Domain with invalid length rejected: {}", qname),
+                    ctx.get_metadata::<std::net::IpAddr>("client_ip").copied(),
+                    Some(qname.to_string()),
+                )
+                .await;
+
             set_refused_response(ctx);
             Ok(())
         }
         ValidationResult::InvalidFormat => {
             debug!("Rejected domain with invalid format: {}", qname);
+
+            #[cfg(feature = "audit")]
+            crate::plugins::AUDIT_LOGGER
+                .log_security_event(
+                    crate::plugins::SecurityEventType::MalformedQuery,
+                    format!("Domain with invalid format rejected: {}", qname),
+                    ctx.get_metadata::<std::net::IpAddr>("client_ip").copied(),
+                    Some(qname.to_string()),
+                )
+                .await;
+
             set_refused_response(ctx);
             Ok(())
         }

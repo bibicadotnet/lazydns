@@ -45,6 +45,12 @@ The blacklist supports three matching modes:
 - Invalid domains are logged with `DEBUG` level
 - The plugin sets a response and terminates the pipeline for rejected queries
 
+## Audit Integration
+
+When the `audit` feature is enabled and an audit plugin is active, this plugin triggers the following security events:
+- **`malformed_query`**: whenever a domain fails RFC validation rules.
+- **`blocked_domain_query`**: whenever a domain matches the blacklist.
+
 ## Configuration options
 
 - `strict_mode` (bool, default: `true`): enable strict RFC compliance mode
