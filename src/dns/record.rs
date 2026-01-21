@@ -21,7 +21,7 @@ use std::sync::Arc;
 /// use std::net::Ipv4Addr;
 ///
 /// let record = ResourceRecord::new(
-///     "example.com".to_string(),
+///     "example.com",
 ///     RecordType::A,
 ///     RecordClass::IN,
 ///     3600,
@@ -69,7 +69,7 @@ impl ResourceRecord {
     }
 
     /// Create a new resource record with a pre-allocated Arc<str>
-    /// 
+    ///
     /// This is more efficient when you already have an Arc<str> as it avoids
     /// an additional allocation.
     pub fn with_arc(
@@ -124,7 +124,7 @@ impl ResourceRecord {
     }
 
     /// Get a clone of the Arc<str> for the domain name
-    /// 
+    ///
     /// This is useful for sharing the domain name without string allocation.
     pub fn name_arc(&self) -> Arc<str> {
         Arc::clone(&self.name)
@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn test_resource_record_creation() {
         let record = ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             3600,
@@ -188,14 +188,14 @@ mod tests {
     #[test]
     fn test_resource_record_setters() {
         let mut record = ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             3600,
             RData::A(Ipv4Addr::new(192, 0, 2, 1)),
         );
 
-        record.set_name("test.com".to_string());
+        record.set_name("test.com");
         record.set_rtype(RecordType::AAAA);
         record.set_rclass(RecordClass::CH);
         record.set_ttl(7200);
@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn test_resource_record_display() {
         let record = ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             3600,
@@ -227,21 +227,21 @@ mod tests {
     #[test]
     fn test_record_equality() {
         let r1 = ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             3600,
             RData::A(Ipv4Addr::new(192, 0, 2, 1)),
         );
         let r2 = ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             3600,
             RData::A(Ipv4Addr::new(192, 0, 2, 1)),
         );
         let r3 = ResourceRecord::new(
-            "other.com".to_string(),
+            "other.com",
             RecordType::A,
             RecordClass::IN,
             3600,
@@ -258,7 +258,7 @@ mod tests {
 
         // Test AAAA record
         let aaaa = ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
             3600,
@@ -268,7 +268,7 @@ mod tests {
 
         // Test CNAME record
         let cname = ResourceRecord::new(
-            "www.example.com".to_string(),
+            "www.example.com",
             RecordType::CNAME,
             RecordClass::IN,
             3600,
@@ -278,7 +278,7 @@ mod tests {
 
         // Test MX record
         let mx = ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::MX,
             RecordClass::IN,
             3600,

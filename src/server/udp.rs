@@ -450,7 +450,7 @@ impl UdpServer {
     /// response.set_id(0x1234);
     /// response.set_response(true);
     /// response.add_question(Question::new(
-    ///     "example.com".to_string(),
+    ///     "example.com",
     ///     RecordType::A,
     ///     RecordClass::IN,
     /// ));
@@ -531,7 +531,7 @@ mod tests {
         req.set_id(0x42);
         req.set_query(true);
         req.add_question(Question::new(
-            "example.test".to_string(),
+            "example.test",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -550,7 +550,7 @@ mod tests {
         resp.set_id(0x99);
         resp.set_response(true);
         resp.add_question(Question::new(
-            "example.test".to_string(),
+            "example.test",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -594,7 +594,7 @@ mod tests {
         resp.set_response(true);
         resp.set_recursion_available(true);
         resp.add_question(Question::new(
-            "complex.example.test".to_string(),
+            "complex.example.test",
             RecordType::AAAA,
             RecordClass::IN,
         ));

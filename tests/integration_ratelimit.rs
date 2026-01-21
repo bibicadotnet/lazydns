@@ -25,11 +25,7 @@ async fn send_dns_query(
     query.set_id(rand::random::<u16>());
     query.set_query(true);
     query.set_recursion_desired(true);
-    query.add_question(Question::new(
-        domain.to_string(),
-        RecordType::A,
-        RecordClass::IN,
-    ));
+    query.add_question(Question::new(domain, RecordType::A, RecordClass::IN));
 
     // Serialize and send
     let wire_data = serialize_message(&query)?;

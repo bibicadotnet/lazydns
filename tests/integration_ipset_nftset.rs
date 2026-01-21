@@ -22,13 +22,9 @@ async fn integration_ipset_sequence() {
 
     // Response containing an A record
     let mut resp = Message::new();
-    resp.add_question(Question::new(
-        "example.com".to_string(),
-        RecordType::A,
-        RecordClass::IN,
-    ));
+    resp.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
     resp.add_answer(ResourceRecord::new(
-        "example.com".to_string(),
+        "example.com",
         RecordType::A,
         RecordClass::IN,
         300,
@@ -94,13 +90,9 @@ async fn integration_nftset_sequence() {
     let nft = Arc::new(NftSetPlugin::new(args));
 
     let mut resp = Message::new();
-    resp.add_question(Question::new(
-        "example.com".to_string(),
-        RecordType::A,
-        RecordClass::IN,
-    ));
+    resp.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
     resp.add_answer(ResourceRecord::new(
-        "example.com".to_string(),
+        "example.com",
         RecordType::A,
         RecordClass::IN,
         300,

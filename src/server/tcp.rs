@@ -246,7 +246,7 @@ mod tests {
         req.set_id(0x42);
         req.set_query(true);
         req.add_question(Question::new(
-            "example.test".to_string(),
+            "example.test",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -291,7 +291,7 @@ mod tests {
         req.set_id(0x99);
         req.set_query(true);
         req.add_question(Question::new(
-            "roundtrip.test".to_string(),
+            "roundtrip.test",
             RecordType::AAAA,
             RecordClass::IN,
         ));

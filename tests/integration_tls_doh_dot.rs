@@ -180,7 +180,7 @@ async fn spawn_dot_single_accept(
                 let mut resp = req_msg.clone();
                 resp.set_response(true);
                 resp.add_answer(ResourceRecord::new(
-                    req_msg.questions()[0].qname().to_string(),
+                    req_msg.questions()[0].qname(),
                     RecordType::A,
                     RecordClass::IN,
                     60,
@@ -221,7 +221,7 @@ async fn integration_dot_tls_exchange() {
     req.set_id(0x4321);
     req.set_query(true);
     req.add_question(lazydns::dns::Question::new(
-        "localhost".to_string(),
+        "localhost",
         lazydns::dns::RecordType::A,
         lazydns::dns::RecordClass::IN,
     ));
@@ -285,7 +285,7 @@ async fn integration_dot_concurrent_clients() {
             req.set_id(i);
             req.set_query(true);
             req.add_question(lazydns::dns::Question::new(
-                "localhost".to_string(),
+                "localhost",
                 lazydns::dns::RecordType::A,
                 lazydns::dns::RecordClass::IN,
             ));

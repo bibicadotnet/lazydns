@@ -245,7 +245,7 @@ impl Plugin for ReverseLookupPlugin {
             r.set_response(true);
             r.add_question(q.clone());
             r.add_answer(ResourceRecord::new(
-                q.qname().to_string(),
+                q.qname(),
                 crate::dns::types::RecordType::PTR,
                 crate::dns::types::RecordClass::IN,
                 5,
@@ -376,16 +376,12 @@ mod tests {
     fn test_save_ips_after_and_lookup_cached() {
         // Build request with single question
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         // Build response with one A answer
         let mut resp = Message::new();
         resp.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -410,14 +406,14 @@ mod tests {
     fn test_save_ips_after_ipv6() {
         let mut req = Message::new();
         req.add_question(Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
         ));
 
         let mut resp = Message::new();
         resp.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
             300,
@@ -451,7 +447,7 @@ mod tests {
         // Build a PTR question for the corresponding reverse name
         let mut msg = Message::new();
         msg.add_question(Question::new(
-            "1.0.0.10.in-addr.arpa".to_string(),
+            "1.0.0.10.in-addr.arpa",
             RecordType::PTR,
             RecordClass::IN,
         ));
@@ -473,7 +469,7 @@ mod tests {
 
         let mut msg = Message::new();
         msg.add_question(Question::new(
-            "1.0.0.10.in-addr.arpa".to_string(),
+            "1.0.0.10.in-addr.arpa",
             RecordType::PTR,
             RecordClass::IN,
         ));
@@ -507,7 +503,7 @@ mod tests {
 
         let mut msg = Message::new();
         msg.add_question(Question::new(
-            "1.0.0.10.in-addr.arpa".to_string(),
+            "1.0.0.10.in-addr.arpa",
             RecordType::PTR,
             RecordClass::IN,
         ));
@@ -525,7 +521,7 @@ mod tests {
 
         let mut msg = Message::new();
         msg.add_question(Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A, // Not a PTR query
             RecordClass::IN,
         ));

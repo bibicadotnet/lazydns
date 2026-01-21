@@ -848,11 +848,7 @@ mod tests {
         // Single type
         let cond = parse_condition(&builder, "qtype 1").unwrap();
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let ctx = Context::new(req);
         assert!(cond(&ctx));
 
@@ -860,7 +856,7 @@ mod tests {
         let cond2 = parse_condition(&builder, "qtype 1 28").unwrap();
         let mut req2 = Message::new();
         req2.add_question(Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
         ));
@@ -1184,11 +1180,7 @@ mod tests {
 
         // Execute plugin and verify it rewrites the qname
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(request);
 
         plugin.execute(&mut ctx).await.expect("execute");
@@ -1236,11 +1228,7 @@ mod tests {
 
         // Execute plugin and verify it rewrites the qname
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "foo.example".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("foo.example", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(request);
 
         plugin.execute(&mut ctx).await.expect("execute");
@@ -1422,11 +1410,7 @@ mod tests {
 
         // Test with a query
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let ctx = Context::new(req);
 
         // Should return false for non-matching (empty domain set)
@@ -1441,21 +1425,13 @@ mod tests {
 
         // Test with matching domain (should return false due to negation)
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let ctx = Context::new(req);
         assert!(!condition(&ctx));
 
         // Test with non-matching domain (should return true due to negation)
         let mut req2 = Message::new();
-        req2.add_question(Question::new(
-            "other.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req2.add_question(Question::new("other.com", RecordType::A, RecordClass::IN));
         let ctx2 = Context::new(req2);
         assert!(condition(&ctx2));
     }
@@ -1476,21 +1452,13 @@ mod tests {
         // Test qclass with name
         let condition = parse_condition(&builder, "qclass IN").unwrap();
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let ctx = Context::new(request);
         assert!(condition(&ctx));
 
         // Test qclass with different class
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::CH,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::CH));
         let ctx = Context::new(request);
         let condition = parse_condition(&builder, "qclass IN").unwrap();
         assert!(!condition(&ctx));
@@ -1498,22 +1466,14 @@ mod tests {
         // Test qclass with multiple values
         let condition = parse_condition(&builder, "qclass IN CH").unwrap();
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::CH,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::CH));
         let ctx = Context::new(request);
         assert!(condition(&ctx));
 
         // Test numeric class
         let condition = parse_condition(&builder, "qclass 1").unwrap();
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let ctx = Context::new(request);
         assert!(condition(&ctx));
     }
@@ -1571,7 +1531,7 @@ mod tests {
         let condition = parse_condition(&builder, "has_cname").unwrap();
         let mut response = Message::new();
         response.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::CNAME,
             RecordClass::IN,
             300,
@@ -1585,7 +1545,7 @@ mod tests {
         let condition = parse_condition(&builder, "has_cname").unwrap();
         let mut response = Message::new();
         response.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,

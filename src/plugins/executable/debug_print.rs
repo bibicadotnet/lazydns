@@ -203,11 +203,7 @@ mod tests {
         let plugin = DebugPrintPlugin::queries_only();
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(request);
 
         assert!(plugin.execute(&mut ctx).await.is_ok());
@@ -222,7 +218,7 @@ mod tests {
 
         let mut response = Message::new();
         response.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -238,16 +234,12 @@ mod tests {
         let plugin = DebugPrintPlugin::new();
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(request);
 
         let mut response = Message::new();
         response.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -263,11 +255,7 @@ mod tests {
         let plugin = DebugPrintPlugin::new().with_prefix("TEST".to_string());
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(request);
 
         assert!(plugin.execute(&mut ctx).await.is_ok());

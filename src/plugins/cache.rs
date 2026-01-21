@@ -1392,18 +1392,14 @@ mod tests {
 
     fn create_test_message() -> Message {
         let mut msg = Message::new();
-        msg.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        msg.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         msg
     }
 
     fn create_test_response() -> Message {
         let mut msg = create_test_message();
         msg.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -1502,7 +1498,7 @@ mod tests {
         let mut msg_upper = create_test_message();
 
         // Change question to uppercase
-        msg_upper.questions_mut()[0].set_qname("EXAMPLE.COM".to_string());
+        msg_upper.questions_mut()[0].set_qname("EXAMPLE.COM");
 
         let key_lower = CachePlugin::make_key(&msg_lower);
         let key_upper = CachePlugin::make_key(&msg_upper);

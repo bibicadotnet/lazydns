@@ -38,13 +38,9 @@ async fn integration_sequence_save_hook() {
 
     // Create an arbitrary response message that contains an A answer for example.com
     let mut resp = Message::new();
-    resp.add_question(Question::new(
-        "example.com".to_string(),
-        RecordType::A,
-        RecordClass::IN,
-    ));
+    resp.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
     resp.add_answer(ResourceRecord::new(
-        "example.com".to_string(),
+        "example.com",
         RecordType::A,
         RecordClass::IN,
         300,

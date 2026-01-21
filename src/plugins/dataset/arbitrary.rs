@@ -180,11 +180,7 @@ mod tests {
         };
         let plugin = ArbitraryPlugin::new(args).unwrap();
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(req);
         plugin.execute(&mut ctx).await.unwrap();
         assert!(ctx.response().is_some());
@@ -206,7 +202,7 @@ mod tests {
         let plugin = ArbitraryPlugin::new(args).unwrap();
         let mut req = Message::new();
         req.add_question(Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
         ));
@@ -230,7 +226,7 @@ mod tests {
         let plugin = ArbitraryPlugin::new(args).unwrap();
         let mut req = Message::new();
         req.add_question(Question::new(
-            "alias.com".to_string(),
+            "alias.com",
             RecordType::CNAME,
             RecordClass::IN,
         ));
@@ -263,11 +259,7 @@ mod tests {
         };
         let plugin = ArbitraryPlugin::new(args).unwrap();
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(req);
         plugin.execute(&mut ctx).await.unwrap();
         assert!(ctx.response().is_some());
@@ -357,11 +349,7 @@ mod tests {
         };
         let plugin = ArbitraryPlugin::new(args).unwrap();
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "other.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("other.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(req);
         plugin.execute(&mut ctx).await.unwrap();
         // Not found in map

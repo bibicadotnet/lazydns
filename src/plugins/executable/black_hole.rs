@@ -54,7 +54,7 @@ impl BlackholePlugin {
         r.add_question(q.clone());
         for ip in &self.ipv4 {
             r.add_answer(ResourceRecord::new(
-                q.qname().to_string(),
+                q.qname(),
                 crate::dns::types::RecordType::A,
                 crate::dns::types::RecordClass::IN,
                 300,
@@ -78,7 +78,7 @@ impl BlackholePlugin {
         r.add_question(q.clone());
         for ip in &self.ipv6 {
             r.add_answer(ResourceRecord::new(
-                q.qname().to_string(),
+                q.qname(),
                 crate::dns::types::RecordType::AAAA,
                 crate::dns::types::RecordClass::IN,
                 300,
@@ -247,7 +247,7 @@ mod tests {
         let plugin = BlackholePlugin::new_from_strs(["192.0.2.1"]).unwrap();
         let mut req = Message::new();
         req.add_question(crate::dns::question::Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -267,7 +267,7 @@ mod tests {
         let plugin = BlackholePlugin::new_from_strs(["2001:db8::1"]).unwrap();
         let mut req = Message::new();
         req.add_question(crate::dns::question::Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
         ));
@@ -287,7 +287,7 @@ mod tests {
             BlackholePlugin::new_from_strs(["192.0.2.1", "192.0.2.2", "192.0.2.3"]).unwrap();
         let mut req = Message::new();
         req.add_question(crate::dns::question::Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -302,7 +302,7 @@ mod tests {
         let plugin = BlackholePlugin::new_from_strs(["192.0.2.1"]).unwrap(); // Only IPv4
         let mut req = Message::new();
         req.add_question(crate::dns::question::Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA, // But query is for AAAA
             RecordClass::IN,
         ));
@@ -327,7 +327,7 @@ mod tests {
         let plugin = BlackholePlugin::new_from_strs(Vec::<String>::new()).unwrap();
         let mut req = Message::new();
         req.add_question(crate::dns::question::Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
         ));

@@ -5,7 +5,7 @@ use std::time::Instant;
 fn bench_forward_clone(iter: usize, inner: usize) {
     let mut msg = Message::new();
     msg.add_question(lazydns::dns::Question::new(
-        "example.com".to_string(),
+        "example.com",
         lazydns::dns::types::RecordType::A,
         lazydns::dns::types::RecordClass::IN,
     ));
@@ -50,7 +50,7 @@ fn bench_forward_clone(iter: usize, inner: usize) {
 fn bench_cache_clone(iter: usize, inner: usize) {
     let mut msg = Message::new();
     msg.add_question(lazydns::dns::Question::new(
-        "example.com".to_string(),
+        "example.com",
         lazydns::dns::types::RecordType::A,
         lazydns::dns::types::RecordClass::IN,
     ));

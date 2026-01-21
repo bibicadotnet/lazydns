@@ -23,7 +23,7 @@ use std::fmt;
 /// message.set_id(1234);
 /// message.set_query(true);
 /// message.add_question(Question::new(
-///     "example.com".to_string(),
+///     "example.com",
 ///     RecordType::A,
 ///     RecordClass::IN,
 /// ));
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn test_add_question() {
         let mut message = Message::new();
-        let question = Question::new("example.com".to_string(), RecordType::A, RecordClass::IN);
+        let question = Question::new("example.com", RecordType::A, RecordClass::IN);
 
         message.add_question(question);
         assert_eq!(message.question_count(), 1);
@@ -390,7 +390,7 @@ mod tests {
     fn test_add_answer() {
         let mut message = Message::new();
         let answer = ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             3600,
@@ -406,13 +406,9 @@ mod tests {
     fn test_clear_sections() {
         let mut message = Message::new();
 
-        message.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        message.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             3600,
@@ -455,7 +451,7 @@ mod tests {
         message.set_query(true);
         message.set_recursion_desired(true);
         message.add_question(Question::new(
-            "www.example.com".to_string(),
+            "www.example.com",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -476,13 +472,13 @@ mod tests {
         message.set_response_code(ResponseCode::NoError);
 
         message.add_question(Question::new(
-            "www.example.com".to_string(),
+            "www.example.com",
             RecordType::A,
             RecordClass::IN,
         ));
 
         message.add_answer(ResourceRecord::new(
-            "www.example.com".to_string(),
+            "www.example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -502,7 +498,7 @@ mod tests {
     fn test_authority_section() {
         let mut message = Message::new();
         message.add_authority(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::NS,
             RecordClass::IN,
             86400,
@@ -518,7 +514,7 @@ mod tests {
     fn test_additional_section() {
         let mut message = Message::new();
         message.add_additional(ResourceRecord::new(
-            "ns1.example.com".to_string(),
+            "ns1.example.com",
             RecordType::A,
             RecordClass::IN,
             3600,
@@ -533,11 +529,7 @@ mod tests {
     fn test_message_clone() {
         let mut message = Message::new();
         message.set_id(5678);
-        message.add_question(Question::new(
-            "test.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        message.add_question(Question::new("test.com", RecordType::A, RecordClass::IN));
 
         let cloned = message.clone();
         assert_eq!(cloned.id(), 5678);
@@ -554,11 +546,7 @@ mod tests {
     #[test]
     fn test_questions_mut() {
         let mut message = Message::new();
-        message.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        message.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let questions = message.questions_mut();
         assert_eq!(questions.len(), 1);
@@ -570,7 +558,7 @@ mod tests {
     fn test_answers_mut() {
         let mut message = Message::new();
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -586,7 +574,7 @@ mod tests {
         let mut message = Message::new();
         let auth = message.authority_mut();
         auth.push(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::NS,
             RecordClass::IN,
             86400,
@@ -600,7 +588,7 @@ mod tests {
         let mut message = Message::new();
         let additional = message.additional_mut();
         additional.push(ResourceRecord::new(
-            "ns1.example.com".to_string(),
+            "ns1.example.com",
             RecordType::A,
             RecordClass::IN,
             3600,
@@ -613,7 +601,7 @@ mod tests {
     fn test_clear_authority() {
         let mut message = Message::new();
         message.add_authority(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::NS,
             RecordClass::IN,
             86400,
@@ -629,7 +617,7 @@ mod tests {
     fn test_clear_additional() {
         let mut message = Message::new();
         message.add_additional(ResourceRecord::new(
-            "ns1.example.com".to_string(),
+            "ns1.example.com",
             RecordType::A,
             RecordClass::IN,
             3600,

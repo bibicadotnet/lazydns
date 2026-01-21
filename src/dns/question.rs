@@ -18,7 +18,7 @@ use std::sync::Arc;
 /// use lazydns::dns::{Question, RecordType, RecordClass};
 ///
 /// let question = Question::new(
-///     "example.com".to_string(),
+///     "example.com",
 ///     RecordType::A,
 ///     RecordClass::IN,
 /// );
@@ -62,7 +62,7 @@ impl Question {
     }
 
     /// Create a new DNS question with a pre-allocated Arc<str>
-    /// 
+    ///
     /// This is more efficient when you already have an Arc<str> as it avoids
     /// an additional allocation.
     pub fn with_arc(qname: Arc<str>, qtype: RecordType, qclass: RecordClass) -> Self {
@@ -99,7 +99,7 @@ impl Question {
     }
 
     /// Get a clone of the Arc<str> for the domain name
-    /// 
+    ///
     /// This is useful for sharing the domain name without string allocation.
     pub fn qname_arc(&self) -> Arc<str> {
         Arc::clone(&self.qname)
@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn test_question_creation() {
-        let question = Question::new("example.com".to_string(), RecordType::A, RecordClass::IN);
+        let question = Question::new("example.com", RecordType::A, RecordClass::IN);
 
         assert_eq!(question.qname(), "example.com");
         assert_eq!(question.qtype(), RecordType::A);
@@ -137,9 +137,9 @@ mod tests {
 
     #[test]
     fn test_question_setters() {
-        let mut question = Question::new("example.com".to_string(), RecordType::A, RecordClass::IN);
+        let mut question = Question::new("example.com", RecordType::A, RecordClass::IN);
 
-        question.set_qname("test.com".to_string());
+        question.set_qname("test.com");
         question.set_qtype(RecordType::AAAA);
         question.set_qclass(RecordClass::CH);
 
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn test_question_display() {
-        let question = Question::new("example.com".to_string(), RecordType::A, RecordClass::IN);
+        let question = Question::new("example.com", RecordType::A, RecordClass::IN);
 
         let display = format!("{}", question);
         assert!(display.contains("example.com"));
@@ -160,9 +160,9 @@ mod tests {
 
     #[test]
     fn test_question_equality() {
-        let q1 = Question::new("example.com".to_string(), RecordType::A, RecordClass::IN);
-        let q2 = Question::new("example.com".to_string(), RecordType::A, RecordClass::IN);
-        let q3 = Question::new("other.com".to_string(), RecordType::A, RecordClass::IN);
+        let q1 = Question::new("example.com", RecordType::A, RecordClass::IN);
+        let q2 = Question::new("example.com", RecordType::A, RecordClass::IN);
+        let q3 = Question::new("other.com", RecordType::A, RecordClass::IN);
 
         assert_eq!(q1, q2);
         assert_ne!(q1, q3);

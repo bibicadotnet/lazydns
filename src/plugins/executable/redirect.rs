@@ -186,11 +186,7 @@ mod tests {
         let plugin = RedirectPlugin::new("example.com", "example.net");
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(request);
 
         plugin.execute(&mut ctx).await.unwrap();
@@ -204,11 +200,7 @@ mod tests {
         let plugin = RedirectPlugin::new("*.old.com", "*.new.com");
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "www.old.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("www.old.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(request);
 
         plugin.execute(&mut ctx).await.unwrap();
@@ -223,7 +215,7 @@ mod tests {
 
         let mut request = Message::new();
         request.add_question(Question::new(
-            "different.com".to_string(),
+            "different.com",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -244,11 +236,7 @@ mod tests {
         let plugin = RedirectPlugin::new("Example.COM", "example.net");
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "EXAMPLE.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("EXAMPLE.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(request);
 
         plugin.execute(&mut ctx).await.unwrap();

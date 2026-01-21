@@ -15,7 +15,7 @@
 //! let mut message = Message::new();
 //! message.set_query(true);
 //! message.add_question(Question::new(
-//!     "example.com".to_string(),
+//!     "example.com",
 //!     RecordType::A,
 //!     RecordClass::IN,
 //! ));
@@ -44,7 +44,7 @@ mod tests {
     fn test_dns_types_reexports() {
         // Verify all re-exported types are accessible
         let _msg = Message::new();
-        let _question = Question::new("example.com".to_string(), RecordType::A, RecordClass::IN);
+        let _question = Question::new("example.com", RecordType::A, RecordClass::IN);
         let _opcode = OpCode::Query;
         let _rcode = ResponseCode::NoError;
     }
