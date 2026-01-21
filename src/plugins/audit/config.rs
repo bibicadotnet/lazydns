@@ -7,11 +7,28 @@ use std::fmt;
 /// Audit logging configuration
 ///
 /// Controls DNS query logging and security event tracking.
+/// Global buffer/rotation settings apply to both query_log and security_events
+/// unless overridden at the individual log level.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct AuditConfig {
     /// Enable audit logging (default: false)
     #[serde(default)]
     pub enabled: bool,
+
+    /// Global log buffer size before flush (applies to both logs, default: 100)
+    #[serde(default = "default_buffer_size")]
+    pub buffer_size: usize,
+
+    /// Global maximum file size before rotation (applies to both logs, default: 100MB)
+    #[serde(
+        default = "default_max_file_size",
+        deserialize_with = "deserialize_max_file_size"
+    )]
+    pub max_file_size: u64,
+
+    /// Global number of rotated files to keep (applies to both logs, default: 10)
+    #[serde(default = "default_max_files")]
+    pub max_files: u32,
 
     /// Query logging configuration
     #[serde(default)]
@@ -25,6 +42,7 @@ pub struct AuditConfig {
 /// Query log configuration
 ///
 /// Controls what DNS queries are logged and where.
+/// Buffer and rotation settings inherit from AuditConfig if not specified.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QueryLogConfig {
     /// Path to query log file
@@ -48,20 +66,17 @@ pub struct QueryLogConfig {
     #[serde(default = "default_include_client_ip")]
     pub include_client_ip: bool,
 
-    /// Log buffer size before flush (default: 100)
-    #[serde(default = "default_buffer_size")]
-    pub buffer_size: usize,
+    /// Log buffer size before flush (overrides global audit.buffer_size if set)
+    #[serde(default)]
+    pub buffer_size: Option<usize>,
 
-    /// Maximum file size in bytes before rotation (default: 100MB)
-    #[serde(
-        default = "default_max_file_size",
-        deserialize_with = "deserialize_max_file_size"
-    )]
-    pub max_file_size: u64,
+    /// Maximum file size in bytes before rotation (overrides global audit.max_file_size if set)
+    #[serde(default, deserialize_with = "deserialize_optional_max_file_size")]
+    pub max_file_size: Option<u64>,
 
-    /// Number of rotated files to keep (default: 10)
-    #[serde(default = "default_max_files")]
-    pub max_files: u32,
+    /// Number of rotated files to keep (overrides global audit.max_files if set)
+    #[serde(default)]
+    pub max_files: Option<u32>,
 }
 
 fn default_query_log_path() -> String {
@@ -104,14 +119,17 @@ impl Default for QueryLogConfig {
             sampling_rate: default_sampling_rate(),
             include_response: default_include_response(),
             include_client_ip: default_include_client_ip(),
-            buffer_size: default_buffer_size(),
-            max_file_size: default_max_file_size(),
-            max_files: default_max_files(),
+            buffer_size: None,
+            max_file_size: None,
+            max_files: None,
         }
     }
 }
 
 /// Security event logging configuration
+///
+/// Controls security event logging. Buffer and rotation settings inherit
+/// from AuditConfig if not specified.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SecurityEventConfig {
     /// Enable security event logging (default: true when present)
@@ -129,6 +147,18 @@ pub struct SecurityEventConfig {
     /// Include full query details (default: true)
     #[serde(default = "default_include_query_details")]
     pub include_query_details: bool,
+
+    /// Log buffer size before flush (overrides global audit.buffer_size if set)
+    #[serde(default)]
+    pub buffer_size: Option<usize>,
+
+    /// Maximum file size in bytes before rotation (overrides global audit.max_file_size if set)
+    #[serde(default, deserialize_with = "deserialize_optional_max_file_size")]
+    pub max_file_size: Option<u64>,
+
+    /// Number of rotated files to keep (overrides global audit.max_files if set)
+    #[serde(default)]
+    pub max_files: Option<u32>,
 }
 
 fn default_security_enabled() -> bool {
@@ -150,6 +180,9 @@ impl Default for SecurityEventConfig {
             path: default_security_log_path(),
             events: Vec::new(), // empty = all events
             include_query_details: default_include_query_details(),
+            buffer_size: None,
+            max_file_size: None,
+            max_files: None,
         }
     }
 }
@@ -241,6 +274,62 @@ where
     deserializer.deserialize_any(MaxFileSizeVisitor)
 }
 
+/// Custom deserializer for optional max_file_size to support human-readable strings
+fn deserialize_optional_max_file_size<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    struct OptionalMaxFileSizeVisitor;
+
+    impl<'de> Visitor<'de> for OptionalMaxFileSizeVisitor {
+        type Value = Option<u64>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a number or a string with units (e.g., 100K, 10M, 1G)")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            deserialize_max_file_size(deserializer).map(Some)
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(v))
+        }
+
+        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if v < 0 {
+                return Err(de::Error::custom("negative file size"));
+            }
+            Ok(Some(v as u64))
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            parse_size(v).map(Some).map_err(de::Error::custom)
+        }
+    }
+
+    deserializer.deserialize_option(OptionalMaxFileSizeVisitor)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,20 +392,26 @@ query_log:
   max_file_size: 10M
 "#;
         let config: AuditConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.query_log.unwrap().max_file_size, 10 * 1024 * 1024);
+        assert_eq!(
+            config.query_log.unwrap().max_file_size,
+            Some(10 * 1024 * 1024)
+        );
 
         let yaml = r#"
 query_log:
   max_file_size: 100K
 "#;
         let config: AuditConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.query_log.unwrap().max_file_size, 100 * 1024);
+        assert_eq!(config.query_log.unwrap().max_file_size, Some(100 * 1024));
 
         let yaml = r#"
 query_log:
   max_file_size: 1G
 "#;
         let config: AuditConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.query_log.unwrap().max_file_size, 1024 * 1024 * 1024);
+        assert_eq!(
+            config.query_log.unwrap().max_file_size,
+            Some(1024 * 1024 * 1024)
+        );
     }
 }

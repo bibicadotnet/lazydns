@@ -12,14 +12,21 @@ lazydns provides comprehensive audit logging for DNS queries and security events
 
 ## Configuration
 
-The audit system is configured as a plugin in the `plugins` section.
+The audit system is configured as a plugin in the `plugins` section. It supports a **unified configuration model** where buffer and rotation settings are defined globally and inherited by both logs.
+
+### Basic Configuration
 
 ```yaml
 plugins:
-  - tag: logger
+  - tag: audit
     type: audit
     args:
       enabled: true
+      
+      # Global buffer and rotation settings (inherited by both logs)
+      buffer_size: 100          # Buffer before flush
+      max_file_size: 10M        # 10MB before rotation
+      max_files: 5              # Keep 5 rotated files
       
       # Query logging
       query_log:
@@ -28,9 +35,10 @@ plugins:
         sampling_rate: 1.0        # Log all queries
         include_response: true    # Include response details
         include_client_ip: true   # Keep client IP (false to mask)
-        buffer_size: 100          # Buffer before flush
-        max_file_size: 10M        # 10MB before rotation
-        max_files: 5              # Keep 5 rotated files
+        # Optional: override global settings
+        # buffer_size: 200
+        # max_file_size: 20M
+        # max_files: 10
 
       # Security event logging
       security_events:
@@ -44,6 +52,87 @@ plugins:
           - malformed_query
           - query_timeout
         include_query_details: true
+        # Optional: override global settings
+        # buffer_size: 50
+        # max_file_size: 5M
+        # max_files: 3
+```
+
+### Configuration Parameters
+
+#### Global Parameters (Inherited by both logs)
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `buffer_size` | usize | 100 | Number of entries to buffer before flushing to disk |
+| `max_file_size` | u64 | 100M | Maximum log file size before rotation (supports K/M/G units) |
+| `max_files` | u32 | 10 | Number of rotated files to keep |
+
+#### Query Log Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | queries.log | Path to query log file |
+| `format` | string | json | Output format: `json` or `text` |
+| `sampling_rate` | f64 | 1.0 | Fraction of queries to log (0.0-1.0) |
+| `include_response` | bool | true | Include response details |
+| `include_client_ip` | bool | true | Include client IP in logs |
+| `buffer_size` ⚙️ | Option<usize> | None | Override global setting |
+| `max_file_size` ⚙️ | Option<u64> | None | Override global setting |
+| `max_files` ⚙️ | Option<u32> | None | Override global setting |
+
+#### Security Events Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enabled` | bool | true | Enable security event logging |
+| `path` | string | security.log | Path to security log file |
+| `events` | Vec<string> | [] | Events to log (empty = all) |
+| `include_query_details` | bool | true | Include query details with events |
+| `buffer_size` ⚙️ | Option<usize> | None | Override global setting |
+| `max_file_size` ⚙️ | Option<u64> | None | Override global setting |
+| `max_files` ⚙️ | Option<u32> | None | Override global setting |
+
+⚙️ = Overridable parameter
+
+### Parameter Inheritance
+
+When a parameter is not specified at the log level (query_log or security_events), it inherits from the global audit level:
+
+```
+Resolution order:
+1. Log-level setting (if specified)
+2. Global audit setting (default fallback)
+3. Code default (final fallback)
+```
+
+**Example: Aggressive query logging, conservative security logging**
+
+```yaml
+plugins:
+  - tag: audit
+    type: audit
+    args:
+      enabled: true
+      # Conservative global defaults
+      buffer_size: 50
+      max_file_size: 10M
+      max_files: 5
+      
+      query_log:
+        path: queries.log
+        format: json
+        sampling_rate: 1.0
+        # Override for aggressive query logging
+        buffer_size: 500
+        max_file_size: 100M
+        max_files: 20
+      
+      security_events:
+        enabled: true
+        path: security.log
+        events: []  # All events
+        # Use global defaults (more conservative)
 ```
 
 ## Query Log Format
@@ -99,60 +188,132 @@ plugins:
 
 ## Using the Audit Plugin
 
-You can also use the `audit_log` plugin in your processing pipeline for more control:
+The audit plugin is **automatically executed** after each DNS query completes, without requiring manual addition to the processing sequence:
 
 ```yaml
 plugins:
+  - tag: audit
+    type: audit
+    args:
+      enabled: true
+      # ... config ...
+  
+  # Your normal processing sequence
   - tag: main
     type: sequence
     args:
-      - exec: audit_log:queries           # Log query before forwarding
-      - exec: $upstream
-      - exec: audit_log:full              # Log with response
-
-  # Or with custom tag
-  - tag: logged_forward
-    type: sequence
-    args:
-      - exec: audit_log:full,tag=upstream
-      - exec: $dns_forward
+      - exec: $validator
+      - exec: $upstream        # Audit automatically runs after
+      - matches: has_resp
+        exec: accept           # Audit automatically runs after
 ```
 
-### Plugin Options
-
-| Option | Description |
-|--------|-------------|
-| `full` / `responses` | Include response details (default) |
-| `queries` | Log queries only, no response details |
-| `tag=VALUE` | Set a custom source tag |
+**Key Benefits:**
+- No need to manually add audit invocation to every sequence
+- Consistent logging across all code paths
+- Automatic execution even if sequence short-circuits
 
 ## Sampling Strategy
 
 For high-traffic servers, use sampling to reduce I/O:
 
 ```yaml
-audit:
-  enabled: true
-  query_log:
-    sampling_rate: 0.1  # Log 10% of queries randomly
+plugins:
+  - tag: audit
+    type: audit
+    args:
+      enabled: true
+      buffer_size: 500
+      max_file_size: 100M
+      max_files: 10
+      
+      query_log:
+        path: queries.log
+        format: json
+        sampling_rate: 0.1  # Log 10% of queries randomly
+        include_response: true
+        include_client_ip: true
+      
+      security_events:
+        enabled: true
+        path: security.log
+        events: []  # All security events (not sampled)
 ```
 
 Sampling uses random selection, so approximately 10% of queries will be logged. This provides a representative sample while significantly reducing disk I/O.
 
+**Note**: Security events are not sampled - all events are logged regardless of query sampling.
+
 ## Log Rotation
 
-Query logs automatically rotate when they reach `max_file_size`:
+Both query logs and security event logs automatically rotate when they reach `max_file_size`:
 
-- Current log: `queries.log`
-- Rotated logs: `queries.log.1`, `queries.log.2`, etc.
-- Oldest files are deleted when `max_files` limit is reached
+### Rotation Behavior
+
+```
+When log file reaches max_file_size:
+  1. Current file renamed to .1
+  2. Existing .1 renamed to .2
+  3. Existing .2 renamed to .3
+  ...
+  N. Oldest file (.max_files) deleted
+  
+Example (max_files=5):
+  queries.log       (fresh, under limit)
+  queries.log.1     (most recent rotation)
+  queries.log.2
+  queries.log.3
+  queries.log.4
+  queries.log.5     (oldest, will be deleted on next rotation)
+```
+
+### Storage Planning
+
+Total disk space ≈ `max_file_size × max_files`
+
+```
+Example calculations:
+  - max_file_size: 10M, max_files: 5 = ~50MB total
+  - max_file_size: 50M, max_files: 10 = ~500MB total
+  - max_file_size: 100M, max_files: 20 = ~2GB total
+```
+
+### Security Events Rotation (New)
+
+Security event logs now support the same rotation mechanism as query logs, preventing unbounded disk usage for high-volume environments.
 
 ## Performance Considerations
 
 1. **Sampling**: Use `sampling_rate < 1.0` for high-traffic servers
-2. **Buffering**: Queries are buffered before writing (configurable via `buffer_size`)
+2. **Buffering**: Both queries and security events are buffered before writing (configurable via `buffer_size`)
+   - Smaller values (10-50): Lower latency, more frequent writes
+   - Larger values (100-1000): Better I/O efficiency, potential data loss if crash occurs
 3. **Async I/O**: All writes are async and don't block query processing
 4. **Separate Files**: Query logs and security events use separate files
+5. **Unified Configuration**: Use global settings for consistency, override only when needed
+
+### Recommended Settings
+
+**Development/Testing:**
+```yaml
+buffer_size: 10
+max_file_size: 5M
+max_files: 3
+```
+
+**Low-Traffic Production:**
+```yaml
+buffer_size: 50
+max_file_size: 10M
+max_files: 5
+```
+
+**High-Traffic Production:**
+```yaml
+buffer_size: 500
+max_file_size: 100M
+max_files: 10
+```
 
 ## Integration with SIEM
 

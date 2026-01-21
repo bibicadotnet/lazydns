@@ -84,6 +84,11 @@ plugins:
     type: audit
     args:
       enabled: true
+      # Global buffer and rotation settings (inherited by both logs unless overridden)
+      buffer_size: 50           # Flush after this many entries
+      max_file_size: 10M        # 10MB per file
+      max_files: 5              # Keep last 5 rotated files
+
       query_log:
         # Query log path - logs all DNS queries with full details
         path: examples/audit/log/queries.log
@@ -91,9 +96,10 @@ plugins:
         sampling_rate: 1.0        # Log all queries (change to 0.5 to log 50%)
         include_response: true    # Include response details (rcode, answers, time)
         include_client_ip: true   # Include client IP address
-        buffer_size: 50           # Flush after this many entries
-        max_file_size: 10M        # 10MB per file
-        max_files: 5              # Keep last 5 rotated files
+        # Override global settings (optional)
+        # buffer_size: 100
+        # max_file_size: 20M
+        # max_files: 10
 
       security_events:
         enabled: true
@@ -109,6 +115,10 @@ plugins:
           - malformed_query           # Malformed DNS query
           - query_timeout             # Query timeout occurred
         include_query_details: true   # Include query details with events
+        # Override global settings (optional)
+        # buffer_size: 100
+        # max_file_size: 5M
+        # max_files: 3
 
   # =========================================================================
   # Rate Limiter - Triggers rate_limit_exceeded events
@@ -228,8 +238,6 @@ plugins:
 
       # 7. Forward to upstream DNS (logs queries)
       - exec: $upstream_dns
-      - matches: has_resp
-        exec: $audit
       - matches: has_resp
         exec: accept
 

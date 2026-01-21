@@ -65,12 +65,12 @@ impl AuditLogger {
 
         // Set up query logging
         if let Some(ref query_config) = config.query_log {
-            self.init_query_log(query_config).await?;
+            self.init_query_log(&config, query_config).await?;
         }
 
         // Set up security event logging
         if let Some(ref security_config) = config.security_events {
-            self.init_security_log(security_config).await?;
+            self.init_security_log(&config, security_config).await?;
         }
 
         *self.config.write().await = Some(config);
@@ -78,7 +78,11 @@ impl AuditLogger {
     }
 
     /// Initialize query logging
-    async fn init_query_log(&self, config: &QueryLogConfig) -> crate::Result<()> {
+    async fn init_query_log(
+        &self,
+        audit_config: &AuditConfig,
+        config: &QueryLogConfig,
+    ) -> crate::Result<()> {
         debug!("Initializing query log with path: {}", config.path);
 
         // Create parent directories if needed
@@ -110,12 +114,12 @@ impl AuditLogger {
         *self.query_tx.write().await = Some(tx);
         debug!("Created query log channel");
 
-        // Spawn writer task
+        // Spawn writer task - inherit rotation parameters from audit config if not overridden
         let path = config.path.clone();
         let format = config.format.clone();
-        let buffer_size = config.buffer_size;
-        let max_file_size = config.max_file_size;
-        let max_files = config.max_files;
+        let buffer_size = config.buffer_size.unwrap_or(audit_config.buffer_size);
+        let max_file_size = config.max_file_size.unwrap_or(audit_config.max_file_size);
+        let max_files = config.max_files.unwrap_or(audit_config.max_files);
 
         tokio::spawn(async move {
             debug!("Query log writer task started");
@@ -133,7 +137,11 @@ impl AuditLogger {
     }
 
     /// Initialize security event logging
-    async fn init_security_log(&self, config: &SecurityEventConfig) -> crate::Result<()> {
+    async fn init_security_log(
+        &self,
+        audit_config: &AuditConfig,
+        config: &SecurityEventConfig,
+    ) -> crate::Result<()> {
         if !config.enabled {
             return Ok(());
         }
@@ -166,10 +174,14 @@ impl AuditLogger {
         let (tx, rx) = mpsc::unbounded_channel();
         *self.security_tx.write().await = Some(tx);
 
-        // Spawn writer task
+        // Spawn writer task - inherit rotation parameters from audit config if not overridden
         let path = config.path.clone();
+        let buffer_size = config.buffer_size.unwrap_or(audit_config.buffer_size);
+        let max_file_size = config.max_file_size.unwrap_or(audit_config.max_file_size);
+        let max_files = config.max_files.unwrap_or(audit_config.max_files);
+
         tokio::spawn(async move {
-            security_log_writer(rx, path).await;
+            security_log_writer(rx, path, buffer_size, max_file_size, max_files).await;
         });
 
         info!(
@@ -392,7 +404,7 @@ fn flush_query_buffer(
     if let Ok(metadata) = std::fs::metadata(path)
         && metadata.len() >= max_file_size
     {
-        rotate_log_file(path, max_files);
+        rotate_log_file(path, max_file_size, max_files);
     }
 
     // Open file for append
@@ -445,16 +457,64 @@ fn flush_query_buffer(
 }
 
 /// Background task for writing security logs
-async fn security_log_writer(mut rx: mpsc::UnboundedReceiver<AuditEvent>, path: String) {
-    while let Some(event) = rx.recv().await {
-        write_security_event(&path, &event);
-    }
+async fn security_log_writer(
+    mut rx: mpsc::UnboundedReceiver<AuditEvent>,
+    path: String,
+    buffer_size: usize,
+    max_file_size: u64,
+    max_files: u32,
+) {
+    let mut buffer = Vec::with_capacity(buffer_size);
+    let mut accumulated_size: u64 = 0;
 
-    debug!("Security log writer stopped");
+    loop {
+        tokio::select! {
+            Some(event) = rx.recv() => {
+                if let Ok(json) = event.to_json() {
+                    let event_size = json.len() as u64 + 1; // +1 for newline
+                    buffer.push(json);
+                    accumulated_size += event_size;
+
+                    // Flush if buffer reaches size limit
+                    if buffer.len() >= buffer_size {
+                        flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
+                    }
+                } else {
+                    error!("Failed to serialize security event");
+                }
+            }
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+                // Periodic flush
+                if !buffer.is_empty() {
+                    flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
+                }
+            }
+        }
+    }
 }
 
-/// Write a single security event to file
-fn write_security_event(path: &str, event: &AuditEvent) {
+/// Flush security event buffer to file
+fn flush_security_buffer(
+    path: &str,
+    buffer: &mut Vec<String>,
+    max_file_size: u64,
+    max_files: u32,
+    accumulated_size: &mut u64,
+) {
+    if buffer.is_empty() {
+        return;
+    }
+
+    // Check file size before writing
+    if let Ok(metadata) = std::fs::metadata(path) {
+        let current_size = metadata.len();
+        if current_size + *accumulated_size > max_file_size && current_size > 0 {
+            // Need to rotate
+            rotate_log_file(path, max_file_size, max_files);
+            *accumulated_size = 0;
+        }
+    }
+
     // Ensure parent directory exists
     if let Some(parent) = Path::new(path).parent()
         && !parent.as_os_str().is_empty()
@@ -471,25 +531,25 @@ fn write_security_event(path: &str, event: &AuditEvent) {
         Ok(f) => f,
         Err(e) => {
             error!(path = %path, error = %e, "Failed to open security log file");
+            buffer.clear();
+            *accumulated_size = 0;
             return;
         }
     };
 
     let mut writer = std::io::BufWriter::new(file);
-    match event.to_json() {
-        Ok(json) => {
-            if let Err(e) = writeln!(writer, "{}", json) {
-                error!(error = %e, "Failed to write security event");
-            }
-        }
-        Err(e) => {
-            error!(error = %e, "Failed to serialize security event");
+    for json in buffer.drain(..) {
+        if let Err(e) = writeln!(writer, "{}", json) {
+            error!(error = %e, "Failed to write security event");
         }
     }
+
+    *accumulated_size = 0;
 }
 
 /// Rotate log files (simple numbered rotation)
-fn rotate_log_file(path: &str, max_files: u32) {
+/// Checks file size and rotates if needed
+fn rotate_log_file(path: &str, _max_file_size: u64, max_files: u32) {
     // Delete oldest file if at limit
     let oldest = format!("{}.{}", path, max_files);
     let _ = std::fs::remove_file(&oldest);
@@ -557,6 +617,9 @@ mod tests {
         let logger = AuditLogger::new();
         let config = AuditConfig {
             enabled: true,
+            buffer_size: 100,
+            max_file_size: 100 * 1024 * 1024,
+            max_files: 10,
             query_log: Some(QueryLogConfig {
                 path: path.to_string_lossy().to_string(),
                 format: "json".into(),
@@ -590,6 +653,9 @@ mod tests {
         let logger = AuditLogger::new();
         let config = AuditConfig {
             enabled: true,
+            buffer_size: 100,
+            max_file_size: 100 * 1024 * 1024,
+            max_files: 10,
             query_log: None,
             security_events: Some(SecurityEventConfig {
                 enabled: true,
@@ -628,6 +694,9 @@ mod tests {
         let logger = AuditLogger::new();
         let config = AuditConfig {
             enabled: true,
+            buffer_size: 100,
+            max_file_size: 100 * 1024 * 1024,
+            max_files: 10,
             query_log: None,
             security_events: Some(SecurityEventConfig {
                 enabled: true,

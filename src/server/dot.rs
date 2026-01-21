@@ -105,7 +105,7 @@ impl DotServer {
 
             tokio::spawn(async move {
                 if let Err(e) = Self::handle_connection(stream, acceptor, handler).await {
-                    error!("Error handling DoT connection from {}: {}", peer_addr, e);
+                    warn!("Error handling DoT connection from {}: {}", peer_addr, e);
                 }
             });
         }

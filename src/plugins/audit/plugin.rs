@@ -229,6 +229,9 @@ mod tests {
     fn test_audit_plugin_from_config_query_log_only() {
         let config = AuditConfig {
             enabled: true,
+            buffer_size: 100,
+            max_file_size: 100 * 1024 * 1024,
+            max_files: 10,
             query_log: Some(Default::default()),
             security_events: None,
         };
@@ -242,6 +245,9 @@ mod tests {
         use super::super::config::QueryLogConfig;
         let config = AuditConfig {
             enabled: true,
+            buffer_size: 100,
+            max_file_size: 100 * 1024 * 1024,
+            max_files: 10,
             query_log: Some(QueryLogConfig {
                 include_response: false,
                 ..Default::default()
