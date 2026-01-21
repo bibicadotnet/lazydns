@@ -118,7 +118,18 @@ harness = false
 
 [features]
 default = ["log-ansi"]
-full = ["cron", "log-ansi", "log-file", "dot", "doh", "doq", "admin", "metrics"]
+audit = ["time/formatting", "time/local-offset", "time/macros"]
+full = [
+    "audit",
+    "cron",
+    "log-ansi",
+    "log-file",
+    "dot",
+    "doh",
+    "doq",
+    "admin",
+    "metrics",
+]
 # Enable cron expression parsing for cron plugin
 cron = ["cronexpr", "time/local-offset", "time/parsing", "time/formatting"]
 # Enable structured logging with lazylog

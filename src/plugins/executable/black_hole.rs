@@ -110,6 +110,22 @@ impl Plugin for BlackholePlugin {
             .make_response_for_a(req)
             .or_else(|| self.make_response_for_aaaa(req))
         {
+            #[cfg(feature = "audit")]
+            // Log blocked domain query event
+            if let Some(q) = req.questions().first() {
+                let qname = q.qname().to_string();
+                let client_ip = ctx.get_metadata::<std::net::IpAddr>("client_ip").copied();
+
+                crate::plugins::AUDIT_LOGGER
+                    .log_security_event(
+                        crate::plugins::SecurityEventType::BlockedDomainQuery,
+                        format!("Blocked domain query: {}", qname),
+                        client_ip,
+                        Some(qname),
+                    )
+                    .await;
+            }
+
             ctx.set_response(Some(resp));
         }
         Ok(())

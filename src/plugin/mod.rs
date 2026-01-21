@@ -80,7 +80,7 @@ impl RequestHandler for PluginHandler {
         }
 
         // Set protocol metadata
-        ctx.set_metadata("protocol", req_ctx.protocol);
+        ctx.set_metadata("protocol", req_ctx.protocol.to_string());
 
         // Check if this is a background lazy refresh (marked by special ID)
         if req_ctx.message.id() == 0xFFFF {
@@ -158,6 +158,20 @@ impl RequestHandler for PluginHandler {
                             .downcast_ref::<crate::plugins::executable::ReverseLookupPlugin>()
                 {
                     rl.save_ips_after(ctx.request(), resp);
+                }
+            }
+        }
+
+        // 3. Automatically execute audit plugin for query logging and security events
+        // This runs after the main sequence completes, ensuring all query details are available
+        #[cfg(feature = "audit")]
+        {
+            for name in self.registry.plugin_names() {
+                if let Some(p) = self.registry.get(&name)
+                    && p.name() == "audit"
+                    && let Err(e) = p.execute(&mut ctx).await
+                {
+                    warn!("Error during audit post-processing: {}", e);
                 }
             }
         }

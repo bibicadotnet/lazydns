@@ -209,6 +209,35 @@ plugins:
   #     enable_lazycache: true
   #     lazycache_threshold: 0.05
 
+  # ========================================================================
+  # Audit Plugin - Query Logging and Security Events
+  # ========================================================================
+  
+  - tag: audit
+    type: audit
+    args:
+      enabled: true
+      query_log:
+        # Log file path - relative to the working directory when lazydns starts
+        # When running with "-d examples/etc/", paths are relative to examples/etc/
+        path: log/lazydns/queries.log
+        format: json
+        sampling_rate: 1.0  # Log all queries (0.0-1.0 for partial sampling)
+        include_response: true
+        include_client_ip: true
+        buffer_size: 100  # Flush buffer after this many entries
+        max_file_size: 104857600  # 100MB - rotate log when exceeded
+        max_files: 10  # Keep last 10 rotated files
+      security_events:
+        enabled: true
+        # Log file path - same working directory rules apply
+        path: log/lazydns/security.log
+        events:
+          - rate_limit_exceeded
+          - blocked_domain_query
+          - upstream_failure
+        include_query_details: true
+
   # redirect plugin for specific domains
   - tag: redirect
     type: redirect
@@ -323,6 +352,8 @@ plugins:
       # check hosts files first
       - exec: $hosts_files
       - matches: has_resp
+        exec: $audit
+      - matches: has_resp
         exec: accept
 
       # reject PTR and DNSSEC to fix some iOS issues
@@ -344,11 +375,15 @@ plugins:
       - matches: "!qname 00006801.com"
         exec: $cache
       - matches: has_resp
+        exec: $audit
+      - matches: has_resp
         exec: accept
 
       # domestic domains
       - matches: qname $domain_direct_list
         exec: $upstream_direct
+      - matches: has_resp
+        exec: $audit
       - matches: has_resp
         exec: accept
 
@@ -356,10 +391,14 @@ plugins:
       - matches: qname $domain_proxy_list
         exec: $upstream_proxy
       - matches: has_resp
+        exec: $audit
+      - matches: has_resp
         exec: jump sequence_gfwlist
 
       # other unknown domains
       - exec: $fallback
+      # Log responses from fallback
+      - exec: $audit
 
   # ========================================================================
   # Server Configurations, listen on multiple protocols and ports

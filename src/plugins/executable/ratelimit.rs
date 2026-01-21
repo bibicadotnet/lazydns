@@ -129,6 +129,17 @@ impl Plugin for RateLimitPlugin {
         if self.should_limit(client_ip) {
             warn!("Rate limit exceeded for IP: {}", client_ip);
 
+            #[cfg(feature = "audit")]
+            // Log security event
+            crate::plugins::AUDIT_LOGGER
+                .log_security_event(
+                    crate::plugins::SecurityEventType::RateLimitExceeded,
+                    format!("Rate limit exceeded for client {}", client_ip),
+                    Some(client_ip),
+                    None,
+                )
+                .await;
+
             // Create a REFUSED response
             let mut response = crate::dns::Message::new();
             response.set_id(ctx.request().id());
