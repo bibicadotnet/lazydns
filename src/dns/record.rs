@@ -6,6 +6,7 @@
 use super::rdata::RData;
 use super::types::{RecordClass, RecordType};
 use std::fmt;
+use std::sync::Arc;
 
 /// DNS resource record
 ///
@@ -29,8 +30,8 @@ use std::fmt;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceRecord {
-    /// Domain name
-    name: String,
+    /// Domain name (shared via Arc for efficient cloning)
+    name: Arc<str>,
     /// Record type
     rtype: RecordType,
     /// Record class
@@ -52,7 +53,27 @@ impl ResourceRecord {
     /// * `ttl` - Time to live in seconds
     /// * `rdata` - The resource data
     pub fn new(
-        name: String,
+        name: impl AsRef<str>,
+        rtype: RecordType,
+        rclass: RecordClass,
+        ttl: u32,
+        rdata: RData,
+    ) -> Self {
+        Self {
+            name: Arc::from(name.as_ref()),
+            rtype,
+            rclass,
+            ttl,
+            rdata,
+        }
+    }
+
+    /// Create a new resource record with a pre-allocated Arc<str>
+    /// 
+    /// This is more efficient when you already have an Arc<str> as it avoids
+    /// an additional allocation.
+    pub fn with_arc(
+        name: Arc<str>,
         rtype: RecordType,
         rclass: RecordClass,
         ttl: u32,
@@ -93,8 +114,20 @@ impl ResourceRecord {
     }
 
     /// Set the domain name
-    pub fn set_name(&mut self, name: String) {
+    pub fn set_name(&mut self, name: impl AsRef<str>) {
+        self.name = Arc::from(name.as_ref());
+    }
+
+    /// Set the domain name with a pre-allocated Arc<str>
+    pub fn set_name_arc(&mut self, name: Arc<str>) {
         self.name = name;
+    }
+
+    /// Get a clone of the Arc<str> for the domain name
+    /// 
+    /// This is useful for sharing the domain name without string allocation.
+    pub fn name_arc(&self) -> Arc<str> {
+        Arc::clone(&self.name)
     }
 
     /// Set the record type

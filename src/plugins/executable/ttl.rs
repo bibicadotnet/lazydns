@@ -157,7 +157,7 @@ mod tests {
 
     fn make_a_record(name: &str, ttl: u32) -> ResourceRecord {
         ResourceRecord::new(
-            name.into(),
+            name,
             RecordType::A,
             RecordClass::IN,
             ttl,

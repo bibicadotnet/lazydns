@@ -5,6 +5,7 @@
 
 use super::types::{RecordClass, RecordType};
 use std::fmt;
+use std::sync::Arc;
 
 /// DNS question
 ///
@@ -24,8 +25,8 @@ use std::fmt;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Question {
-    /// The domain name being queried
-    qname: String,
+    /// The domain name being queried (shared via Arc for efficient cloning)
+    qname: Arc<str>,
     /// The type of record being requested
     qtype: RecordType,
     /// The class of record being requested
@@ -37,7 +38,7 @@ impl Question {
     ///
     /// # Arguments
     ///
-    /// * `qname` - The domain name to query
+    /// * `qname` - The domain name to query (accepts String, &str, or Arc<str>)
     /// * `qtype` - The type of DNS record requested
     /// * `qclass` - The class of DNS record requested
     ///
@@ -47,12 +48,24 @@ impl Question {
     /// use lazydns::dns::{Question, RecordType, RecordClass};
     ///
     /// let question = Question::new(
-    ///     "www.example.com".to_string(),
+    ///     "www.example.com",
     ///     RecordType::A,
     ///     RecordClass::IN,
     /// );
     /// ```
-    pub fn new(qname: String, qtype: RecordType, qclass: RecordClass) -> Self {
+    pub fn new(qname: impl AsRef<str>, qtype: RecordType, qclass: RecordClass) -> Self {
+        Self {
+            qname: Arc::from(qname.as_ref()),
+            qtype,
+            qclass,
+        }
+    }
+
+    /// Create a new DNS question with a pre-allocated Arc<str>
+    /// 
+    /// This is more efficient when you already have an Arc<str> as it avoids
+    /// an additional allocation.
+    pub fn with_arc(qname: Arc<str>, qtype: RecordType, qclass: RecordClass) -> Self {
         Self {
             qname,
             qtype,
@@ -76,8 +89,20 @@ impl Question {
     }
 
     /// Set the domain name
-    pub fn set_qname(&mut self, qname: String) {
+    pub fn set_qname(&mut self, qname: impl AsRef<str>) {
+        self.qname = Arc::from(qname.as_ref());
+    }
+
+    /// Set the domain name with a pre-allocated Arc<str>
+    pub fn set_qname_arc(&mut self, qname: Arc<str>) {
         self.qname = qname;
+    }
+
+    /// Get a clone of the Arc<str> for the domain name
+    /// 
+    /// This is useful for sharing the domain name without string allocation.
+    pub fn qname_arc(&self) -> Arc<str> {
+        Arc::clone(&self.qname)
     }
 
     /// Set the query type

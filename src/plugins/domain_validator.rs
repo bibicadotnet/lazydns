@@ -539,7 +539,7 @@ mod tests {
         // Create a test request
         let mut request = Message::new();
         request.add_question(Question::new(
-            "example.com".parse().unwrap(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
         ));
