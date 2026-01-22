@@ -287,6 +287,32 @@ impl PluginBuilder {
                 let cleanup_handle = cache_arc.spawn_cleanup_task();
                 background_tasks.push(cleanup_handle);
             }
+
+            // Check if this is a RateLimitPlugin and start its cleanup task
+            if let Some(ratelimit_plugin) = plugin.as_any().downcast_ref::<RateLimitPlugin>() {
+                info!(
+                    "Starting background cleanup task for rate limit plugin '{}'",
+                    plugin_name
+                );
+                // Clone the plugin and wrap in Arc
+                let ratelimit_arc = Arc::new((*ratelimit_plugin).clone());
+                let cleanup_handle = ratelimit_arc.spawn_cleanup_task();
+                background_tasks.push(cleanup_handle);
+            }
+
+            // Check if this is a ReverseLookupPlugin and start its cleanup task
+            if let Some(reverse_lookup_plugin) =
+                plugin.as_any().downcast_ref::<ReverseLookupPlugin>()
+            {
+                info!(
+                    "Starting background cleanup task for reverse lookup plugin '{}'",
+                    plugin_name
+                );
+                // Clone the plugin and wrap in Arc
+                let reverse_lookup_arc = Arc::new((*reverse_lookup_plugin).clone());
+                let cleanup_handle = reverse_lookup_arc.spawn_cleanup_task();
+                background_tasks.push(cleanup_handle);
+            }
         }
 
         background_tasks

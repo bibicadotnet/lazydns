@@ -46,7 +46,7 @@ type Entry = (String, Instant);
 /// query is received and `handle_ptr` is enabled, the plugin will attempt to
 /// translate the reverse name into an IP and reply from the cache if a valid
 /// (non-expired) entry exists.
-#[derive(RegisterPlugin)]
+#[derive(Clone, RegisterPlugin)]
 pub struct ReverseLookupPlugin {
     cache: Arc<DashMap<String, Entry>>,
     args: ReverseLookupArgs,
@@ -167,6 +167,48 @@ impl ReverseLookupPlugin {
     #[allow(dead_code)]
     pub fn save_response(&self, req: &Message, resp: &Message) {
         self.save_from_response(req, resp);
+    }
+
+    /// Clean up expired entries from the cache
+    ///
+    /// This removes all entries whose expiration time has passed.
+    /// Returns the number of entries removed.
+    pub fn cleanup(&self) -> usize {
+        let now = Instant::now();
+        let before = self.cache.len();
+        self.cache.retain(|_, entry| entry.1 > now);
+        let after = self.cache.len();
+        before.saturating_sub(after)
+    }
+
+    /// Spawn a background cleanup task that periodically removes expired entries
+    ///
+    /// This prevents the DashMap from growing unboundedly when there are many
+    /// unique IPs that are never looked up again. The cleanup runs every 5 minutes.
+    ///
+    /// # Returns
+    ///
+    /// A JoinHandle that can be used to abort the cleanup task if needed.
+    pub fn spawn_cleanup_task(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let cleanup_interval = Duration::from_secs(300); // 5 minutes
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(cleanup_interval);
+            loop {
+                interval.tick().await;
+                let removed = self.cleanup();
+                if removed > 0 {
+                    tracing::debug!(
+                        "ReverseLookupPlugin cleanup: removed {} expired entries",
+                        removed
+                    );
+                }
+            }
+        })
+    }
+
+    /// Get the current cache size
+    pub fn cache_size(&self) -> usize {
+        self.cache.len()
     }
 }
 
