@@ -21,11 +21,11 @@ pub struct AuditLogger {
     /// Configuration
     config: RwLock<Option<AuditConfig>>,
 
-    /// Query log sender channel
-    query_tx: RwLock<Option<mpsc::UnboundedSender<QueryLogEntry>>>,
+    /// Query log sender channel (bounded to prevent memory exhaustion)
+    query_tx: RwLock<Option<mpsc::Sender<QueryLogEntry>>>,
 
-    /// Security event sender channel
-    security_tx: RwLock<Option<mpsc::UnboundedSender<AuditEvent>>>,
+    /// Security event sender channel (bounded to prevent memory exhaustion)
+    security_tx: RwLock<Option<mpsc::Sender<AuditEvent>>>,
 
     /// Enabled security event types (empty = all)
     enabled_events: RwLock<HashSet<SecurityEventType>>,
@@ -36,7 +36,11 @@ pub struct AuditLogger {
     /// Statistics
     queries_logged: AtomicU64,
     queries_sampled_out: AtomicU64,
+    queries_dropped: AtomicU64,
     security_events_logged: AtomicU64,
+    security_events_dropped: AtomicU64,
+    query_channel_max_depth: AtomicU64,
+    security_channel_max_depth: AtomicU64,
 }
 
 impl AuditLogger {
@@ -50,7 +54,11 @@ impl AuditLogger {
             sampling_threshold: AtomicU64::new(u64::MAX), // 100% by default
             queries_logged: AtomicU64::new(0),
             queries_sampled_out: AtomicU64::new(0),
+            queries_dropped: AtomicU64::new(0),
             security_events_logged: AtomicU64::new(0),
+            security_events_dropped: AtomicU64::new(0),
+            query_channel_max_depth: AtomicU64::new(0),
+            security_channel_max_depth: AtomicU64::new(0),
         }
     }
 
@@ -109,10 +117,11 @@ impl AuditLogger {
         self.sampling_threshold.store(threshold, Ordering::Relaxed);
         debug!("Set sampling threshold: {}", threshold);
 
-        // Create channel for async writes
-        let (tx, rx) = mpsc::unbounded_channel();
+        // Create bounded channel (capacity=100) to prevent memory exhaustion
+        // If channel fills up, senders will block/fail and events will be dropped
+        let (tx, rx) = mpsc::channel(100);
         *self.query_tx.write().await = Some(tx);
-        debug!("Created query log channel");
+        debug!("Created query log channel with capacity=100");
 
         // Spawn writer task - inherit rotation parameters from audit config if not overridden
         let path = config.path.clone();
@@ -123,7 +132,16 @@ impl AuditLogger {
 
         tokio::spawn(async move {
             debug!("Query log writer task started");
-            query_log_writer(rx, path, format, buffer_size, max_file_size, max_files).await;
+            query_log_writer(
+                rx,
+                path,
+                format,
+                buffer_size,
+                max_file_size,
+                max_files,
+                &AUDIT_LOGGER,
+            )
+            .await;
         });
 
         info!(
@@ -170,8 +188,8 @@ impl AuditLogger {
         }
         *self.enabled_events.write().await = enabled;
 
-        // Create channel for async writes
-        let (tx, rx) = mpsc::unbounded_channel();
+        // Create bounded channel (capacity=100) to prevent memory exhaustion
+        let (tx, rx) = mpsc::channel(100);
         *self.security_tx.write().await = Some(tx);
 
         // Spawn writer task - inherit rotation parameters from audit config if not overridden
@@ -181,7 +199,15 @@ impl AuditLogger {
         let max_files = config.max_files.unwrap_or(audit_config.max_files);
 
         tokio::spawn(async move {
-            security_log_writer(rx, path, buffer_size, max_file_size, max_files).await;
+            security_log_writer(
+                rx,
+                path,
+                buffer_size,
+                max_file_size,
+                max_files,
+                &AUDIT_LOGGER,
+            )
+            .await;
         });
 
         info!(
@@ -228,14 +254,22 @@ impl AuditLogger {
 
         let tx_lock = self.query_tx.read().await;
         if let Some(ref tx) = *tx_lock {
-            if tx.send(entry).is_ok() {
-                self.queries_logged.fetch_add(1, Ordering::Relaxed);
-                trace!("Query logged successfully");
-            } else {
-                error!("Failed to send query to channel");
+            // Use try_send to avoid blocking on full queue
+            match tx.try_send(entry) {
+                Ok(_) => {
+                    self.queries_logged.fetch_add(1, Ordering::Relaxed);
+                    trace!("Query logged successfully");
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    self.queries_dropped.fetch_add(1, Ordering::Relaxed);
+                    warn!("Query channel full, dropping query (may indicate slow I/O)");
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    warn!("Query channel closed, dropping query");
+                }
             }
         } else {
-            error!("Query channel not initialized!");
+            warn!("Query channel not initialized");
         }
     }
 
@@ -259,10 +293,19 @@ impl AuditLogger {
         }
 
         if let Some(ref tx) = *tx_lock {
-            if tx.send(event).is_err() {
-                error!("Failed to send security event to channel");
-            } else {
-                self.security_events_logged.fetch_add(1, Ordering::Relaxed);
+            // Use try_send to avoid blocking on full queue
+            match tx.try_send(event) {
+                Ok(_) => {
+                    self.security_events_logged.fetch_add(1, Ordering::Relaxed);
+                    trace!("Security event logged successfully");
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    self.security_events_dropped.fetch_add(1, Ordering::Relaxed);
+                    warn!("Security event channel full, dropping event (may indicate slow I/O)");
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    warn!("Security event channel closed, dropping event");
+                }
             }
         }
     }
@@ -300,6 +343,10 @@ impl AuditLogger {
             queries_logged: self.queries_logged.load(Ordering::Relaxed),
             queries_sampled_out: self.queries_sampled_out.load(Ordering::Relaxed),
             security_events_logged: self.security_events_logged.load(Ordering::Relaxed),
+            queries_dropped: self.queries_dropped.load(Ordering::Relaxed),
+            security_events_dropped: self.security_events_dropped.load(Ordering::Relaxed),
+            query_channel_max_depth: self.query_channel_max_depth.load(Ordering::Relaxed),
+            security_channel_max_depth: self.security_channel_max_depth.load(Ordering::Relaxed),
         }
     }
 
@@ -331,21 +378,27 @@ pub struct AuditStats {
     pub queries_logged: u64,
     pub queries_sampled_out: u64,
     pub security_events_logged: u64,
+    pub queries_dropped: u64,
+    pub security_events_dropped: u64,
+    pub query_channel_max_depth: u64,
+    pub security_channel_max_depth: u64,
 }
 
 /// Background task for writing query logs
 async fn query_log_writer(
-    mut rx: mpsc::UnboundedReceiver<QueryLogEntry>,
+    mut rx: mpsc::Receiver<QueryLogEntry>,
     path: String,
     format: String,
     buffer_size: usize,
     max_file_size: u64,
     max_files: u32,
+    logger: &'static AuditLogger,
 ) {
     debug!("Query log writer task started for path: {}", path);
 
     let mut buffer: Vec<QueryLogEntry> = Vec::with_capacity(buffer_size);
     let use_json = format == "json";
+    let mut last_depth_check = tokio::time::Instant::now();
 
     loop {
         tokio::select! {
@@ -374,6 +427,20 @@ async fn query_log_writer(
                 if !buffer.is_empty() {
                     debug!("Periodic flush: flushing {} entries", buffer.len());
                     flush_query_buffer(&mut buffer, &path, use_json, max_file_size, max_files);
+                }
+
+                // Monitor queue depth every 5 seconds
+                if last_depth_check.elapsed() >= tokio::time::Duration::from_secs(5) {
+                    let current_depth = rx.len() as u64;
+                    let max_depth = logger.query_channel_max_depth.load(Ordering::Relaxed);
+                    if current_depth > max_depth {
+                        logger.query_channel_max_depth.store(current_depth, Ordering::Relaxed);
+                        trace!("Query channel max depth updated: {}", current_depth);
+                    }
+                    if current_depth > 80 {
+                        warn!("Query channel depth is high: {} / 100", current_depth);
+                    }
+                    last_depth_check = tokio::time::Instant::now();
                 }
             }
         }
@@ -458,14 +525,16 @@ fn flush_query_buffer(
 
 /// Background task for writing security logs
 async fn security_log_writer(
-    mut rx: mpsc::UnboundedReceiver<AuditEvent>,
+    mut rx: mpsc::Receiver<AuditEvent>,
     path: String,
     buffer_size: usize,
     max_file_size: u64,
     max_files: u32,
+    logger: &'static AuditLogger,
 ) {
     let mut buffer = Vec::with_capacity(buffer_size);
     let mut accumulated_size: u64 = 0;
+    let mut last_depth_check = tokio::time::Instant::now();
 
     loop {
         tokio::select! {
@@ -487,6 +556,20 @@ async fn security_log_writer(
                 // Periodic flush
                 if !buffer.is_empty() {
                     flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
+                }
+
+                // Monitor queue depth every 5 seconds
+                if last_depth_check.elapsed() >= tokio::time::Duration::from_secs(5) {
+                    let current_depth = rx.len() as u64;
+                    let max_depth = logger.security_channel_max_depth.load(Ordering::Relaxed);
+                    if current_depth > max_depth {
+                        logger.security_channel_max_depth.store(current_depth, Ordering::Relaxed);
+                        trace!("Security event channel max depth updated: {}", current_depth);
+                    }
+                    if current_depth > 80 {
+                        warn!("Security event channel depth is high: {} / 100", current_depth);
+                    }
+                    last_depth_check = tokio::time::Instant::now();
                 }
             }
         }
