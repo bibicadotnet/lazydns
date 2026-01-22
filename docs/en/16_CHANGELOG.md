@@ -2,16 +2,41 @@
 
 This file contains high-level release notes and migration guidance.
 
-## Release v0.2.70 - 2026-01-20
+## Release v0.2.70 - 2026-01-22
 
-- feat: audit implementation
-- feat: use Arc<str> in dns message to reduce memory usage in frequently cloned strings.
-- added DNS cache hit rate time-series graph to Grafana dashboard for real-time cache performance monitoring.
-- implemented cgroup memory statistics reader for container-aware metrics.
-- added memory metrics collection from /proc and cgroup, exposing them as Prometheus gauges.
-- enhanced metrics visualization capabilities for better cache performance analysis
-- change admin port to 8000, metrics to 8001 by default.
+**Performance Optimization**
+- feat(server): add semaphore for limiting concurrent connections in TCP and UDP servers
+- feat(plugins): add background cleanup tasks for RateLimitPlugin and ReverseLookupPlugin
+- fix(audit): change query and security event channels to bounded to prevent memory exhaustion
+- feat(arc_str): optimize DNS structures by replacing String with Arc<str> for efficient cloning and add benchmark for performance comparison
 
+**Monitoring & Metrics**
+- feat(audit): enhance audit logging with unified configuration and automatic execution
+- feat(audit): implement async file-based audit logging with query and security event tracking
+- feat(metrics): add DNS cache hit rate and domain validation cache hit rate metrics
+- feat(metrics): add cache miss tracking and Prometheus metrics collector demo and memory metrics support
+
+**Network Protocols**
+- feat(doh, dot): enhance request context with client address support
+
+**Development Tools**
+- test(loader): reduce flakiness in roundtrip test by clearing environment overrides
+- test(cgroup): add comprehensive tests for cgroup memory statistics and version detection
+- test(rate_limit): enhance server readiness check and improve test reliability
+- test(doq, dot, wire): add unit tests for server configuration and request handling and DNSSEC
+- test(coverage): add unit tests and debug implementations for various plugins
+- refactor(errors): enhance error handling with structured variants across plugins
+- refactor(docker): update file paths in Dockerfile and Dockerfile.local.scratch to use /etc/lazydns
+
+**Documentation**
+- docs(ports): change admin port to 8000, metrics to 8001 by default
+
+**Dependencies**
+- chore(deps): bump criterion from 0.5.1 to 0.8.1
+- chore(deps): bump thiserror from 2.0.17 to 2.0.18
+- chore(deps): bump quote from 1.0.42 to 1.0.43
+- chore(deps): bump serde_json from 1.0.148 to 1.0.149
+- chore(deps): bump time from 0.3.44 to 0.3.45
 
 ## Release v0.2.63 - 2026-01-12
 

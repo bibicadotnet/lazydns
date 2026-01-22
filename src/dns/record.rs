@@ -68,9 +68,9 @@ impl ResourceRecord {
         }
     }
 
-    /// Create a new resource record with a pre-allocated Arc<str>
+    /// Create a new resource record with a pre-allocated `Arc<str>`
     ///
-    /// This is more efficient when you already have an Arc<str> as it avoids
+    /// This is more efficient when you already have an `Arc<str>` as it avoids
     /// an additional allocation.
     pub fn with_arc(
         name: Arc<str>,
@@ -118,12 +118,12 @@ impl ResourceRecord {
         self.name = Arc::from(name.as_ref());
     }
 
-    /// Set the domain name with a pre-allocated Arc<str>
+    /// Set the domain name with a pre-allocated `Arc<str>`
     pub fn set_name_arc(&mut self, name: Arc<str>) {
         self.name = name;
     }
 
-    /// Get a clone of the Arc<str> for the domain name
+    /// Get a clone of the `Arc<str>` for the domain name
     ///
     /// This is useful for sharing the domain name without string allocation.
     pub fn name_arc(&self) -> Arc<str> {

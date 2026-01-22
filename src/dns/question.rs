@@ -38,7 +38,7 @@ impl Question {
     ///
     /// # Arguments
     ///
-    /// * `qname` - The domain name to query (accepts String, &str, or Arc<str>)
+    /// * `qname` - The domain name to query (accepts String, &str, or `Arc<str>`)
     /// * `qtype` - The type of DNS record requested
     /// * `qclass` - The class of DNS record requested
     ///
@@ -61,9 +61,9 @@ impl Question {
         }
     }
 
-    /// Create a new DNS question with a pre-allocated Arc<str>
+    /// Create a new DNS question with a pre-allocated `Arc<str>`
     ///
-    /// This is more efficient when you already have an Arc<str> as it avoids
+    /// This is more efficient when you already have an `Arc<str>` as it avoids
     /// an additional allocation.
     pub fn with_arc(qname: Arc<str>, qtype: RecordType, qclass: RecordClass) -> Self {
         Self {
@@ -93,12 +93,12 @@ impl Question {
         self.qname = Arc::from(qname.as_ref());
     }
 
-    /// Set the domain name with a pre-allocated Arc<str>
+    /// Set the domain name with a pre-allocated `Arc<str>`
     pub fn set_qname_arc(&mut self, qname: Arc<str>) {
         self.qname = qname;
     }
 
-    /// Get a clone of the Arc<str> for the domain name
+    /// Get a clone of the `Arc<str>` for the domain name
     ///
     /// This is useful for sharing the domain name without string allocation.
     pub fn qname_arc(&self) -> Arc<str> {
