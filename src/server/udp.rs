@@ -63,6 +63,7 @@ use crate::server::{RequestHandler, Server, ServerConfig};
 use crate::{Error, Result};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
+use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
 /// UDP DNS server
@@ -116,6 +117,8 @@ pub struct UdpServer {
     socket: Arc<UdpSocket>,
     handler: Arc<dyn RequestHandler>,
     config: ServerConfig,
+    /// Semaphore to limit concurrent request handling
+    concurrent_limit: Arc<Semaphore>,
 }
 
 impl UdpServer {
@@ -169,12 +172,21 @@ impl UdpServer {
 
         let socket = UdpSocket::bind(addr).await.map_err(Error::Io)?;
 
-        info!("UDP server listening on {}", addr);
+        // Create semaphore to limit concurrent request handling
+        // Use max_connections from config (default: 1000)
+        let max_concurrent = config.max_connections;
+        let concurrent_limit = Arc::new(Semaphore::new(max_concurrent));
+
+        info!(
+            "UDP server listening on {} (max_concurrent: {})",
+            addr, max_concurrent
+        );
 
         Ok(Self {
             socket: Arc::new(socket),
             handler,
             config,
+            concurrent_limit,
         })
     }
 
@@ -293,13 +305,28 @@ impl UdpServer {
                 Ok((len, peer_addr)) => {
                     trace!("Received {} bytes from {}", len, peer_addr);
 
+                    // Try to acquire a permit without waiting
+                    // If we're at capacity, drop the request to prevent memory exhaustion
+                    let permit = match self.concurrent_limit.clone().try_acquire_owned() {
+                        Ok(permit) => permit,
+                        Err(_) => {
+                            warn!(
+                                "Concurrent request limit reached, dropping packet from {}",
+                                peer_addr
+                            );
+                            continue;
+                        }
+                    };
+
                     // Copy the data so we can move it to the spawned task
                     let request_data = buf[..len].to_vec();
                     let handler = Arc::clone(&self.handler);
                     let socket = self.socket.clone();
 
                     // Spawn a task to handle this request
+                    // The permit is held until the task completes
                     tokio::spawn(async move {
+                        let _permit = permit; // Hold permit until request is done
                         if let Err(e) =
                             Self::handle_request(&request_data, peer_addr, handler, socket).await
                         {
