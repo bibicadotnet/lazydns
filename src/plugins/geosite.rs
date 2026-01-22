@@ -432,11 +432,7 @@ us *.facebook.com
         geosite.add_domain("cn", "baidu.com");
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "baidu.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("baidu.com", RecordType::A, RecordClass::IN));
 
         let mut context = Context::new(request);
         geosite.execute(&mut context).await.unwrap();
@@ -452,11 +448,7 @@ us *.facebook.com
         geosite.add_domain("cn", "baidu.com");
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "google.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("google.com", RecordType::A, RecordClass::IN));
 
         let mut context = Context::new(request);
         geosite.execute(&mut context).await.unwrap();

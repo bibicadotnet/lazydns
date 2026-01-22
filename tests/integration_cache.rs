@@ -40,7 +40,7 @@ impl Plugin for TestResponder {
         response.set_id(ctx.request().id());
         response.add_question(question.clone());
         response.add_answer(ResourceRecord::new(
-            question.qname().to_string(),
+            question.qname(),
             question.qtype(),
             question.qclass(),
             self.ttl,
@@ -59,11 +59,7 @@ impl Plugin for TestResponder {
 fn make_request() -> Message {
     let mut request = Message::new();
     request.set_id(4321);
-    request.add_question(Question::new(
-        "example.com".to_string(),
-        RecordType::A,
-        RecordClass::IN,
-    ));
+    request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
     request
 }
 

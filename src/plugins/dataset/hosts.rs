@@ -751,11 +751,7 @@ mod tests {
         plugin.add_host("test.local".to_string(), Ipv4Addr::new(10, 0, 0, 1).into());
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "test.local".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("test.local", RecordType::A, RecordClass::IN));
 
         let mut ctx = Context::new(request);
         plugin.execute(&mut ctx).await.unwrap();
@@ -775,7 +771,7 @@ mod tests {
 
         let mut request = Message::new();
         request.add_question(Question::new(
-            "test.local".to_string(),
+            "test.local",
             RecordType::AAAA,
             RecordClass::IN,
         ));
@@ -794,7 +790,7 @@ mod tests {
 
         let mut request = Message::new();
         request.add_question(Question::new(
-            "unknown.local".to_string(),
+            "unknown.local",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -814,7 +810,7 @@ mod tests {
         // Query for AAAA but only IPv4 is available
         let mut request = Message::new();
         request.add_question(Question::new(
-            "test.local".to_string(),
+            "test.local",
             RecordType::AAAA,
             RecordClass::IN,
         ));

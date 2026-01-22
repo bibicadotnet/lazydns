@@ -175,11 +175,7 @@ mod tests {
     fn test_request_access() {
         let mut request = Message::new();
         request.set_id(1234);
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let ctx = Context::new(request);
 
@@ -260,11 +256,8 @@ mod tests {
         ctx.request_mut().set_id(9999);
         assert_eq!(ctx.request().id(), 9999);
 
-        ctx.request_mut().add_question(Question::new(
-            "test.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        ctx.request_mut()
+            .add_question(Question::new("test.com", RecordType::A, RecordClass::IN));
         assert_eq!(ctx.request().question_count(), 1);
     }
 

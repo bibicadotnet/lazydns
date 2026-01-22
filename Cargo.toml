@@ -116,6 +116,10 @@ harness = false
 name = "forward_concurrent"
 harness = false
 
+[[bench]]
+name = "arc_str_bench"
+harness = false
+
 [features]
 default = ["log-ansi"]
 audit = ["time/formatting", "time/local-offset", "time/macros"]

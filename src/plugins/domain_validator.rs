@@ -538,11 +538,7 @@ mod tests {
 
         // Create a test request
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".parse().unwrap(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let mut ctx = Context::new(request);
 
         // First execution

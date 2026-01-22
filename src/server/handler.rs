@@ -219,11 +219,7 @@ mod tests {
         let mut request = Message::new();
         request.set_id(1234);
         request.set_query(true);
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let ctx = RequestContext::new(request, Protocol::Udp);
         let response = handler.handle(ctx).await.unwrap();
@@ -238,11 +234,7 @@ mod tests {
         let handler = DefaultHandler;
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "test.com".to_string(),
-            RecordType::AAAA,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("test.com", RecordType::AAAA, RecordClass::IN));
 
         let ctx = RequestContext::new(request, Protocol::Udp);
         let response = handler.handle(ctx).await.unwrap();

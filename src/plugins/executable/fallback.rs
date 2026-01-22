@@ -313,7 +313,7 @@ mod tests {
                 use crate::dns::{RData, ResourceRecord};
 
                 response.add_answer(ResourceRecord::new(
-                    "example.com".to_string(),
+                    "example.com",
                     RecordType::A,
                     RecordClass::IN,
                     300,

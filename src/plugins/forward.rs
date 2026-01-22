@@ -1043,11 +1043,7 @@ mod tests {
     #[test]
     fn test_serialize_parse_roundtrip() {
         let mut msg = Message::new();
-        msg.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        msg.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let data = Forward::serialize_message(&msg).expect("serialize");
         let parsed = Forward::parse_message(&data).expect("parse");
@@ -1095,11 +1091,7 @@ mod tests {
 
         // Build a request message
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let mut ctx = Context::new(req);
 
@@ -1146,11 +1138,7 @@ mod tests {
         };
 
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         // Before any requests
         let (q0, s0, f0) = plugin.upstreams[0].health.counters();
@@ -1262,7 +1250,7 @@ mod tests {
                     let mut resp = req_msg.clone();
                     resp.set_response(true);
                     resp.add_answer(ResourceRecord::new(
-                        req_msg.questions()[0].qname().to_string(),
+                        req_msg.questions()[0].qname(),
                         RecordType::A,
                         RecordClass::IN,
                         60,
@@ -1296,11 +1284,7 @@ mod tests {
         };
 
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let mut ctx = Context::new(req);
 
@@ -1408,7 +1392,7 @@ mod tests {
                     let mut resp = req_msg.clone();
                     resp.set_response(true);
                     resp.add_answer(ResourceRecord::new(
-                        req_msg.questions()[0].qname().to_string(),
+                        req_msg.questions()[0].qname(),
                         RecordType::A,
                         RecordClass::IN,
                         60,
@@ -1446,11 +1430,7 @@ mod tests {
         };
 
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let mut ctx = Context::new(req);
 
@@ -1518,7 +1498,7 @@ mod tests {
                     let mut resp = req_msg.clone();
                     resp.set_response(true);
                     resp.add_answer(ResourceRecord::new(
-                        req_msg.questions()[0].qname().to_string(),
+                        req_msg.questions()[0].qname(),
                         RecordType::A,
                         RecordClass::IN,
                         60,
@@ -1610,7 +1590,7 @@ mod tests {
                     let mut resp = req_msg.clone();
                     resp.set_response(true);
                     resp.add_answer(ResourceRecord::new(
-                        req_msg.questions()[0].qname().to_string(),
+                        req_msg.questions()[0].qname(),
                         RecordType::A,
                         RecordClass::IN,
                         60,

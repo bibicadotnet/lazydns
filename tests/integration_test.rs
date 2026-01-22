@@ -13,11 +13,7 @@ fn test_wire_format_roundtrip_query() {
     query.set_id(1234);
     query.set_query(true);
     query.set_recursion_desired(true);
-    query.add_question(Question::new(
-        "example.com".to_string(),
-        RecordType::A,
-        RecordClass::IN,
-    ));
+    query.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
     // Serialize to wire format
     let wire_data = serialize_message(&query).expect("Failed to serialize query");
@@ -57,15 +53,11 @@ fn test_wire_format_roundtrip_response() {
     response.set_authoritative(false);
 
     // Add question section (copied from query)
-    response.add_question(Question::new(
-        "example.com".to_string(),
-        RecordType::A,
-        RecordClass::IN,
-    ));
+    response.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
     // Add answer section
     response.add_answer(ResourceRecord::new(
-        "example.com".to_string(),
+        "example.com",
         RecordType::A,
         RecordClass::IN,
         300,
@@ -107,15 +99,11 @@ fn test_wire_format_with_multiple_answers() {
     response.set_response(true);
     response.set_recursion_available(true);
 
-    response.add_question(Question::new(
-        "example.com".to_string(),
-        RecordType::A,
-        RecordClass::IN,
-    ));
+    response.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
     // Add multiple A records
     response.add_answer(ResourceRecord::new(
-        "example.com".to_string(),
+        "example.com",
         RecordType::A,
         RecordClass::IN,
         300,
@@ -123,7 +111,7 @@ fn test_wire_format_with_multiple_answers() {
     ));
 
     response.add_answer(ResourceRecord::new(
-        "example.com".to_string(),
+        "example.com",
         RecordType::A,
         RecordClass::IN,
         300,
@@ -154,14 +142,14 @@ fn test_wire_format_with_cname() {
     response.set_response(true);
 
     response.add_question(Question::new(
-        "www.example.com".to_string(),
+        "www.example.com",
         RecordType::A,
         RecordClass::IN,
     ));
 
     // Add CNAME record
     response.add_answer(ResourceRecord::new(
-        "www.example.com".to_string(),
+        "www.example.com",
         RecordType::CNAME,
         RecordClass::IN,
         300,
@@ -170,7 +158,7 @@ fn test_wire_format_with_cname() {
 
     // Add A record for the target
     response.add_answer(ResourceRecord::new(
-        "example.com".to_string(),
+        "example.com",
         RecordType::A,
         RecordClass::IN,
         300,
@@ -211,7 +199,7 @@ fn test_wire_format_error_response() {
     response.set_response_code(ResponseCode::NXDomain);
 
     response.add_question(Question::new(
-        "nonexistent.example.com".to_string(),
+        "nonexistent.example.com",
         RecordType::A,
         RecordClass::IN,
     ));

@@ -36,12 +36,15 @@ use crate::{Error, Result};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info, trace};
+use tokio::sync::Semaphore;
+use tracing::{debug, error, info, trace, warn};
 
 pub struct TcpServer {
     listener: TcpListener,
     handler: Arc<dyn RequestHandler>,
     config: ServerConfig,
+    /// Semaphore to limit concurrent connection handling
+    concurrent_limit: Arc<Semaphore>,
 }
 
 impl TcpServer {
@@ -62,12 +65,21 @@ impl TcpServer {
 
         let listener = TcpListener::bind(addr).await.map_err(Error::Io)?;
 
-        info!("TCP server listening on {}", addr);
+        // Create semaphore to limit concurrent connection handling
+        // Use max_connections from config (default: 1000)
+        let max_concurrent = config.max_connections;
+        let concurrent_limit = Arc::new(Semaphore::new(max_concurrent));
+
+        info!(
+            "TCP server listening on {} (max_concurrent: {})",
+            addr, max_concurrent
+        );
 
         Ok(Self {
             listener,
             handler,
             config,
+            concurrent_limit,
         })
     }
 
@@ -87,11 +99,28 @@ impl TcpServer {
                 Ok((stream, peer_addr)) => {
                     debug!("Accepted connection from {}", peer_addr);
 
+                    // Try to acquire a permit without waiting
+                    // If we're at capacity, close the connection immediately
+                    let permit = match self.concurrent_limit.clone().try_acquire_owned() {
+                        Ok(permit) => permit,
+                        Err(_) => {
+                            warn!(
+                                "Concurrent connection limit reached, rejecting connection from {}",
+                                peer_addr
+                            );
+                            // Drop the stream to close the connection
+                            drop(stream);
+                            continue;
+                        }
+                    };
+
                     let handler = Arc::clone(&self.handler);
                     let max_size = self.config.max_tcp_size;
 
                     // Spawn a task to handle this connection
+                    // The permit is held until the task completes
                     tokio::spawn(async move {
+                        let _permit = permit; // Hold permit until connection is done
                         if let Err(e) =
                             Self::handle_connection(stream, peer_addr, handler, max_size).await
                         {
@@ -246,7 +275,7 @@ mod tests {
         req.set_id(0x42);
         req.set_query(true);
         req.add_question(Question::new(
-            "example.test".to_string(),
+            "example.test",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -291,7 +320,7 @@ mod tests {
         req.set_id(0x99);
         req.set_query(true);
         req.add_question(Question::new(
-            "roundtrip.test".to_string(),
+            "roundtrip.test",
             RecordType::AAAA,
             RecordClass::IN,
         ));

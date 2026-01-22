@@ -120,11 +120,7 @@ mod tests {
     async fn test_query_summary_basic() {
         let plugin = QuerySummaryPlugin::new("summary");
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         let mut ctx = crate::plugin::Context::new(req);
         plugin.execute(&mut ctx).await.unwrap();
 
@@ -137,13 +133,9 @@ mod tests {
     #[tokio::test]
     async fn test_query_summary_sets_metadata() {
         let mut request = Message::new();
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
-        request.add_question(Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
         ));

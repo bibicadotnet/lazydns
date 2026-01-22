@@ -157,7 +157,7 @@ mod tests {
 
     fn make_a_record(name: &str, ttl: u32) -> ResourceRecord {
         ResourceRecord::new(
-            name.into(),
+            name,
             RecordType::A,
             RecordClass::IN,
             ttl,
@@ -233,14 +233,14 @@ mod tests {
         let mut response = Message::new();
         response.set_response(true);
         response.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
             RData::A(Ipv4Addr::new(192, 0, 2, 1)),
         ));
         response.add_additional(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
             450,

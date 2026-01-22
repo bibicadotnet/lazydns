@@ -58,7 +58,7 @@ mod tests {
         let mut response = Message::new();
 
         response.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -66,7 +66,7 @@ mod tests {
         ));
 
         response.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
             300,

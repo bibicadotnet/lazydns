@@ -29,7 +29,7 @@ impl RequestHandler for TestHandler {
             let question = &request.questions()[0];
             if question.qtype() == RecordType::A {
                 request.add_answer(ResourceRecord::new(
-                    question.qname().trim_end_matches('.').to_string(),
+                    question.qname().trim_end_matches('.'),
                     RecordType::A,
                     RecordClass::IN,
                     300,
@@ -68,7 +68,7 @@ async fn test_udp_server_query_response() {
     query.set_query(true);
     query.set_recursion_desired(true);
     query.add_question(Question::new(
-        "test.example.com".to_string(),
+        "test.example.com",
         RecordType::A,
         RecordClass::IN,
     ));

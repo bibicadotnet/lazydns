@@ -46,7 +46,7 @@ type Entry = (String, Instant);
 /// query is received and `handle_ptr` is enabled, the plugin will attempt to
 /// translate the reverse name into an IP and reply from the cache if a valid
 /// (non-expired) entry exists.
-#[derive(RegisterPlugin)]
+#[derive(Clone, RegisterPlugin)]
 pub struct ReverseLookupPlugin {
     cache: Arc<DashMap<String, Entry>>,
     args: ReverseLookupArgs,
@@ -168,6 +168,48 @@ impl ReverseLookupPlugin {
     pub fn save_response(&self, req: &Message, resp: &Message) {
         self.save_from_response(req, resp);
     }
+
+    /// Clean up expired entries from the cache
+    ///
+    /// This removes all entries whose expiration time has passed.
+    /// Returns the number of entries removed.
+    pub fn cleanup(&self) -> usize {
+        let now = Instant::now();
+        let before = self.cache.len();
+        self.cache.retain(|_, entry| entry.1 > now);
+        let after = self.cache.len();
+        before.saturating_sub(after)
+    }
+
+    /// Spawn a background cleanup task that periodically removes expired entries
+    ///
+    /// This prevents the DashMap from growing unboundedly when there are many
+    /// unique IPs that are never looked up again. The cleanup runs every 5 minutes.
+    ///
+    /// # Returns
+    ///
+    /// A JoinHandle that can be used to abort the cleanup task if needed.
+    pub fn spawn_cleanup_task(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let cleanup_interval = Duration::from_secs(300); // 5 minutes
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(cleanup_interval);
+            loop {
+                interval.tick().await;
+                let removed = self.cleanup();
+                if removed > 0 {
+                    tracing::debug!(
+                        "ReverseLookupPlugin cleanup: removed {} expired entries",
+                        removed
+                    );
+                }
+            }
+        })
+    }
+
+    /// Get the current cache size
+    pub fn cache_size(&self) -> usize {
+        self.cache.len()
+    }
 }
 
 impl fmt::Debug for ReverseLookupPlugin {
@@ -245,7 +287,7 @@ impl Plugin for ReverseLookupPlugin {
             r.set_response(true);
             r.add_question(q.clone());
             r.add_answer(ResourceRecord::new(
-                q.qname().to_string(),
+                q.qname(),
                 crate::dns::types::RecordType::PTR,
                 crate::dns::types::RecordClass::IN,
                 5,
@@ -376,16 +418,12 @@ mod tests {
     fn test_save_ips_after_and_lookup_cached() {
         // Build request with single question
         let mut req = Message::new();
-        req.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        req.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         // Build response with one A answer
         let mut resp = Message::new();
         resp.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -410,14 +448,14 @@ mod tests {
     fn test_save_ips_after_ipv6() {
         let mut req = Message::new();
         req.add_question(Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
         ));
 
         let mut resp = Message::new();
         resp.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
             300,
@@ -451,7 +489,7 @@ mod tests {
         // Build a PTR question for the corresponding reverse name
         let mut msg = Message::new();
         msg.add_question(Question::new(
-            "1.0.0.10.in-addr.arpa".to_string(),
+            "1.0.0.10.in-addr.arpa",
             RecordType::PTR,
             RecordClass::IN,
         ));
@@ -473,7 +511,7 @@ mod tests {
 
         let mut msg = Message::new();
         msg.add_question(Question::new(
-            "1.0.0.10.in-addr.arpa".to_string(),
+            "1.0.0.10.in-addr.arpa",
             RecordType::PTR,
             RecordClass::IN,
         ));
@@ -507,7 +545,7 @@ mod tests {
 
         let mut msg = Message::new();
         msg.add_question(Question::new(
-            "1.0.0.10.in-addr.arpa".to_string(),
+            "1.0.0.10.in-addr.arpa",
             RecordType::PTR,
             RecordClass::IN,
         ));
@@ -525,7 +563,7 @@ mod tests {
 
         let mut msg = Message::new();
         msg.add_question(Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A, // Not a PTR query
             RecordClass::IN,
         ));

@@ -396,7 +396,7 @@ mod tests {
         let mut response = Message::new();
         response.set_response(true);
         response.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,

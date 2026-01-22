@@ -199,11 +199,7 @@ mod tests {
 
         let mut request = Message::new();
         request.set_id(100);
-        request.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let mut ctx = Context::new(request);
         plugin.execute(&mut ctx).await.unwrap();

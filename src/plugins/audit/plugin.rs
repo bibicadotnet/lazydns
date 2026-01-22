@@ -264,11 +264,7 @@ mod tests {
         let plugin = AuditPlugin::default();
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".into(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let mut ctx = Context::new(request);
         ctx.set_metadata("protocol".to_string(), "udp".to_string());
@@ -283,11 +279,7 @@ mod tests {
         let plugin = AuditPlugin::default();
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".into(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let mut ctx = Context::new(request);
         ctx.set_metadata("protocol".to_string(), "tcp".to_string());
@@ -311,11 +303,7 @@ mod tests {
         };
 
         let mut request = Message::new();
-        request.add_question(Question::new(
-            "example.com".into(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        request.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         let mut ctx = Context::new(request);
         ctx.set_metadata("protocol".to_string(), "udp".to_string());

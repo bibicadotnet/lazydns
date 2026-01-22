@@ -492,12 +492,12 @@ mod tests {
         message.set_id(1234);
         message.set_response(true);
         message.add_question(crate::dns::Question::new(
-            "example.com".to_string(),
+            "example.com",
             crate::dns::RecordType::A,
             crate::dns::RecordClass::IN,
         ));
         message.add_answer(crate::dns::ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             crate::dns::RecordType::A,
             crate::dns::RecordClass::IN,
             300,

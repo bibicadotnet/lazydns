@@ -386,7 +386,7 @@ mod tests {
         let plugin = NftSetPlugin::new(args);
         let mut msg = Message::new();
         msg.add_answer(ResourceRecord::new(
-            "example.com".into(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -416,7 +416,7 @@ mod tests {
         let plugin = NftSetPlugin::new(args);
         let mut msg = Message::new();
         msg.add_answer(ResourceRecord::new(
-            "example.com".into(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
             300,
@@ -465,7 +465,7 @@ mod tests {
         let plugin = NftSetPlugin::new(args);
         let mut msg = Message::new();
         msg.add_answer(ResourceRecord::new(
-            "example.com".into(),
+            "example.com",
             RecordType::CNAME,
             RecordClass::IN,
             300,
@@ -488,7 +488,7 @@ mod tests {
         let plugin = NftSetPlugin::new(args);
         let mut msg = Message::new();
         msg.add_answer(ResourceRecord::new(
-            "example.com".into(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,

@@ -385,11 +385,7 @@ mod tests {
         message.set_id(1234);
         message.set_query(true);
         message.set_recursion_desired(true);
-        message.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        message.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         // Serialize
         let wire_data = serialize_message(&message).unwrap();
@@ -440,12 +436,12 @@ mod tests {
         message.set_id(1111);
         message.set_response(true);
         message.add_question(Question::new(
-            "test.example".to_string(),
+            "test.example",
             RecordType::A,
             RecordClass::IN,
         ));
         message.add_answer(ResourceRecord::new(
-            "test.example".to_string(),
+            "test.example",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -473,12 +469,12 @@ mod tests {
         message.set_id(2222);
         message.set_response(true);
         message.add_question(Question::new(
-            "test.example".to_string(),
+            "test.example",
             RecordType::AAAA,
             RecordClass::IN,
         ));
         message.add_answer(ResourceRecord::new(
-            "test.example".to_string(),
+            "test.example",
             RecordType::AAAA,
             RecordClass::IN,
             300,
@@ -503,7 +499,7 @@ mod tests {
         message.set_id(3333);
         message.set_response(true);
         message.add_answer(ResourceRecord::new(
-            "alias.example".to_string(),
+            "alias.example",
             RecordType::CNAME,
             RecordClass::IN,
             300,
@@ -526,7 +522,7 @@ mod tests {
         message.set_id(4444);
         message.set_response(true);
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::MX,
             RecordClass::IN,
             300,
@@ -558,7 +554,7 @@ mod tests {
         message.set_id(5555);
         message.set_response(true);
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::NS,
             RecordClass::IN,
             300,
@@ -581,7 +577,7 @@ mod tests {
         message.set_id(6666);
         message.set_response(true);
         message.add_answer(ResourceRecord::new(
-            "1.0.168.192.in-addr.arpa".to_string(),
+            "1.0.168.192.in-addr.arpa",
             RecordType::PTR,
             RecordClass::IN,
             300,
@@ -604,7 +600,7 @@ mod tests {
         message.set_id(7777);
         message.set_response(true);
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::TXT,
             RecordClass::IN,
             300,
@@ -630,7 +626,7 @@ mod tests {
         message.set_id(8888);
         message.set_response(true);
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::SOA,
             RecordClass::IN,
             300,
@@ -678,7 +674,7 @@ mod tests {
         message.set_response(true);
         message.set_response_code(crate::dns::ResponseCode::NXDomain);
         message.add_question(Question::new(
-            "nonexistent.example".to_string(),
+            "nonexistent.example",
             RecordType::A,
             RecordClass::IN,
         ));
@@ -746,13 +742,9 @@ mod tests {
         let mut message = Message::new();
         message.set_id(1414);
         message.set_query(true);
+        message.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
         message.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
-        message.add_question(Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::AAAA,
             RecordClass::IN,
         ));
@@ -769,7 +761,7 @@ mod tests {
         message.set_id(1515);
         message.set_response(true);
         message.add_authority(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::NS,
             RecordClass::IN,
             300,
@@ -790,7 +782,7 @@ mod tests {
         message.set_id(1616);
         message.set_response(true);
         message.add_additional(ResourceRecord::new(
-            "ns1.example.com".to_string(),
+            "ns1.example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -808,11 +800,7 @@ mod tests {
         let mut message = Message::new();
         message.set_id(1717);
         // Empty domain name should still serialize (hickory handles this)
-        message.add_question(Question::new(
-            "".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        message.add_question(Question::new("", RecordType::A, RecordClass::IN));
 
         // This may or may not error depending on hickory-proto behavior
         let _ = serialize_message(&message);
@@ -1006,7 +994,7 @@ mod tests {
 
         // Add an A record (supported)
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -1015,7 +1003,7 @@ mod tests {
 
         // Add an unknown/unsupported RData type
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::Unknown(99),
             RecordClass::IN,
             300,
@@ -1044,7 +1032,7 @@ mod tests {
 
         // Invalid domain name (contains invalid characters)
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::CNAME,
             RecordClass::IN,
             300,
@@ -1063,7 +1051,7 @@ mod tests {
         message.set_id(3333);
         message.set_response(true);
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::TXT,
             RecordClass::IN,
             300,
@@ -1095,7 +1083,7 @@ mod tests {
         message.set_id(3434);
         message.set_response(true);
         message.add_question(Question::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::CH, // Chaosnet class
         ));
@@ -1145,15 +1133,11 @@ mod tests {
         message.set_response_code(crate::dns::ResponseCode::NoError);
 
         // Question
-        message.add_question(Question::new(
-            "example.com".to_string(),
-            RecordType::A,
-            RecordClass::IN,
-        ));
+        message.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
 
         // Answer section
         message.add_answer(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::A,
             RecordClass::IN,
             300,
@@ -1162,7 +1146,7 @@ mod tests {
 
         // Authority section
         message.add_authority(ResourceRecord::new(
-            "example.com".to_string(),
+            "example.com",
             RecordType::NS,
             RecordClass::IN,
             86400,
@@ -1171,7 +1155,7 @@ mod tests {
 
         // Additional section
         message.add_additional(ResourceRecord::new(
-            "ns1.example.com".to_string(),
+            "ns1.example.com",
             RecordType::AAAA,
             RecordClass::IN,
             3600,
