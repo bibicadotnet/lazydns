@@ -143,15 +143,6 @@ impl Hosts {
         }
         Ok(())
     }
-
-    #[allow(dead_code)]
-    pub fn load_file(&self, path: &str) -> Result<()> {
-        let content = std::fs::read_to_string(path).map_err(|e| Error::FileParse {
-            path: path.to_string(),
-            reason: format!("Failed to read: {}", e),
-        })?;
-        self.load_from_string(&content)
-    }
 }
 
 impl Default for Hosts {
@@ -639,25 +630,6 @@ mod tests {
         // Old entry should be gone
         assert!(hosts.get_ips("old.com").is_none());
         assert!(hosts.get_ips("new.com").is_some());
-    }
-
-    #[test]
-    fn test_load_file_nonexistent() {
-        let hosts = Hosts::new();
-        let result = hosts.load_file("/nonexistent/path/hosts.txt");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_load_file_valid() {
-        use std::io::Write;
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        writeln!(tmp.as_file(), "127.0.0.1 localhost").unwrap();
-
-        let hosts = Hosts::new();
-        hosts.load_file(tmp.path().to_str().unwrap()).unwrap();
-
-        assert!(hosts.get_ips("localhost").is_some());
     }
 
     #[test]

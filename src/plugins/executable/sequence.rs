@@ -48,7 +48,6 @@ impl std::fmt::Debug for SequenceStep {
 #[derive(Debug)]
 pub struct SequencePlugin {
     steps: Vec<SequenceStep>,
-    #[allow(dead_code)]
     tag: Option<String>,
 }
 

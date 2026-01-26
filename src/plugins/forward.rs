@@ -694,13 +694,6 @@ impl ForwardPlugin {
         self.core.select_upstream(idx)
     }
 
-    /// Get the next upstream server for round-robin (legacy method)
-    #[allow(dead_code)]
-    fn next_upstream(&self) -> Option<&str> {
-        let idx = self.select_upstream()?;
-        Some(&self.core.upstreams[idx].addr)
-    }
-
     /// Record upstream health and metrics (success/failure)
     fn record_upstream_health(&self, upstream: &Upstream, elapsed: Duration, success: bool) {
         if !self.core.health_checks_enabled {

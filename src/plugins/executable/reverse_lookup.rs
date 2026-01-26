@@ -159,16 +159,6 @@ impl ReverseLookupPlugin {
 
 /// Public API and helpers for `ReverseLookupPlugin`.
 impl ReverseLookupPlugin {
-    /// Save any A/AAAA answers from a response into the internal cache.
-    ///
-    /// This is a convenience wrapper around `save_from_response` intended for
-    /// callers that manage the sequence execution and want to record names for
-    /// later PTR responses.
-    #[allow(dead_code)]
-    pub fn save_response(&self, req: &Message, resp: &Message) {
-        self.save_from_response(req, resp);
-    }
-
     /// Clean up expired entries from the cache
     ///
     /// This removes all entries whose expiration time has passed.

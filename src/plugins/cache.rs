@@ -276,18 +276,6 @@ impl LazyCacheStats {
         self.refreshes.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Record a successful lazy refresh
-    #[allow(dead_code)]
-    fn record_successful_refresh(&self) {
-        self.successful_refreshes.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// Record a failed lazy refresh
-    #[allow(dead_code)]
-    fn record_failed_refresh(&self) {
-        self.failed_refreshes.fetch_add(1, Ordering::Relaxed);
-    }
-
     /// Get number of refresh attempts
     pub fn refreshes(&self) -> u64 {
         self.refreshes.load(Ordering::Relaxed)
@@ -869,13 +857,14 @@ impl Plugin for CachePlugin {
 
                                 // Enqueue refresh task instead of spawning thread
                                 let task = RefreshTask {
-                                    key: key_clone.clone(),
+                                    key: key_clone.clone(), // Clone for the task struct
                                     message: request_clone,
                                     handler: background_handler,
                                     entry_name: entry_name.clone(),
                                     created_at: Instant::now(),
                                 };
 
+                                // Use key_clone directly in async block (already cloned above)
                                 tokio::spawn(async move {
                                     // Lock the Mutex to access the coordinator inside
                                     if let Some(coord) = coordinator.lock().await.as_ref() {
