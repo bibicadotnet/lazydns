@@ -242,13 +242,14 @@ impl CronPlugin {
             }
         });
 
-        // Lock the jobs mutex. If the lock is poisoned, it indicates a serious bug
-        // where a thread panicked while holding the lock - this should never happen
-        // in production and warrants a panic.
-        let mut jobs = self
-            .jobs
-            .lock()
-            .expect("CronPlugin jobs mutex poisoned - a thread panicked while holding the lock");
+        // Lock the jobs mutex. If poisoned, recover by taking ownership.
+        let mut jobs = match self.jobs.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("CronPlugin jobs mutex was poisoned, attempting recovery");
+                poisoned.into_inner()
+            }
+        };
         jobs.push(JobHandle {
             _name: name,
             _stop_tx: job_stop_tx,

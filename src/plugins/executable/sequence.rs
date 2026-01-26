@@ -221,7 +221,11 @@ mod tests {
     impl Plugin for Recorder {
         async fn execute(&self, ctx: &mut Context) -> Result<()> {
             ctx.set_metadata("seen", true);
-            self.order.lock().unwrap().push(self.label);
+            let mut order = self.order.lock().unwrap_or_else(|poisoned| {
+                // In tests, if mutex is poisoned, still allow access
+                poisoned.into_inner()
+            });
+            order.push(self.label);
             Ok(())
         }
 
@@ -317,7 +321,7 @@ mod tests {
         let mut ctx = Context::new(Message::new());
         seq.execute(&mut ctx).await.unwrap();
 
-        let logged = order.lock().unwrap().clone();
+        let logged = order.lock().unwrap_or_else(|p| p.into_inner()).clone();
         assert_eq!(logged, vec!["one", "two"]);
     }
 
@@ -389,7 +393,8 @@ mod tests {
         #[async_trait]
         impl Plugin for SetReturnFlag {
             async fn execute(&self, ctx: &mut Context) -> Result<()> {
-                self.order.lock().unwrap().push("first");
+                let mut order = self.order.lock().unwrap_or_else(|p| p.into_inner());
+                order.push("first");
                 ctx.set_metadata(RETURN_FLAG, true);
                 Ok(())
             }
@@ -411,7 +416,7 @@ mod tests {
         let mut ctx = Context::new(Message::new());
         seq.execute(&mut ctx).await.unwrap();
 
-        let logged = order.lock().unwrap().clone();
+        let logged = order.lock().unwrap_or_else(|p| p.into_inner()).clone();
         // Only "first" should be logged, "should_not_run" should be skipped
         assert_eq!(logged, vec!["first"]);
     }
