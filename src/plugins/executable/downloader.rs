@@ -38,8 +38,6 @@
 //!               concurrent: false
 //! ```
 
-#![allow(dead_code)]
-
 use crate::RegisterPlugin;
 use crate::Result;
 use crate::config::types::PluginConfig;
@@ -228,34 +226,61 @@ impl DownloaderPlugin {
                                         "Downloaded file is empty".to_string(),
                                     ));
                                 } else {
-                                    // Write to temporary file first
+                                    // Write to temporary file first (non-blocking)
                                     let temp_path = format!("{}.tmp", spec.path);
-                                    trace!(path = %spec.path, temp_path = %temp_path, "Downloader: Writing temporary file");
-                                    fs::write(&temp_path, &content).map_err(|e| {
-                                        warn!(temp_path = %temp_path, error = %e, "Downloader: Failed to write temp file");
-                                        crate::Error::Config(format!("Failed to write temp file: {}", e))
-                                    })?;
+                                    let final_path = spec.path.clone();
+                                    let content_clone = content.clone();
 
-                                    // Then rename to target (atomic operation)
-                                    trace!(temp_path = %temp_path, final_path = %spec.path, "Downloader: Moving temporary file to final path");
-                                    fs::rename(&temp_path, &spec.path).map_err(|e| {
-                                        let _ = fs::remove_file(&temp_path);
-                                        warn!(temp_path = %temp_path, final_path = %spec.path, error = %e, "Downloader: Failed to move file to final path");
-                                        crate::Error::Config(format!("Failed to move file to {}: {}", spec.path, e))
-                                    })?;
+                                    trace!(path = %final_path, temp_path = %temp_path, "Downloader: Writing temporary file");
 
-                                    let duration = start.elapsed();
-                                    let size_bytes = content.len();
+                                    // Use spawn_blocking to avoid blocking the async runtime
+                                    let write_result = tokio::task::spawn_blocking(
+                                        move || -> std::io::Result<()> {
+                                            // Write content to temp file
+                                            fs::write(&temp_path, &content_clone)?;
 
-                                    info!(
-                                        url = %spec.url,
-                                        path = %spec.path,
-                                        size_bytes = size_bytes,
-                                        duration_ms = duration.as_millis(),
-                                        "Downloader: File downloaded successfully"
-                                    );
+                                            // Rename to final path (atomic operation)
+                                            if let Err(e) = fs::rename(&temp_path, &final_path) {
+                                                // Cleanup temp file on failure
+                                                let _ = fs::remove_file(&temp_path);
+                                                return Err(e);
+                                            }
 
-                                    return Ok(());
+                                            Ok(())
+                                        },
+                                    )
+                                    .await;
+
+                                    match write_result {
+                                        Ok(Ok(())) => {
+                                            let duration = start.elapsed();
+                                            let size_bytes = content.len();
+
+                                            info!(
+                                                url = %spec.url,
+                                                path = %spec.path,
+                                                size_bytes = size_bytes,
+                                                duration_ms = duration.as_millis(),
+                                                "Downloader: File downloaded successfully"
+                                            );
+
+                                            return Ok(());
+                                        }
+                                        Ok(Err(e)) => {
+                                            warn!(path = %spec.path, error = %e, "Downloader: Failed to write or move file");
+                                            last_err = Some(crate::Error::Config(format!(
+                                                "Failed to write file: {}",
+                                                e
+                                            )));
+                                        }
+                                        Err(e) => {
+                                            warn!(error = %e, "Downloader: Blocking task panicked");
+                                            last_err = Some(crate::Error::Config(format!(
+                                                "File I/O task failed: {}",
+                                                e
+                                            )));
+                                        }
+                                    }
                                 }
                             }
                             Err(e) => {
