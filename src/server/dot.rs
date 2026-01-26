@@ -16,10 +16,12 @@
 //! limits.
 
 use crate::error::{Error, Result};
+use crate::server::common::{parse_dns_request, serialize_dns_response};
 use crate::server::{RequestHandler, Server, ServerConfig, TlsConfig};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Semaphore;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, trace, warn};
 
@@ -33,6 +35,8 @@ pub struct DotServer {
     tls_config: TlsConfig,
     /// Request handler
     handler: Arc<dyn RequestHandler>,
+    /// Maximum concurrent connections
+    max_connections: usize,
 }
 
 impl std::fmt::Debug for DotServer {
@@ -75,7 +79,14 @@ impl DotServer {
             addr: addr.into(),
             tls_config,
             handler,
+            max_connections: 1000, // Default value
         }
+    }
+
+    /// Create a new DoT server with custom max connections
+    pub fn with_max_connections(mut self, max: usize) -> Self {
+        self.max_connections = max;
+        self
     }
 
     /// Start the DoT server
@@ -84,7 +95,13 @@ impl DotServer {
     pub async fn run(self) -> Result<()> {
         let listener = TcpListener::bind(&self.addr).await.map_err(Error::Io)?;
 
-        info!("DoT server listening on {}", self.addr);
+        // Create semaphore for concurrency control
+        let concurrent_limit = Arc::new(Semaphore::new(self.max_connections));
+
+        info!(
+            "DoT server listening on {} (max_concurrent: {})",
+            self.addr, self.max_connections
+        );
 
         let tls_config = self.tls_config.build_server_config()?;
         let acceptor = TlsAcceptor::from(tls_config);
@@ -98,12 +115,25 @@ impl DotServer {
                 }
             };
 
+            // Try to acquire a permit without waiting
+            let permit = match concurrent_limit.clone().try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(_) => {
+                    warn!(
+                        "DoT concurrent connection limit reached, rejecting connection from {}",
+                        peer_addr
+                    );
+                    continue;
+                }
+            };
+
             debug!("DoT connection from {}", peer_addr);
 
             let acceptor = acceptor.clone();
             let handler = Arc::clone(&self.handler);
 
             tokio::spawn(async move {
+                let _permit = permit; // Hold permit until connection is done
                 if let Err(e) = Self::handle_connection(stream, acceptor, handler).await {
                     warn!("Error handling DoT connection from {}: {}", peer_addr, e);
                 }
@@ -158,7 +188,7 @@ impl DotServer {
             tls_stream.read_exact(&mut buf).await.map_err(Error::Io)?;
 
             // Parse request from wire-format bytes
-            let request = Self::parse_request(&buf)?;
+            let request = parse_dns_request(&buf)?;
 
             // Log parsed query details
             debug!(
@@ -180,7 +210,7 @@ impl DotServer {
             let response = handler.handle(ctx).await?;
 
             // Serialize response to wire-format bytes
-            let response_data = Self::serialize_response(&response)?;
+            let response_data = serialize_dns_response(&response)?;
 
             // Log response details
             trace!(peer = ?peer_addr, id = response.id(), answers = response.answer_count(), "Sending DoT response");
@@ -202,20 +232,6 @@ impl DotServer {
         }
 
         Ok(())
-    }
-
-    /// Parse DNS request from wire format
-    ///
-    /// Parses binary DNS wire format according to RFC 1035 using hickory-proto.
-    fn parse_request(data: &[u8]) -> Result<crate::dns::Message> {
-        crate::dns::wire::parse_message(data)
-    }
-
-    /// Serialize DNS response to wire format
-    ///
-    /// Serializes to binary DNS wire format according to RFC 1035 using hickory-proto.
-    fn serialize_response(message: &crate::dns::Message) -> Result<Vec<u8>> {
-        crate::dns::wire::serialize_message(message)
     }
 }
 
@@ -246,18 +262,19 @@ impl Server for DotServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::common::{parse_dns_request, serialize_dns_response};
 
     #[test]
     fn test_parse_request() {
         let data = vec![0u8; 12]; // Minimal DNS header
-        let result = DotServer::parse_request(&data);
+        let result = parse_dns_request(&data);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_serialize_response() {
         let message = crate::dns::Message::new();
-        let result = DotServer::serialize_response(&message);
+        let result = serialize_dns_response(&message);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 12);
     }
@@ -266,7 +283,7 @@ mod tests {
     async fn test_parse_request_invalid() {
         // empty data should fail parsing
         let data: Vec<u8> = vec![];
-        let result = DotServer::parse_request(&data);
+        let result = parse_dns_request(&data);
         assert!(result.is_err());
     }
 
@@ -476,7 +493,7 @@ mod tests {
             0x00, 0x01, // QCLASS: IN
         ]);
 
-        let result = DotServer::parse_request(&data);
+        let result = parse_dns_request(&data);
         assert!(result.is_ok());
         let message = result.unwrap();
         assert_eq!(message.id(), 1);
@@ -504,14 +521,14 @@ mod tests {
             crate::dns::RData::A(Ipv4Addr::new(93, 184, 216, 34)),
         ));
 
-        let result = DotServer::serialize_response(&message);
+        let result = serialize_dns_response(&message);
         assert!(result.is_ok());
         let data = result.unwrap();
         // Verify we get more than just header (has question + answer)
         assert!(data.len() > 12);
 
         // Re-parse to verify roundtrip
-        let parsed = DotServer::parse_request(&data).unwrap();
+        let parsed = parse_dns_request(&data).unwrap();
         assert_eq!(parsed.id(), 1234);
         assert!(parsed.is_response());
         assert_eq!(parsed.answer_count(), 1);
@@ -521,7 +538,7 @@ mod tests {
     fn test_parse_request_truncated_header() {
         // Less than 12 bytes
         let data = vec![0x00, 0x01, 0x02];
-        let result = DotServer::parse_request(&data);
+        let result = parse_dns_request(&data);
         assert!(result.is_err());
     }
 

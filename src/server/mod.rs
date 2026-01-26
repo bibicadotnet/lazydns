@@ -81,6 +81,7 @@ pub trait Server: Send + Sync + Sized {
 
 #[cfg(feature = "admin")]
 pub mod admin;
+pub mod common;
 pub mod config;
 #[cfg(feature = "doh")]
 pub mod doh;

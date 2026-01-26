@@ -30,7 +30,7 @@
 /// # Ok(())
 /// # }
 /// ```
-use crate::dns::Message;
+use crate::server::common::{parse_dns_request, serialize_dns_response};
 use crate::server::{RequestHandler, Server, ServerConfig};
 use crate::{Error, Result};
 use std::sync::Arc;
@@ -172,7 +172,7 @@ impl TcpServer {
         stream.read_exact(&mut buf).await.map_err(Error::Io)?;
 
         // Parse request
-        let request = Self::parse_request(&buf)?;
+        let request = parse_dns_request(&buf)?;
 
         debug!(
             peer = %peer_addr,
@@ -199,7 +199,7 @@ impl TcpServer {
         );
 
         // Serialize response
-        let response_data = Self::serialize_response(&response)?;
+        let response_data = serialize_dns_response(&response)?;
 
         // Write length prefix
         let len = response_data.len() as u16;
@@ -214,25 +214,6 @@ impl TcpServer {
         stream.flush().await.map_err(Error::Io)?;
 
         Ok(())
-    }
-
-    /// Parse DNS request from wire format
-    ///
-    /// Thin wrapper around `dns::wire::parse_message` that converts a byte
-    /// slice into a `Message` structure. Returns an error on invalid input.
-    fn parse_request(data: &[u8]) -> Result<Message> {
-        crate::dns::wire::parse_message(data)
-    }
-
-    /// Serialize DNS response to wire format
-    ///
-    /// Serialize DNS response to wire format
-    ///
-    /// Wrapper around `dns::wire::serialize_message` which converts a
-    /// `Message` into a DNS wire-format byte vector suitable for sending over
-    /// the TCP connection.
-    fn serialize_response(message: &Message) -> Result<Vec<u8>> {
-        crate::dns::wire::serialize_message(message)
     }
 }
 
@@ -255,7 +236,7 @@ impl Server for TcpServer {
 mod tests {
     use super::*;
     use crate::dns::wire;
-    use crate::dns::{Question, RecordClass, RecordType};
+    use crate::dns::{Message, Question, RecordClass, RecordType};
     use crate::server::DefaultHandler;
     use tokio::net::{TcpListener, TcpStream};
 
@@ -281,14 +262,14 @@ mod tests {
         ));
 
         let data = wire::serialize_message(&req).expect("serialize request");
-        let parsed = TcpServer::parse_request(&data).expect("parse request");
+        let parsed = parse_dns_request(&data).expect("parse request");
         assert_eq!(parsed.id(), 0x42);
         assert_eq!(parsed.question_count(), 1);
 
         // Turn parsed message into a response and serialize via serialize_response
         let mut resp = parsed.clone();
         resp.set_response(true);
-        let resp_data = TcpServer::serialize_response(&resp).expect("serialize response");
+        let resp_data = serialize_dns_response(&resp).expect("serialize response");
         assert!(resp_data.len() >= 12);
     }
 
