@@ -20,6 +20,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tokio::net::UdpSocket;
+use tokio::sync::OnceCell;
 use tokio::time::{Duration, Instant, timeout};
 use tracing::{debug, trace, warn};
 
@@ -186,17 +187,28 @@ pub struct Forward {
     pub health_checks_enabled: bool,
     /// Maximum failover attempts
     pub max_attempts: usize,
+    /// Shared HTTP client for DoH queries (lazily initialized)
+    doh_client: Arc<OnceCell<HttpClient>>,
+    /// Shared UDP socket for forwarding (lazily initialized)
+    udp_socket: Arc<OnceCell<UdpSocket>>,
+    /// Whether to accept invalid TLS certificates (for testing)
+    accept_invalid_certs: bool,
 }
 
 impl Forward {
     /// Create a new Forward
     pub fn new(upstreams: Vec<Upstream>, timeout: Duration, strategy: LoadBalanceStrategy) -> Self {
+        let accept_invalid_certs =
+            cfg!(test) || std::env::var("LAZYDNS_DOH_ACCEPT_INVALID_CERT").is_ok();
         Self {
             upstreams,
             timeout,
             strategy,
             health_checks_enabled: false,
             max_attempts: 3,
+            doh_client: Arc::new(OnceCell::new()),
+            udp_socket: Arc::new(OnceCell::new()),
+            accept_invalid_certs,
         }
     }
 
@@ -263,17 +275,27 @@ impl Forward {
     }
 
     /// Forward via UDP/TCP
+    ///
+    /// Uses a shared UDP socket that is lazily initialized on first use.
+    /// This avoids creating a new socket for every query, reducing syscall
+    /// overhead and ephemeral port exhaustion.
     async fn forward_query_udp(&self, request: &Message, upstream: &str) -> Result<Message> {
         let upstream_addr = SocketAddr::from_str(upstream)
             .map_err(|e| crate::Error::Config(format!("Invalid upstream address: {}", e)))?;
 
-        let socket = UdpSocket::bind("0.0.0.0:0").await?;
+        // Get or initialize the shared UDP socket
+        let socket = self
+            .udp_socket
+            .get_or_try_init(|| async { UdpSocket::bind("0.0.0.0:0").await })
+            .await?;
+
         let request_data = Self::serialize_message(request)?;
 
         let sent = socket.send_to(&request_data, upstream_addr).await?;
         trace!("Sent {} bytes to upstream {}", sent, upstream_addr);
 
-        let mut response_buf = vec![0u8; 512];
+        // Use a larger buffer to handle EDNS0 responses (up to 4096 bytes)
+        let mut response_buf = vec![0u8; 4096];
         let recv_res = timeout(self.timeout, socket.recv_from(&mut response_buf)).await;
         let (len, _) = match recv_res {
             Ok(Ok((len, peer))) => {
@@ -304,18 +326,29 @@ impl Forward {
     }
 
     /// Forward via DNS over HTTPS
+    ///
+    /// Uses a shared HTTP client that is lazily initialized on first use.
+    /// This enables connection pooling and avoids repeated TLS handshakes,
+    /// significantly improving performance for DoH queries.
     async fn forward_query_doh(&self, request: &Message, upstream_url: &str) -> Result<Message> {
         trace!("Forwarding query over DoH to {}", upstream_url);
 
-        let mut client_builder = HttpClient::builder();
-        // In test environments, accept invalid certificates for self-signed test servers
-        if cfg!(test) || std::env::var("LAZYDNS_DOH_ACCEPT_INVALID_CERT").is_ok() {
-            client_builder = client_builder.danger_accept_invalid_certs(true);
-        }
-
-        let client = client_builder
-            .build()
-            .map_err(|e| crate::Error::Other(e.to_string()))?;
+        // Get or initialize the shared HTTP client
+        let accept_invalid = self.accept_invalid_certs;
+        let client = self
+            .doh_client
+            .get_or_try_init(|| async {
+                let mut builder = HttpClient::builder()
+                    .pool_max_idle_per_host(10)
+                    .pool_idle_timeout(Duration::from_secs(90));
+                if accept_invalid {
+                    builder = builder.danger_accept_invalid_certs(true);
+                }
+                builder
+                    .build()
+                    .map_err(|e| crate::Error::Other(e.to_string()))
+            })
+            .await?;
 
         let request_data = Self::serialize_message(request)?;
 
