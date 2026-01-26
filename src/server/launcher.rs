@@ -61,6 +61,8 @@ use crate::server::DoqServer;
 use crate::server::DotServer;
 #[cfg(feature = "metrics")]
 use crate::server::MonitoringServer;
+#[cfg(any(feature = "doh", feature = "dot", feature = "doq"))]
+use crate::server::Server;
 #[cfg(any(feature = "doh", feature = "dot"))]
 use crate::server::TlsConfig;
 #[cfg(feature = "admin")]
@@ -461,7 +463,26 @@ impl ServerLauncher {
 
         let entry = self.get_entry(&args);
         let handler = self.create_handler(entry);
-        let server = DohServer::new(addr.to_string(), tls, handler);
+        let doh_path = args.get("path").and_then(|v| v.as_str()).map(String::from);
+
+        let mut config = ServerConfig {
+            tcp_addr: Some(addr),
+            handler: Some(handler),
+            tls_config: Some(tls),
+            doh_path,
+            ..Default::default()
+        };
+        // Also set cert paths for consistency
+        config.cert_path = Some(cert_path.to_string());
+        config.key_path = Some(key_path.to_string());
+
+        let server = match DohServer::from_config(config).await {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to create DoH server from config: {}", e);
+                return None;
+            }
+        };
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
@@ -560,7 +581,24 @@ impl ServerLauncher {
 
         let entry = self.get_entry(&args);
         let handler = self.create_handler(entry);
-        let server = DotServer::new(addr.to_string(), tls, handler);
+
+        let mut config = ServerConfig {
+            tcp_addr: Some(addr),
+            handler: Some(handler),
+            tls_config: Some(tls),
+            ..Default::default()
+        };
+        // Also set cert paths for consistency
+        config.cert_path = Some(cert_path.to_string());
+        config.key_path = Some(key_path.to_string());
+
+        let server = match DotServer::from_config(config).await {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to create DoT server from config: {}", e);
+                return None;
+            }
+        };
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
@@ -650,7 +688,22 @@ impl ServerLauncher {
 
         let entry = self.get_entry(&args);
         let handler = self.create_handler(entry);
-        let server = DoqServer::new(addr.to_string(), cert_path, key_path, handler);
+
+        let config = ServerConfig {
+            tcp_addr: Some(addr),
+            handler: Some(handler),
+            cert_path: Some(cert_path.to_string()),
+            key_path: Some(key_path.to_string()),
+            ..Default::default()
+        };
+
+        let server = match DoqServer::from_config(config).await {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to create DoQ server from config: {}", e);
+                return None;
+            }
+        };
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
