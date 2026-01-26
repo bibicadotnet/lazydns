@@ -1124,9 +1124,8 @@ impl Plugin for CachePlugin {
             if context
                 .get_metadata::<bool>("response_from_cache")
                 .is_none()
-                && context.response().is_some()
+                && let Some(response) = context.response()
             {
-                let response = context.response().unwrap();
                 let response_code = response.response_code();
                 let is_error = response_code != crate::dns::ResponseCode::NoError;
                 // Handle negative caching
