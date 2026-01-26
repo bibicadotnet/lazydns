@@ -4,6 +4,26 @@
 
 use crate::config::Config;
 use crate::{Error, Result};
+use serde_yaml::Value;
+use std::net::SocketAddr;
+
+/// Valid port range (1-65535, 0 is reserved)
+const MIN_PORT: u16 = 1;
+
+/// Valid TTL range (0-2147483647, max i32)
+const MAX_TTL: u32 = i32::MAX as u32;
+
+/// Reasonable timeout range (1-3600 seconds)
+const MIN_TIMEOUT_SECS: u64 = 1;
+const MAX_TIMEOUT_SECS: u64 = 3600;
+
+/// Reasonable rate limit range
+const MIN_RATE_LIMIT: u32 = 1;
+const MAX_RATE_LIMIT: u32 = 1_000_000;
+
+/// Reasonable window range (1-86400 seconds = 1 day)
+const MIN_WINDOW_SECS: u64 = 1;
+const MAX_WINDOW_SECS: u64 = 86400;
 
 /// Validate a configuration
 ///
@@ -21,6 +41,10 @@ pub fn validate_config(config: &Config) -> Result<()> {
     validate_log_level(&config.log.level)?;
     validate_log_format(&config.log.format)?;
     // Rotation is now validated via serde/RotationTrigger enum
+
+    // Validate admin and monitoring addresses
+    validate_socket_addr(&config.admin.addr, "admin")?;
+    validate_socket_addr(&config.monitoring.addr, "monitoring")?;
 
     // Validate plugins
     validate_plugins(&config.plugins)?;
@@ -73,15 +97,250 @@ fn validate_plugins(plugins: &[crate::config::PluginConfig]) -> Result<()> {
         if plugin.plugin_type.is_empty() {
             return Err(Error::Config("Plugin type cannot be empty".to_string()));
         }
+
+        // Validate plugin-specific numeric parameters
+        validate_plugin_args(&plugin.plugin_type, &plugin.effective_args())?;
     }
 
     Ok(())
 }
 
+/// Validate socket address format
+fn validate_socket_addr(addr: &str, context: &str) -> Result<()> {
+    // Normalize address format:
+    // ":port" -> "0.0.0.0:port" (IPv4 wildcard)
+    // "::port" -> "[::]:port" (IPv6 wildcard)
+    // "::1:port" -> "[::1]:port" (IPv6 loopback with port)
+    let normalized_addr = if let Some(port) = addr.strip_prefix(":::") {
+        // ":::port" -> "[::]:port" (IPv6 wildcard)
+        format!("[::]:{}", port)
+    } else if let Some(rest) = addr.strip_prefix("::") {
+        // Check if it's "::" followed by IPv6 address and port (e.g., "::1:8080")
+        // or just "::port" (e.g., "::8080")
+        if let Some(last_colon) = rest.rfind(':') {
+            if last_colon > 0 {
+                // Has more than just "" after "::" before the last colon
+                // Check if everything after the last colon is a valid port number
+                if rest[last_colon + 1..].parse::<u16>().is_ok() {
+                    // It's an IPv6 address with port (e.g., "::1:8080")
+                    let ip_part = &rest[..last_colon];
+                    let port_part = &rest[last_colon + 1..];
+                    format!("[::{}]:{}", ip_part, port_part)
+                } else {
+                    // Not a port number, treat as plain IPv6 address
+                    addr.to_string()
+                }
+            } else {
+                // "::port" format -> "[::]:port"
+                format!("[::]:{}", rest)
+            }
+        } else if rest.parse::<u16>().is_ok() {
+            // No colon in rest, but rest is a valid port number (e.g., "::8080")
+            // This is IPv6 wildcard shorthand: "::port" -> "[::]:port"
+            format!("[::]:{}", rest)
+        } else {
+            // Just "::" without port, or something else
+            addr.to_string()
+        }
+    } else if addr.starts_with(':') && !addr.starts_with("::[") {
+        // ":port" -> "0.0.0.0:port" (IPv4 wildcard)
+        format!("0.0.0.0{}", addr)
+    } else {
+        addr.to_string()
+    };
+
+    let socket_addr = normalized_addr
+        .parse::<SocketAddr>()
+        .map_err(|e| Error::Config(format!("Invalid {} address '{}': {}", context, addr, e)))?;
+
+    // Validate port range (port 0 is reserved)
+    let port = socket_addr.port();
+    if port < MIN_PORT {
+        return Err(Error::Config(format!(
+            "Invalid {} port {}: must be at least {}",
+            context, port, MIN_PORT
+        )));
+    }
+
+    Ok(())
+}
+
+/// Validate plugin-specific arguments
+fn validate_plugin_args(
+    plugin_type: &str,
+    args: &std::collections::HashMap<String, Value>,
+) -> Result<()> {
+    match plugin_type {
+        "rate_limit" | "ratelimit" => {
+            validate_u32_range(args, "max_queries", MIN_RATE_LIMIT, MAX_RATE_LIMIT, false)?;
+            validate_u64_range(args, "window_secs", MIN_WINDOW_SECS, MAX_WINDOW_SECS, false)?;
+        }
+        "ttl" => {
+            validate_u32_range(args, "fix", 0, MAX_TTL, true)?;
+            validate_u32_range(args, "min", 0, MAX_TTL, true)?;
+            validate_u32_range(args, "max", 0, MAX_TTL, true)?;
+        }
+        "downloader" => {
+            validate_u64_range(
+                args,
+                "timeout_secs",
+                MIN_TIMEOUT_SECS,
+                MAX_TIMEOUT_SECS,
+                true,
+            )?;
+            validate_u64_range(args, "retry_delay_secs", 0, MAX_TIMEOUT_SECS, true)?;
+            validate_usize_range(args, "max_retries", 0, 100, true)?;
+        }
+        "cache" => {
+            validate_usize_range(args, "size", 1, usize::MAX, true)?;
+            validate_u32_range(args, "negative_ttl", 0, MAX_TTL, true)?;
+            validate_u64_range(args, "cleanup_interval_secs", 1, 86400, true)?;
+        }
+        "forward" => {
+            validate_u64_range(args, "timeout", MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS, true)?;
+            validate_usize_range(args, "concurrent", 1, 1000, true)?;
+        }
+        _ => {
+            // For unknown plugin types, skip specific validation
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate u32 value in range
+fn validate_u32_range(
+    args: &std::collections::HashMap<String, Value>,
+    key: &str,
+    min: u32,
+    max: u32,
+    optional: bool,
+) -> Result<()> {
+    if let Some(value) = args.get(key) {
+        let val = extract_u32(value, key)?;
+        if val < min || val > max {
+            return Err(Error::Config(format!(
+                "Parameter '{}' must be between {} and {}, got {}",
+                key, min, max, val
+            )));
+        }
+    } else if !optional {
+        return Err(Error::Config(format!(
+            "Required parameter '{}' is missing",
+            key
+        )));
+    }
+    Ok(())
+}
+
+/// Validate u64 value in range
+fn validate_u64_range(
+    args: &std::collections::HashMap<String, Value>,
+    key: &str,
+    min: u64,
+    max: u64,
+    optional: bool,
+) -> Result<()> {
+    if let Some(value) = args.get(key) {
+        let val = extract_u64(value, key)?;
+        if val < min || val > max {
+            return Err(Error::Config(format!(
+                "Parameter '{}' must be between {} and {}, got {}",
+                key, min, max, val
+            )));
+        }
+    } else if !optional {
+        return Err(Error::Config(format!(
+            "Required parameter '{}' is missing",
+            key
+        )));
+    }
+    Ok(())
+}
+
+/// Validate usize value in range
+fn validate_usize_range(
+    args: &std::collections::HashMap<String, Value>,
+    key: &str,
+    min: usize,
+    max: usize,
+    optional: bool,
+) -> Result<()> {
+    if let Some(value) = args.get(key) {
+        let val = extract_usize(value, key)?;
+        if val < min || val > max {
+            return Err(Error::Config(format!(
+                "Parameter '{}' must be between {} and {}, got {}",
+                key, min, max, val
+            )));
+        }
+    } else if !optional {
+        return Err(Error::Config(format!(
+            "Required parameter '{}' is missing",
+            key
+        )));
+    }
+    Ok(())
+}
+
+/// Extract u32 from YAML value
+fn extract_u32(value: &Value, key: &str) -> Result<u32> {
+    match value {
+        Value::Number(n) => n
+            .as_u64()
+            .and_then(|v| u32::try_from(v).ok())
+            .ok_or_else(|| {
+                Error::Config(format!("Parameter '{}' must be a valid u32 number", key))
+            }),
+        Value::String(s) => s
+            .parse::<u32>()
+            .map_err(|_| Error::Config(format!("Parameter '{}' must be a valid u32 number", key))),
+        _ => Err(Error::Config(format!(
+            "Parameter '{}' must be a number",
+            key
+        ))),
+    }
+}
+
+/// Extract u64 from YAML value
+fn extract_u64(value: &Value, key: &str) -> Result<u64> {
+    match value {
+        Value::Number(n) => n.as_u64().ok_or_else(|| {
+            Error::Config(format!("Parameter '{}' must be a valid u64 number", key))
+        }),
+        Value::String(s) => s
+            .parse::<u64>()
+            .map_err(|_| Error::Config(format!("Parameter '{}' must be a valid u64 number", key))),
+        _ => Err(Error::Config(format!(
+            "Parameter '{}' must be a number",
+            key
+        ))),
+    }
+}
+
+/// Extract usize from YAML value
+fn extract_usize(value: &Value, key: &str) -> Result<usize> {
+    match value {
+        Value::Number(n) => n
+            .as_u64()
+            .and_then(|v| usize::try_from(v).ok())
+            .ok_or_else(|| {
+                Error::Config(format!("Parameter '{}' must be a valid usize number", key))
+            }),
+        Value::String(s) => s.parse::<usize>().map_err(|_| {
+            Error::Config(format!("Parameter '{}' must be a valid usize number", key))
+        }),
+        _ => Err(Error::Config(format!(
+            "Parameter '{}' must be a number",
+            key
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::PluginConfig;
+    use crate::config::{PluginConfig, loader};
 
     #[test]
     fn test_validate_valid_config() {
@@ -133,5 +392,105 @@ mod tests {
 
         let result = validate_plugins(&plugins);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_socket_addr_valid() {
+        // IPv4 formats
+        assert!(validate_socket_addr("127.0.0.1:8080", "test").is_ok());
+        assert!(validate_socket_addr("0.0.0.0:53", "test").is_ok());
+        assert!(validate_socket_addr(":8000", "test").is_ok()); // IPv4 wildcard shorthand
+        assert!(validate_socket_addr(":53", "test").is_ok());
+
+        // IPv6 formats
+        assert!(validate_socket_addr("[::1]:8080", "test").is_ok()); // Standard IPv6
+        assert!(validate_socket_addr("[::]:8080", "test").is_ok()); // IPv6 wildcard
+        assert!(validate_socket_addr("::1:8080", "test").is_ok()); // IPv6 without brackets
+        assert!(validate_socket_addr("::8080", "test").is_ok()); // IPv6 wildcard shorthand
+        assert!(validate_socket_addr(":::8080", "test").is_ok()); // Alternative IPv6 wildcard shorthand
+    }
+
+    #[test]
+    fn test_validate_socket_addr_invalid() {
+        assert!(validate_socket_addr("invalid", "test").is_err());
+        assert!(validate_socket_addr("127.0.0.1:99999", "test").is_err());
+        assert!(validate_socket_addr("127.0.0.1", "test").is_err());
+        // Port 0 is reserved
+        assert!(validate_socket_addr("127.0.0.1:0", "test").is_err());
+    }
+
+    #[test]
+    fn test_validate_rate_limit_params() {
+        use std::collections::HashMap;
+
+        let mut args = HashMap::new();
+        args.insert("max_queries".to_string(), Value::Number(100.into()));
+        args.insert("window_secs".to_string(), Value::Number(60.into()));
+
+        assert!(validate_plugin_args("rate_limit", &args).is_ok());
+    }
+
+    #[test]
+    fn test_validate_config_with_shorthand_admin_addr() {
+        let yaml = r#"
+admin:
+  enabled: true
+  addr: ":8000"
+plugins: []
+"#;
+        let config = loader::load_from_yaml(yaml).unwrap();
+        assert!(validate_config(&config).is_ok());
+    }
+
+    #[test]
+    fn test_validate_rate_limit_out_of_range() {
+        use std::collections::HashMap;
+
+        let mut args = HashMap::new();
+        args.insert("max_queries".to_string(), Value::Number(0.into())); // Too small
+        args.insert("window_secs".to_string(), Value::Number(60.into()));
+
+        assert!(validate_plugin_args("rate_limit", &args).is_err());
+    }
+
+    #[test]
+    fn test_validate_ttl_params() {
+        use std::collections::HashMap;
+
+        let mut args = HashMap::new();
+        args.insert("fix".to_string(), Value::Number(300.into()));
+        args.insert("min".to_string(), Value::Number(30.into()));
+        args.insert("max".to_string(), Value::Number(3600.into()));
+
+        assert!(validate_plugin_args("ttl", &args).is_ok());
+    }
+
+    #[test]
+    fn test_validate_downloader_timeout() {
+        use std::collections::HashMap;
+
+        let mut args = HashMap::new();
+        args.insert("timeout_secs".to_string(), Value::Number(30.into()));
+
+        assert!(validate_plugin_args("downloader", &args).is_ok());
+
+        // Test out of range
+        args.insert("timeout_secs".to_string(), Value::Number(5000.into())); // Too large
+        assert!(validate_plugin_args("downloader", &args).is_err());
+    }
+
+    #[test]
+    fn test_validate_cache_params() {
+        use std::collections::HashMap;
+
+        let mut args = HashMap::new();
+        args.insert("size".to_string(), Value::Number(1024.into()));
+        args.insert("negative_ttl".to_string(), Value::Number(300.into()));
+
+        assert!(validate_plugin_args("cache", &args).is_ok());
+
+        // Test invalid size (0)
+        args.insert("size".to_string(), Value::Number(0.into()));
+        assert!(validate_plugin_args("cache", &args).is_err());
     }
 }
