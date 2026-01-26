@@ -1,6 +1,6 @@
 use crate::config::PluginConfig;
 use crate::dns::{Message, RData, ResourceRecord};
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{BackgroundTask, Context, Plugin};
 use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -202,6 +202,26 @@ impl ReverseLookupPlugin {
     }
 }
 
+impl BackgroundTask for ReverseLookupPlugin {
+    fn background_task_interval(&self) -> Duration {
+        Duration::from_secs(300) // 5 minutes
+    }
+
+    fn run_background_task(&self) {
+        let removed = self.cleanup();
+        if removed > 0 {
+            tracing::debug!(
+                "ReverseLookupPlugin cleanup: removed {} expired entries",
+                removed
+            );
+        }
+    }
+
+    fn background_task_name(&self) -> &str {
+        "reverse_lookup_cleanup"
+    }
+}
+
 impl fmt::Debug for ReverseLookupPlugin {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ReverseLookup").finish()
@@ -216,6 +236,10 @@ impl Plugin for ReverseLookupPlugin {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn spawn_background_task(&self) -> Option<tokio::task::JoinHandle<()>> {
+        Some(Arc::new(self.clone()).spawn_background_task())
     }
 
     fn init(config: &PluginConfig) -> crate::Result<std::sync::Arc<dyn crate::plugin::Plugin>> {

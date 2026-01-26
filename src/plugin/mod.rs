@@ -51,7 +51,7 @@ pub use builder::PluginBuilder;
 pub use context::Context;
 pub use executor::Executor;
 pub use registry::Registry;
-pub use traits::{ExecPlugin, Plugin};
+pub use traits::{BackgroundTask, ExecPlugin, Plugin};
 
 use crate::Result;
 use crate::dns::Message;

@@ -166,6 +166,19 @@ pub trait Plugin: Send + Sync + Debug + Any + 'static {
     fn as_shutdown(&self) -> Option<&dyn Shutdown> {
         None
     }
+
+    /// Spawn background task for this plugin if it requires one.
+    ///
+    /// Plugins that need periodic background work (cleanup, refresh, etc.)
+    /// should override this method to spawn their background task.
+    /// The default implementation returns `None` indicating no background task.
+    ///
+    /// # Returns
+    ///
+    /// `Some(JoinHandle)` if a background task was spawned, `None` otherwise.
+    fn spawn_background_task(&self) -> Option<tokio::task::JoinHandle<()>> {
+        None
+    }
 }
 
 /// Trait for executable plugins that support quick setup from strings
@@ -202,6 +215,57 @@ pub trait Shutdown: Send + Sync {
     ///
     /// Returns `Ok(())` on successful shutdown, or an error if cleanup fails.
     async fn shutdown(&self) -> Result<()>;
+}
+
+/// Trait for plugins that spawn periodic background cleanup tasks
+///
+/// Plugins like CachePlugin, RateLimitPlugin, and ReverseLookupPlugin often need
+/// to periodically clean up expired entries. This trait provides a unified interface
+/// for spawning such background tasks.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use lazydns::plugin::BackgroundTask;
+/// use std::sync::Arc;
+///
+/// let plugin = Arc::new(MyPlugin::new());
+/// let handle = plugin.spawn_background_task();
+/// // Later: handle.abort() to stop the task
+/// ```
+pub trait BackgroundTask: Send + Sync {
+    /// Get the interval between background task runs
+    fn background_task_interval(&self) -> std::time::Duration;
+
+    /// Perform a single iteration of the background task
+    ///
+    /// This method is called periodically by the spawned task.
+    /// It should perform cleanup, maintenance, or other periodic work.
+    fn run_background_task(&self);
+
+    /// Get the name of this background task for logging
+    fn background_task_name(&self) -> &str;
+
+    /// Spawn the background cleanup task
+    ///
+    /// Returns a JoinHandle that can be used to abort the task.
+    /// The default implementation spawns a tokio task that calls
+    /// `run_background_task` at the interval specified by `background_task_interval`.
+    fn spawn_background_task(self: Arc<Self>) -> tokio::task::JoinHandle<()>
+    where
+        Self: 'static,
+    {
+        let interval = self.background_task_interval();
+        let name = self.background_task_name().to_string();
+        tokio::spawn(async move {
+            let mut timer = tokio::time::interval(interval);
+            loop {
+                timer.tick().await;
+                tracing::trace!(task = %name, "Running background task");
+                self.run_background_task();
+            }
+        })
+    }
 }
 
 /// Matcher trait for plugins that can match against DNS data

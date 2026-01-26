@@ -267,51 +267,18 @@ impl PluginBuilder {
     /// # Returns
     ///
     /// Returns a vector of JoinHandles for the spawned background tasks.
+    /// Start background tasks for plugins that need them
+    ///
+    /// This uses the unified `Plugin::spawn_background_task()` method.
+    /// Plugins that need background tasks (cache cleanup, rate limit cleanup, etc.)
+    /// implement this method to return their task handle.
     pub fn start_background_tasks(&self) -> Vec<tokio::task::JoinHandle<()>> {
         let mut background_tasks = Vec::new();
 
         for (plugin_name, plugin) in &self.plugins {
-            // Check if this is a CachePlugin and start its cleanup task
-            if plugin
-                .as_any()
-                .downcast_ref::<CachePlugin>()
-                .is_some_and(|cache_plugin| cache_plugin.is_cleanup_enabled())
-            {
-                let cache_plugin = plugin.as_any().downcast_ref::<CachePlugin>().unwrap();
-                info!(
-                    "Starting background cleanup task for cache plugin '{}'",
-                    plugin_name
-                );
-                // Clone the plugin and wrap in Arc
-                let cache_arc = Arc::new((*cache_plugin).clone());
-                let cleanup_handle = cache_arc.spawn_cleanup_task();
-                background_tasks.push(cleanup_handle);
-            }
-
-            // Check if this is a RateLimitPlugin and start its cleanup task
-            if let Some(ratelimit_plugin) = plugin.as_any().downcast_ref::<RateLimitPlugin>() {
-                info!(
-                    "Starting background cleanup task for rate limit plugin '{}'",
-                    plugin_name
-                );
-                // Clone the plugin and wrap in Arc
-                let ratelimit_arc = Arc::new((*ratelimit_plugin).clone());
-                let cleanup_handle = ratelimit_arc.spawn_cleanup_task();
-                background_tasks.push(cleanup_handle);
-            }
-
-            // Check if this is a ReverseLookupPlugin and start its cleanup task
-            if let Some(reverse_lookup_plugin) =
-                plugin.as_any().downcast_ref::<ReverseLookupPlugin>()
-            {
-                info!(
-                    "Starting background cleanup task for reverse lookup plugin '{}'",
-                    plugin_name
-                );
-                // Clone the plugin and wrap in Arc
-                let reverse_lookup_arc = Arc::new((*reverse_lookup_plugin).clone());
-                let cleanup_handle = reverse_lookup_arc.spawn_cleanup_task();
-                background_tasks.push(cleanup_handle);
+            if let Some(handle) = plugin.spawn_background_task() {
+                info!("Starting background task for plugin '{}'", plugin_name);
+                background_tasks.push(handle);
             }
         }
 

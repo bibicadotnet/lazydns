@@ -66,7 +66,7 @@ use crate::error::Error;
 #[cfg(feature = "metrics")]
 use crate::metrics;
 use crate::plugin::traits::Shutdown;
-use crate::plugin::{Context, Plugin, PluginHandler, RETURN_FLAG};
+use crate::plugin::{BackgroundTask, Context, Plugin, PluginHandler, RETURN_FLAG};
 use crate::utils::task_queue::{RefreshCoordinator, RefreshTask};
 use async_trait::async_trait;
 use dashmap::DashSet;
@@ -743,6 +743,35 @@ impl fmt::Debug for CachePlugin {
     }
 }
 
+impl BackgroundTask for CachePlugin {
+    fn background_task_interval(&self) -> Duration {
+        Duration::from_secs(self.cleanup_interval_secs)
+    }
+
+    fn run_background_task(&self) {
+        let removed = self.cleanup_expired();
+
+        // Check if pressure-based cleanup is needed
+        if self.should_cleanup_pressure() {
+            debug!(
+                "Memory pressure detected: {} / {}",
+                self.size(),
+                self.max_size
+            );
+            let pressure_removed = self.cleanup_expired();
+            debug!(
+                "Pressure cleanup removed {} entries (total in this cycle: {})",
+                pressure_removed,
+                removed + pressure_removed
+            );
+        }
+    }
+
+    fn background_task_name(&self) -> &str {
+        "cache_cleanup"
+    }
+}
+
 #[async_trait]
 impl Plugin for CachePlugin {
     async fn execute(&self, context: &mut Context) -> Result<()> {
@@ -1183,6 +1212,14 @@ impl Plugin for CachePlugin {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn spawn_background_task(&self) -> Option<tokio::task::JoinHandle<()>> {
+        if self.is_cleanup_enabled() {
+            Some(Arc::new(self.clone()).spawn_background_task())
+        } else {
+            None
+        }
     }
 
     fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {

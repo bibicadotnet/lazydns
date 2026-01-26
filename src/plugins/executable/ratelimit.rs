@@ -4,7 +4,7 @@
 
 use crate::config::PluginConfig;
 use crate::dns::ResponseCode;
-use crate::plugin::{Context, Plugin};
+use crate::plugin::{BackgroundTask, Context, Plugin};
 use crate::{RegisterPlugin, Result};
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -143,6 +143,30 @@ impl RateLimitPlugin {
     }
 }
 
+impl BackgroundTask for RateLimitPlugin {
+    fn background_task_interval(&self) -> Duration {
+        Duration::from_secs(self.window_secs.max(30) * 2)
+    }
+
+    fn run_background_task(&self) {
+        let before = self.limits.len();
+        self.cleanup();
+        let after = self.limits.len();
+        if before > after {
+            debug!(
+                "RateLimitPlugin cleanup: removed {} entries ({} -> {})",
+                before - after,
+                before,
+                after
+            );
+        }
+    }
+
+    fn background_task_name(&self) -> &str {
+        "ratelimit_cleanup"
+    }
+}
+
 #[async_trait]
 impl Plugin for RateLimitPlugin {
     async fn execute(&self, ctx: &mut Context) -> Result<()> {
@@ -192,6 +216,10 @@ impl Plugin for RateLimitPlugin {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn spawn_background_task(&self) -> Option<tokio::task::JoinHandle<()>> {
+        Some(Arc::new(self.clone()).spawn_background_task())
     }
 
     fn init(config: &PluginConfig) -> Result<Arc<dyn Plugin>> {
