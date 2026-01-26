@@ -81,9 +81,7 @@ async fn main() -> anyhow::Result<()> {
             config
         }
         Err(e) => {
-            eprintln!("Failed to load configuration: {}", e);
-            eprintln!("Using default configuration");
-            Config::default()
+            return Err(e.into());
         }
     };
 
