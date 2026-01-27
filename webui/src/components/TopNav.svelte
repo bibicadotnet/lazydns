@@ -1,7 +1,7 @@
 <script lang="ts">
     import { link } from "svelte-spa-router";
     import active from "svelte-spa-router/active";
-    import { topNavCollapsed } from "../lib/stores";
+    import { topNavCollapsed, darkMode } from "../lib/stores";
 
     const navItems = [
         { path: "/", icon: "dashboard", label: "Dashboard" },
@@ -13,10 +13,16 @@
     function toggleNav() {
         topNavCollapsed.update((v) => !v);
     }
+
+    function toggleTheme() {
+        darkMode.update((v) => !v);
+    }
 </script>
 
 <nav
-    class="fixed top-0 left-0 right-0 h-16 bg-gray-900 border-b border-gray-800 flex items-center px-4 gap-4 z-40"
+    class="fixed top-0 left-0 right-0 h-16 border-b flex items-center px-4 gap-4 z-40 transition-colors duration-200 {$darkMode
+        ? 'bg-gray-900 border-gray-800'
+        : 'bg-white border-gray-200'}"
 >
     <!-- Logo -->
     <div class="flex items-center gap-3 flex-shrink-0">
@@ -129,10 +135,53 @@
     <!-- Spacer -->
     <div class="flex-1" />
 
+    <!-- Theme Toggle Button -->
+    <button
+        on:click={toggleTheme}
+        class="flex items-center justify-center p-2 rounded-lg transition-colors {$darkMode
+            ? 'text-gray-400 hover:text-white hover:bg-gray-800'
+            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}"
+        title={$darkMode ? "Switch to light mode" : "Switch to dark mode"}
+    >
+        {#if $darkMode}
+            <!-- Sun icon for switching to light mode -->
+            <svg
+                class="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+            >
+                <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
+                />
+            </svg>
+        {:else}
+            <!-- Moon icon for switching to dark mode -->
+            <svg
+                class="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+            >
+                <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
+                />
+            </svg>
+        {/if}
+    </button>
+
     <!-- Toggle Button -->
     <button
         on:click={toggleNav}
-        class="flex items-center justify-center p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+        class="flex items-center justify-center p-2 rounded-lg transition-colors {$darkMode
+            ? 'text-gray-400 hover:text-white hover:bg-gray-800'
+            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}"
         title={$topNavCollapsed ? "Expand menu" : "Collapse menu"}
     >
         <svg
@@ -159,23 +208,45 @@
         gap: 0.5rem;
         padding: 0.5rem 0.75rem;
         border-radius: 0.5rem;
-        color: #9ca3af;
         transition: all 0.3s ease;
         font-size: 0.875rem;
     }
 
-    :global(.nav-link-top:hover) {
+    :global(.dark .nav-link-top) {
+        color: #9ca3af;
+    }
+
+    :global(.nav-link-top) {
+        color: #4b5563;
+    }
+
+    :global(.dark .nav-link-top:hover) {
         color: white;
         background-color: #1f2937;
     }
 
-    :global(.nav-link-top.nav-link-active) {
+    :global(.nav-link-top:hover) {
+        color: #111827;
+        background-color: #f3f4f6;
+    }
+
+    :global(.dark .nav-link-top.nav-link-active) {
         color: white;
         background: linear-gradient(
             to right,
-            rgba(var(--primary-500), 0.2),
-            rgba(59, 130, 246, 0.2)
+            rgba(59, 130, 246, 0.2),
+            rgba(37, 99, 235, 0.2)
         );
-        border: 1px solid rgba(var(--primary-500), 0.3);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    :global(.nav-link-top.nav-link-active) {
+        color: #1d4ed8;
+        background: linear-gradient(
+            to right,
+            rgba(59, 130, 246, 0.1),
+            rgba(37, 99, 235, 0.1)
+        );
+        border: 1px solid rgba(59, 130, 246, 0.3);
     }
 </style>

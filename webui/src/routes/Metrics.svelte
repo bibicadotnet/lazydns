@@ -9,7 +9,7 @@
         mockUpstreamHealth,
         mockLatencyDistribution,
     } from "../lib/mock";
-    import { selectedTimeWindow } from "../lib/stores";
+    import { selectedTimeWindow, darkMode } from "../lib/stores";
     import type { TimeWindow } from "../lib/types";
 
     const timeWindows: { value: TimeWindow; label: string }[] = [
@@ -32,22 +32,34 @@
     <!-- Page Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-white">Metrics</h1>
-            <p class="text-gray-400 mt-1">
+            <h1
+                class="text-2xl font-bold {$darkMode
+                    ? 'text-white'
+                    : 'text-gray-900'}"
+            >
+                Metrics
+            </h1>
+            <p class="{$darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1">
                 DNS performance analytics and statistics
             </p>
         </div>
 
         <!-- Time Window Selector -->
-        <div class="flex items-center gap-2 bg-gray-800 rounded-lg p-1">
+        <div
+            class="flex items-center gap-2 rounded-lg p-1 {$darkMode
+                ? 'bg-gray-800'
+                : 'bg-gray-100'}"
+        >
             {#each timeWindows as tw}
                 <button
                     on:click={() => ($selectedTimeWindow = tw.value)}
                     class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
                     class:bg-primary-600={$selectedTimeWindow === tw.value}
                     class:text-white={$selectedTimeWindow === tw.value}
-                    class:text-gray-400={$selectedTimeWindow !== tw.value}
-                    class:hover:text-white={$selectedTimeWindow !== tw.value}
+                    class:text-gray-400={$selectedTimeWindow !== tw.value &&
+                        $darkMode}
+                    class:text-gray-600={$selectedTimeWindow !== tw.value &&
+                        !$darkMode}
                 >
                     {tw.label}
                 </button>
@@ -60,15 +72,31 @@
         <div class="card p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <div class="text-sm text-gray-400">P50 Latency</div>
-                    <div class="text-2xl font-bold text-green-400 mt-1">
+                    <div
+                        class="text-sm {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-500'}"
+                    >
+                        P50 Latency
+                    </div>
+                    <div
+                        class="text-2xl font-bold {$darkMode
+                            ? 'text-green-400'
+                            : 'text-green-600'} mt-1"
+                    >
                         {latencyPercentiles.p50}ms
                     </div>
                 </div>
                 <div
-                    class="w-12 h-12 rounded-full bg-green-900/30 flex items-center justify-center"
+                    class="w-12 h-12 rounded-full flex items-center justify-center {$darkMode
+                        ? 'bg-green-900/30'
+                        : 'bg-green-100'}"
                 >
-                    <span class="text-green-400 font-bold">50</span>
+                    <span
+                        class="{$darkMode
+                            ? 'text-green-400'
+                            : 'text-green-600'} font-bold">50</span
+                    >
                 </div>
             </div>
         </div>
@@ -76,15 +104,31 @@
         <div class="card p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <div class="text-sm text-gray-400">P95 Latency</div>
-                    <div class="text-2xl font-bold text-yellow-400 mt-1">
+                    <div
+                        class="text-sm {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-500'}"
+                    >
+                        P95 Latency
+                    </div>
+                    <div
+                        class="text-2xl font-bold {$darkMode
+                            ? 'text-yellow-400'
+                            : 'text-yellow-600'} mt-1"
+                    >
                         {latencyPercentiles.p95}ms
                     </div>
                 </div>
                 <div
-                    class="w-12 h-12 rounded-full bg-yellow-900/30 flex items-center justify-center"
+                    class="w-12 h-12 rounded-full flex items-center justify-center {$darkMode
+                        ? 'bg-yellow-900/30'
+                        : 'bg-yellow-100'}"
                 >
-                    <span class="text-yellow-400 font-bold">95</span>
+                    <span
+                        class="{$darkMode
+                            ? 'text-yellow-400'
+                            : 'text-yellow-600'} font-bold">95</span
+                    >
                 </div>
             </div>
         </div>
@@ -92,15 +136,31 @@
         <div class="card p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <div class="text-sm text-gray-400">P99 Latency</div>
-                    <div class="text-2xl font-bold text-orange-400 mt-1">
+                    <div
+                        class="text-sm {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-500'}"
+                    >
+                        P99 Latency
+                    </div>
+                    <div
+                        class="text-2xl font-bold {$darkMode
+                            ? 'text-orange-400'
+                            : 'text-orange-600'} mt-1"
+                    >
                         {latencyPercentiles.p99}ms
                     </div>
                 </div>
                 <div
-                    class="w-12 h-12 rounded-full bg-orange-900/30 flex items-center justify-center"
+                    class="w-12 h-12 rounded-full flex items-center justify-center {$darkMode
+                        ? 'bg-orange-900/30'
+                        : 'bg-orange-100'}"
                 >
-                    <span class="text-orange-400 font-bold">99</span>
+                    <span
+                        class="{$darkMode
+                            ? 'text-orange-400'
+                            : 'text-orange-600'} font-bold">99</span
+                    >
                 </div>
             </div>
         </div>
@@ -108,16 +168,30 @@
         <div class="card p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <div class="text-sm text-gray-400">Max Latency</div>
-                    <div class="text-2xl font-bold text-red-400 mt-1">
+                    <div
+                        class="text-sm {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-500'}"
+                    >
+                        Max Latency
+                    </div>
+                    <div
+                        class="text-2xl font-bold {$darkMode
+                            ? 'text-red-400'
+                            : 'text-red-600'} mt-1"
+                    >
                         {latencyPercentiles.max}ms
                     </div>
                 </div>
                 <div
-                    class="w-12 h-12 rounded-full bg-red-900/30 flex items-center justify-center"
+                    class="w-12 h-12 rounded-full flex items-center justify-center {$darkMode
+                        ? 'bg-red-900/30'
+                        : 'bg-red-100'}"
                 >
                     <svg
-                        class="w-6 h-6 text-red-400"
+                        class="w-6 h-6 {$darkMode
+                            ? 'text-red-400'
+                            : 'text-red-600'}"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"

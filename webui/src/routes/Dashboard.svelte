@@ -10,7 +10,7 @@
         formatUptime,
         formatNumber,
     } from "../lib/mock";
-    import { alerts } from "../lib/stores";
+    import { alerts, darkMode } from "../lib/stores";
 
     const overview = mockDashboardOverview;
     const upstreams = mockUpstreamHealth;
@@ -32,11 +32,23 @@
     <!-- Page Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-white">Dashboard</h1>
-            <p class="text-gray-400 mt-1">Real-time DNS server monitoring</p>
+            <h1
+                class="text-2xl font-bold {$darkMode
+                    ? 'text-white'
+                    : 'text-gray-900'}"
+            >
+                Dashboard
+            </h1>
+            <p class="{$darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1">
+                Real-time DNS server monitoring
+            </p>
         </div>
-        <div class="flex items-center gap-2 text-sm text-gray-400">
-            <span class="w-2 h-2 rounded-full bg-green-400"></span>
+        <div
+            class="flex items-center gap-2 text-sm {$darkMode
+                ? 'text-gray-400'
+                : 'text-gray-600'}"
+        >
+            <span class="w-2 h-2 rounded-full bg-green-500"></span>
             <span>v{overview.version}</span>
         </div>
     </div>
@@ -96,16 +108,30 @@
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="card p-4 flex items-center justify-between">
             <div>
-                <div class="text-2xl font-bold text-white">
+                <div
+                    class="text-2xl font-bold {$darkMode
+                        ? 'text-white'
+                        : 'text-gray-900'}"
+                >
                     {overview.upstream_summary.total}
                 </div>
-                <div class="text-sm text-gray-400">Total Upstreams</div>
+                <div
+                    class="text-sm {$darkMode
+                        ? 'text-gray-400'
+                        : 'text-gray-600'}"
+                >
+                    Total Upstreams
+                </div>
             </div>
             <div
-                class="w-12 h-12 rounded-full bg-gray-700/50 flex items-center justify-center"
+                class="w-12 h-12 rounded-full flex items-center justify-center {$darkMode
+                    ? 'bg-gray-700/50'
+                    : 'bg-gray-100'}"
             >
                 <svg
-                    class="w-6 h-6 text-gray-400"
+                    class="w-6 h-6 {$darkMode
+                        ? 'text-gray-400'
+                        : 'text-gray-500'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -122,16 +148,30 @@
 
         <div class="card p-4 flex items-center justify-between">
             <div>
-                <div class="text-2xl font-bold text-green-400">
+                <div
+                    class="text-2xl font-bold {$darkMode
+                        ? 'text-green-400'
+                        : 'text-green-600'}"
+                >
                     {overview.upstream_summary.healthy}
                 </div>
-                <div class="text-sm text-gray-400">Healthy</div>
+                <div
+                    class="text-sm {$darkMode
+                        ? 'text-gray-400'
+                        : 'text-gray-600'}"
+                >
+                    Healthy
+                </div>
             </div>
             <div
-                class="w-12 h-12 rounded-full bg-green-900/30 flex items-center justify-center"
+                class="w-12 h-12 rounded-full flex items-center justify-center {$darkMode
+                    ? 'bg-green-900/30'
+                    : 'bg-green-100'}"
             >
                 <svg
-                    class="w-6 h-6 text-green-400"
+                    class="w-6 h-6 {$darkMode
+                        ? 'text-green-400'
+                        : 'text-green-600'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -148,16 +188,30 @@
 
         <div class="card p-4 flex items-center justify-between">
             <div>
-                <div class="text-2xl font-bold text-yellow-400">
+                <div
+                    class="text-2xl font-bold {$darkMode
+                        ? 'text-yellow-400'
+                        : 'text-yellow-600'}"
+                >
                     {overview.upstream_summary.degraded}
                 </div>
-                <div class="text-sm text-gray-400">Degraded</div>
+                <div
+                    class="text-sm {$darkMode
+                        ? 'text-gray-400'
+                        : 'text-gray-600'}"
+                >
+                    Degraded
+                </div>
             </div>
             <div
-                class="w-12 h-12 rounded-full bg-yellow-900/30 flex items-center justify-center"
+                class="w-12 h-12 rounded-full flex items-center justify-center {$darkMode
+                    ? 'bg-yellow-900/30'
+                    : 'bg-yellow-100'}"
             >
                 <svg
-                    class="w-6 h-6 text-yellow-400"
+                    class="w-6 h-6 {$darkMode
+                        ? 'text-yellow-400'
+                        : 'text-yellow-600'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -174,16 +228,30 @@
 
         <div class="card p-4 flex items-center justify-between">
             <div>
-                <div class="text-2xl font-bold text-red-400">
+                <div
+                    class="text-2xl font-bold {$darkMode
+                        ? 'text-red-400'
+                        : 'text-red-600'}"
+                >
                     {overview.upstream_summary.down}
                 </div>
-                <div class="text-sm text-gray-400">Down</div>
+                <div
+                    class="text-sm {$darkMode
+                        ? 'text-gray-400'
+                        : 'text-gray-600'}"
+                >
+                    Down
+                </div>
             </div>
             <div
-                class="w-12 h-12 rounded-full bg-red-900/30 flex items-center justify-center"
+                class="w-12 h-12 rounded-full flex items-center justify-center {$darkMode
+                    ? 'bg-red-900/30'
+                    : 'bg-red-100'}"
             >
                 <svg
-                    class="w-6 h-6 text-red-400"
+                    class="w-6 h-6 {$darkMode
+                        ? 'text-red-400'
+                        : 'text-red-600'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

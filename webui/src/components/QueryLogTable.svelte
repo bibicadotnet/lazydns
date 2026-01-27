@@ -1,22 +1,23 @@
 <script lang="ts">
     import type { QueryLogEntry } from "../lib/types";
+    import { darkMode } from "../lib/stores";
 
     export let logs: QueryLogEntry[];
     export let maxHeight: string = "600px";
 
     function getRcodeColor(rcode: string | null): string {
-        if (!rcode) return "text-gray-400";
+        if (!rcode) return $darkMode ? "text-gray-400" : "text-gray-500";
         switch (rcode) {
             case "NOERROR":
-                return "text-green-400";
+                return "text-green-500";
             case "NXDOMAIN":
-                return "text-yellow-400";
+                return "text-yellow-500";
             case "SERVFAIL":
-                return "text-red-400";
+                return "text-red-500";
             case "REFUSED":
-                return "text-red-400";
+                return "text-red-500";
             default:
-                return "text-gray-400";
+                return $darkMode ? "text-gray-400" : "text-gray-500";
         }
     }
 
@@ -71,10 +72,18 @@
         <tbody>
             {#each logs as log (log.query_id + log.timestamp)}
                 <tr class="group">
-                    <td class="font-mono text-xs text-gray-400">
+                    <td
+                        class="font-mono text-xs {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-700'}"
+                    >
                         {formatTime(log.timestamp)}
                     </td>
-                    <td class="font-mono text-xs text-gray-300">
+                    <td
+                        class="font-mono text-xs {$darkMode
+                            ? 'text-gray-300'
+                            : 'text-gray-700'}"
+                    >
                         {log.client_ip || "-"}
                     </td>
                     <td>
@@ -82,7 +91,12 @@
                             {log.protocol.toUpperCase()}
                         </span>
                     </td>
-                    <td class="font-mono text-sm text-white" title={log.qname}>
+                    <td
+                        class="font-mono text-sm {$darkMode
+                            ? 'text-white'
+                            : 'text-gray-900'}"
+                        title={log.qname}
+                    >
                         {truncateDomain(log.qname)}
                     </td>
                     <td>
@@ -118,15 +132,28 @@
                         {#if log.cached}
                             <span class="badge-success">CACHE</span>
                         {:else if log.upstream}
-                            <span class="text-gray-400">{log.upstream}</span>
+                            <span
+                                class={$darkMode
+                                    ? "text-gray-400"
+                                    : "text-gray-700"}>{log.upstream}</span
+                            >
                         {:else}
-                            <span class="text-gray-500">-</span>
+                            <span
+                                class={$darkMode
+                                    ? "text-gray-500"
+                                    : "text-gray-400"}>-</span
+                            >
                         {/if}
                     </td>
                 </tr>
             {:else}
                 <tr>
-                    <td colspan="8" class="text-center py-8 text-gray-500">
+                    <td
+                        colspan="8"
+                        class="text-center py-8 {$darkMode
+                            ? 'text-gray-500'
+                            : 'text-gray-700'}"
+                    >
                         No query logs available
                     </td>
                 </tr>

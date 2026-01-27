@@ -1,15 +1,20 @@
 <script lang="ts">
     import type { UpstreamHealth } from "../lib/types";
     import { formatTimeAgo } from "../lib/mock";
+    import { darkMode } from "../lib/stores";
 
     export let upstreams: UpstreamHealth[];
 </script>
 
 <div class="card">
     <div class="card-header">
-        <h3 class="font-semibold text-white flex items-center gap-2">
+        <h3
+            class="font-semibold {$darkMode
+                ? 'text-white'
+                : 'text-gray-900'} flex items-center gap-2"
+        >
             <svg
-                class="w-5 h-5 text-gray-400"
+                class="w-5 h-5 {$darkMode ? 'text-gray-400' : 'text-gray-500'}"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -67,14 +72,22 @@
                                 </span>
                             </div>
                         </td>
-                        <td class="font-medium text-white">{upstream.name}</td>
-                        <td class="font-mono text-sm text-gray-400"
-                            >{upstream.address}</td
+                        <td
+                            class="font-medium {$darkMode
+                                ? 'text-white'
+                                : 'text-gray-900'}">{upstream.name}</td
+                        >
+                        <td
+                            class="font-mono text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}">{upstream.address}</td
                         >
                         <td>
                             <div class="flex items-center gap-2">
                                 <div
-                                    class="w-16 bg-gray-700 rounded-full h-2 overflow-hidden"
+                                    class="w-16 {$darkMode
+                                        ? 'bg-gray-700'
+                                        : 'bg-gray-200'} rounded-full h-2 overflow-hidden"
                                 >
                                     <div
                                         class="h-full rounded-full transition-all"
@@ -115,20 +128,32 @@
                                 {upstream.success_rate.toFixed(1)}%
                             </span>
                         </td>
-                        <td class="text-gray-300">
+                        <td
+                            class={$darkMode
+                                ? "text-gray-300"
+                                : "text-gray-700"}
+                        >
                             {upstream.total_requests.toLocaleString()}
                         </td>
                         <td>
-                            <span class="text-red-400">
+                            <span class="text-red-600">
                                 {upstream.failed_requests.toLocaleString()}
                             </span>
                         </td>
-                        <td class="text-sm text-gray-400">
+                        <td
+                            class="text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}"
+                        >
                             {upstream.last_success_at
                                 ? formatTimeAgo(upstream.last_success_at)
                                 : "-"}
                         </td>
-                        <td class="text-sm text-gray-400">
+                        <td
+                            class="text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}"
+                        >
                             {upstream.last_failure_at
                                 ? formatTimeAgo(upstream.last_failure_at)
                                 : "-"}

@@ -2,17 +2,27 @@
     import { onMount, onDestroy } from "svelte";
     import * as echarts from "echarts";
     import type { TopDomain } from "../lib/types";
+    import { darkMode } from "../lib/stores";
 
     export let domains: TopDomain[];
     export let title: string = "Top Domains";
 
     let chartContainer: HTMLDivElement;
     let chart: echarts.ECharts | null = null;
+    let isDark = true;
+
+    darkMode.subscribe((value) => {
+        isDark = value;
+        if (chart) {
+            chart.dispose();
+            initChart();
+        }
+    });
 
     function initChart() {
         if (!chartContainer) return;
 
-        chart = echarts.init(chartContainer, "dark");
+        chart = echarts.init(chartContainer, isDark ? "dark" : undefined);
 
         updateChart();
     }
@@ -20,14 +30,23 @@
     function updateChart() {
         if (!chart) return;
 
+        const textColor = isDark ? "#9ca3af" : "#4b5563";
+        const axisColor = isDark ? "#6b7280" : "#9ca3af";
+        const lineColor = isDark ? "#374151" : "#e5e7eb";
+        const tooltipBg = isDark
+            ? "rgba(17, 24, 39, 0.95)"
+            : "rgba(255, 255, 255, 0.95)";
+        const tooltipBorder = isDark ? "#374151" : "#e5e7eb";
+        const tooltipTextColor = isDark ? "#f3f4f6" : "#1f2937";
+
         const option: echarts.EChartsOption = {
             backgroundColor: "transparent",
             tooltip: {
                 trigger: "axis",
                 axisPointer: { type: "shadow" },
-                backgroundColor: "rgba(17, 24, 39, 0.95)",
-                borderColor: "#374151",
-                textStyle: { color: "#f3f4f6" },
+                backgroundColor: tooltipBg,
+                borderColor: tooltipBorder,
+                textStyle: { color: tooltipTextColor },
             },
             grid: {
                 left: 150,
@@ -38,7 +57,7 @@
             xAxis: {
                 type: "value",
                 axisLabel: {
-                    color: "#6b7280",
+                    color: axisColor,
                     fontSize: 11,
                     formatter: (value: number) => {
                         if (value >= 1000)
@@ -49,7 +68,7 @@
                 axisLine: { show: false },
                 axisTick: { show: false },
                 splitLine: {
-                    lineStyle: { color: "#374151", type: "dashed" },
+                    lineStyle: { color: lineColor, type: "dashed" },
                 },
             },
             yAxis: {
@@ -59,7 +78,7 @@
                     .map((d) => d.domain)
                     .reverse(),
                 axisLabel: {
-                    color: "#9ca3af",
+                    color: textColor,
                     fontSize: 11,
                     formatter: (value: string) => {
                         if (value.length > 25)
@@ -88,7 +107,7 @@
                     label: {
                         show: true,
                         position: "right",
-                        color: "#9ca3af",
+                        color: textColor,
                         fontSize: 11,
                         formatter: (params: any) => {
                             const domain = domains.slice(0, 10).reverse()[
@@ -125,7 +144,9 @@
 
 <div class="card">
     <div class="card-header">
-        <h3 class="font-semibold text-white">{title}</h3>
+        <h3 class="font-semibold {isDark ? 'text-white' : 'text-gray-900'}">
+            {title}
+        </h3>
     </div>
     <div class="card-body">
         <div bind:this={chartContainer} class="w-full h-80"></div>

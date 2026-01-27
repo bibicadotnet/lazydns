@@ -1,6 +1,6 @@
 <script lang="ts">
     import { mockCacheStats, formatNumber } from "../lib/mock";
-    import { alerts, notifications } from "../lib/stores";
+    import { alerts, notifications, darkMode } from "../lib/stores";
     import AlertsList from "../components/AlertsList.svelte";
 
     let configPath = "/etc/lazydns/config.yaml";
@@ -63,8 +63,14 @@
     <!-- Page Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-white">Admin</h1>
-            <p class="text-gray-400 mt-1">
+            <h1
+                class="text-2xl font-bold {$darkMode
+                    ? 'text-white'
+                    : 'text-gray-900'}"
+            >
+                Admin
+            </h1>
+            <p class="{$darkMode ? 'text-gray-400' : 'text-gray-700'} mt-1">
                 Server management and configuration
             </p>
         </div>
@@ -76,15 +82,21 @@
         <button
             on:click={reloadConfig}
             disabled={isReloading}
-            class="card p-5 text-left hover:bg-gray-700/50 transition-colors group disabled:opacity-50"
+            class="card p-5 text-left transition-colors group disabled:opacity-50 {$darkMode
+                ? 'hover:bg-gray-700/50'
+                : 'hover:bg-gray-50'}"
         >
             <div class="flex items-center gap-4">
                 <div
-                    class="w-12 h-12 rounded-lg bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-900/50 transition-colors"
+                    class="w-12 h-12 rounded-lg flex items-center justify-center transition-colors {$darkMode
+                        ? 'bg-blue-900/30 group-hover:bg-blue-900/50'
+                        : 'bg-blue-100 group-hover:bg-blue-200'}"
                 >
                     {#if isReloading}
                         <svg
-                            class="w-6 h-6 text-blue-400 animate-spin"
+                            class="w-6 h-6 animate-spin {$darkMode
+                                ? 'text-blue-400'
+                                : 'text-blue-600'}"
                             fill="none"
                             viewBox="0 0 24 24"
                         >
@@ -104,7 +116,9 @@
                         </svg>
                     {:else}
                         <svg
-                            class="w-6 h-6 text-blue-400"
+                            class="w-6 h-6 {$darkMode
+                                ? 'text-blue-400'
+                                : 'text-blue-600'}"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -119,8 +133,18 @@
                     {/if}
                 </div>
                 <div>
-                    <div class="font-semibold text-white">Reload Config</div>
-                    <div class="text-sm text-gray-400">
+                    <div
+                        class="font-semibold {$darkMode
+                            ? 'text-white'
+                            : 'text-gray-900'}"
+                    >
+                        Reload Config
+                    </div>
+                    <div
+                        class="text-sm {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-700'}"
+                    >
                         Reload configuration file
                     </div>
                 </div>
@@ -131,15 +155,21 @@
         <button
             on:click={clearCache}
             disabled={isClearingCache}
-            class="card p-5 text-left hover:bg-gray-700/50 transition-colors group disabled:opacity-50"
+            class="card p-5 text-left transition-colors group disabled:opacity-50 {$darkMode
+                ? 'hover:bg-gray-700/50'
+                : 'hover:bg-gray-50'}"
         >
             <div class="flex items-center gap-4">
                 <div
-                    class="w-12 h-12 rounded-lg bg-yellow-900/30 flex items-center justify-center group-hover:bg-yellow-900/50 transition-colors"
+                    class="w-12 h-12 rounded-lg flex items-center justify-center transition-colors {$darkMode
+                        ? 'bg-yellow-900/30 group-hover:bg-yellow-900/50'
+                        : 'bg-yellow-100 group-hover:bg-yellow-200'}"
                 >
                     {#if isClearingCache}
                         <svg
-                            class="w-6 h-6 text-yellow-400 animate-spin"
+                            class="w-6 h-6 animate-spin {$darkMode
+                                ? 'text-yellow-400'
+                                : 'text-yellow-600'}"
                             fill="none"
                             viewBox="0 0 24 24"
                         >
@@ -159,7 +189,9 @@
                         </svg>
                     {:else}
                         <svg
-                            class="w-6 h-6 text-yellow-400"
+                            class="w-6 h-6 {$darkMode
+                                ? 'text-yellow-400'
+                                : 'text-yellow-600'}"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -174,8 +206,18 @@
                     {/if}
                 </div>
                 <div>
-                    <div class="font-semibold text-white">Clear Cache</div>
-                    <div class="text-sm text-gray-400">
+                    <div
+                        class="font-semibold {$darkMode
+                            ? 'text-white'
+                            : 'text-gray-900'}"
+                    >
+                        Clear Cache
+                    </div>
+                    <div
+                        class="text-sm {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-700'}"
+                    >
                         {formatNumber(mockCacheStats.size)} entries
                     </div>
                 </div>
@@ -185,14 +227,20 @@
         <!-- Acknowledge All Alerts -->
         <button
             on:click={acknowledgeAllAlerts}
-            class="card p-5 text-left hover:bg-gray-700/50 transition-colors group"
+            class="card p-5 text-left {$darkMode
+                ? 'hover:bg-gray-700/50'
+                : 'hover:bg-gray-50'} transition-colors group"
         >
             <div class="flex items-center gap-4">
                 <div
-                    class="w-12 h-12 rounded-lg bg-green-900/30 flex items-center justify-center group-hover:bg-green-900/50 transition-colors"
+                    class="w-12 h-12 rounded-lg flex items-center justify-center transition-colors {$darkMode
+                        ? 'bg-green-900/30 group-hover:bg-green-900/50'
+                        : 'bg-green-100 group-hover:bg-green-200'}"
                 >
                     <svg
-                        class="w-6 h-6 text-green-400"
+                        class="w-6 h-6 {$darkMode
+                            ? 'text-green-400'
+                            : 'text-green-600'}"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -206,22 +254,40 @@
                     </svg>
                 </div>
                 <div>
-                    <div class="font-semibold text-white">Ack All Alerts</div>
-                    <div class="text-sm text-gray-400">Mark all as read</div>
+                    <div
+                        class="font-semibold {$darkMode
+                            ? 'text-white'
+                            : 'text-gray-900'}"
+                    >
+                        Ack All Alerts
+                    </div>
+                    <div
+                        class="text-sm {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-700'}"
+                    >
+                        Mark all as read
+                    </div>
                 </div>
             </div>
         </button>
 
         <!-- Export Logs -->
         <button
-            class="card p-5 text-left hover:bg-gray-700/50 transition-colors group"
+            class="card p-5 text-left {$darkMode
+                ? 'hover:bg-gray-700/50'
+                : 'hover:bg-gray-50'} transition-colors group"
         >
             <div class="flex items-center gap-4">
                 <div
-                    class="w-12 h-12 rounded-lg bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-900/50 transition-colors"
+                    class="w-12 h-12 rounded-lg flex items-center justify-center transition-colors {$darkMode
+                        ? 'bg-purple-900/30 group-hover:bg-purple-900/50'
+                        : 'bg-purple-100 group-hover:bg-purple-200'}"
                 >
                     <svg
-                        class="w-6 h-6 text-purple-400"
+                        class="w-6 h-6 {$darkMode
+                            ? 'text-purple-400'
+                            : 'text-purple-600'}"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -235,8 +301,20 @@
                     </svg>
                 </div>
                 <div>
-                    <div class="font-semibold text-white">Export Logs</div>
-                    <div class="text-sm text-gray-400">Download audit logs</div>
+                    <div
+                        class="font-semibold {$darkMode
+                            ? 'text-white'
+                            : 'text-gray-900'}"
+                    >
+                        Export Logs
+                    </div>
+                    <div
+                        class="text-sm {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-700'}"
+                    >
+                        Download audit logs
+                    </div>
                 </div>
             </div>
         </button>
@@ -247,9 +325,15 @@
         <!-- Cache Statistics -->
         <div class="card">
             <div class="card-header flex items-center justify-between">
-                <h3 class="font-semibold text-white flex items-center gap-2">
+                <h3
+                    class="font-semibold {$darkMode
+                        ? 'text-white'
+                        : 'text-gray-900'} flex items-center gap-2"
+                >
                     <svg
-                        class="w-5 h-5 text-gray-400"
+                        class="w-5 h-5 {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-500'}"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -273,56 +357,150 @@
             </div>
             <div class="card-body">
                 <div class="grid grid-cols-2 gap-4">
-                    <div class="p-4 bg-gray-700/30 rounded-lg">
-                        <div class="text-sm text-gray-400">Cache Size</div>
-                        <div class="text-2xl font-bold text-white mt-1">
+                    <div
+                        class="p-4 {$darkMode
+                            ? 'bg-gray-700/30'
+                            : 'bg-gray-100'} rounded-lg"
+                    >
+                        <div
+                            class="text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}"
+                        >
+                            Cache Size
+                        </div>
+                        <div
+                            class="text-2xl font-bold {$darkMode
+                                ? 'text-white'
+                                : 'text-gray-900'} mt-1"
+                        >
                             {mockCacheStats.size.toLocaleString()}
                         </div>
-                        <div class="text-xs text-gray-500 mt-1">entries</div>
+                        <div
+                            class="text-xs {$darkMode
+                                ? 'text-gray-500'
+                                : 'text-gray-500'} mt-1"
+                        >
+                            entries
+                        </div>
                     </div>
 
-                    <div class="p-4 bg-gray-700/30 rounded-lg">
-                        <div class="text-sm text-gray-400">Hit Rate</div>
-                        <div class="text-2xl font-bold text-green-400 mt-1">
+                    <div
+                        class="p-4 {$darkMode
+                            ? 'bg-gray-700/30'
+                            : 'bg-gray-100'} rounded-lg"
+                    >
+                        <div
+                            class="text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}"
+                        >
+                            Hit Rate
+                        </div>
+                        <div class="text-2xl font-bold text-green-500 mt-1">
                             {mockCacheStats.hit_rate.toFixed(1)}%
                         </div>
-                        <div class="text-xs text-gray-500 mt-1">efficiency</div>
+                        <div
+                            class="text-xs {$darkMode
+                                ? 'text-gray-500'
+                                : 'text-gray-500'} mt-1"
+                        >
+                            efficiency
+                        </div>
                     </div>
 
-                    <div class="p-4 bg-gray-700/30 rounded-lg">
-                        <div class="text-sm text-gray-400">Cache Hits</div>
-                        <div class="text-2xl font-bold text-blue-400 mt-1">
+                    <div
+                        class="p-4 {$darkMode
+                            ? 'bg-gray-700/30'
+                            : 'bg-gray-100'} rounded-lg"
+                    >
+                        <div
+                            class="text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}"
+                        >
+                            Cache Hits
+                        </div>
+                        <div class="text-2xl font-bold text-blue-500 mt-1">
                             {formatNumber(mockCacheStats.hits)}
                         </div>
-                        <div class="text-xs text-gray-500 mt-1">total hits</div>
+                        <div
+                            class="text-xs {$darkMode
+                                ? 'text-gray-500'
+                                : 'text-gray-500'} mt-1"
+                        >
+                            total hits
+                        </div>
                     </div>
 
-                    <div class="p-4 bg-gray-700/30 rounded-lg">
-                        <div class="text-sm text-gray-400">Cache Misses</div>
-                        <div class="text-2xl font-bold text-yellow-400 mt-1">
+                    <div
+                        class="p-4 {$darkMode
+                            ? 'bg-gray-700/30'
+                            : 'bg-gray-100'} rounded-lg"
+                    >
+                        <div
+                            class="text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}"
+                        >
+                            Cache Misses
+                        </div>
+                        <div class="text-2xl font-bold text-yellow-500 mt-1">
                             {formatNumber(mockCacheStats.misses)}
                         </div>
-                        <div class="text-xs text-gray-500 mt-1">
+                        <div
+                            class="text-xs {$darkMode
+                                ? 'text-gray-500'
+                                : 'text-gray-500'} mt-1"
+                        >
                             total misses
                         </div>
                     </div>
 
-                    <div class="p-4 bg-gray-700/30 rounded-lg">
-                        <div class="text-sm text-gray-400">Evictions</div>
-                        <div class="text-2xl font-bold text-orange-400 mt-1">
+                    <div
+                        class="p-4 {$darkMode
+                            ? 'bg-gray-700/30'
+                            : 'bg-gray-100'} rounded-lg"
+                    >
+                        <div
+                            class="text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}"
+                        >
+                            Evictions
+                        </div>
+                        <div class="text-2xl font-bold text-orange-500 mt-1">
                             {formatNumber(mockCacheStats.evictions)}
                         </div>
-                        <div class="text-xs text-gray-500 mt-1">
+                        <div
+                            class="text-xs {$darkMode
+                                ? 'text-gray-500'
+                                : 'text-gray-500'} mt-1"
+                        >
                             LRU evictions
                         </div>
                     </div>
 
-                    <div class="p-4 bg-gray-700/30 rounded-lg">
-                        <div class="text-sm text-gray-400">Expirations</div>
-                        <div class="text-2xl font-bold text-purple-400 mt-1">
+                    <div
+                        class="p-4 {$darkMode
+                            ? 'bg-gray-700/30'
+                            : 'bg-gray-100'} rounded-lg"
+                    >
+                        <div
+                            class="text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}"
+                        >
+                            Expirations
+                        </div>
+                        <div class="text-2xl font-bold text-purple-500 mt-1">
                             {formatNumber(mockCacheStats.expirations)}
                         </div>
-                        <div class="text-xs text-gray-500 mt-1">
+                        <div
+                            class="text-xs {$darkMode
+                                ? 'text-gray-500'
+                                : 'text-gray-500'} mt-1"
+                        >
                             TTL expired
                         </div>
                     </div>
@@ -333,9 +511,15 @@
         <!-- Server Information -->
         <div class="card">
             <div class="card-header">
-                <h3 class="font-semibold text-white flex items-center gap-2">
+                <h3
+                    class="font-semibold {$darkMode
+                        ? 'text-white'
+                        : 'text-gray-900'} flex items-center gap-2"
+                >
                     <svg
-                        class="w-5 h-5 text-gray-400"
+                        class="w-5 h-5 {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-500'}"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -353,10 +537,19 @@
             <div class="card-body space-y-3">
                 {#each [{ label: "Version", value: serverInfo.version }, { label: "Build Date", value: serverInfo.buildDate }, { label: "Rust Version", value: serverInfo.rustVersion }, { label: "Operating System", value: serverInfo.os }, { label: "Config Path", value: serverInfo.configPath }, { label: "Started At", value: new Date(serverInfo.startTime).toLocaleString() }] as item}
                     <div
-                        class="flex items-center justify-between py-2 border-b border-gray-700/50 last:border-0"
+                        class="flex items-center justify-between py-2 border-b {$darkMode
+                            ? 'border-gray-700/50'
+                            : 'border-gray-200'} last:border-0"
                     >
-                        <span class="text-gray-400">{item.label}</span>
-                        <span class="text-white font-mono text-sm"
+                        <span
+                            class={$darkMode
+                                ? "text-gray-400"
+                                : "text-gray-700"}>{item.label}</span
+                        >
+                        <span
+                            class="{$darkMode
+                                ? 'text-white'
+                                : 'text-gray-900'} font-mono text-sm"
                             >{item.value}</span
                         >
                     </div>
@@ -368,9 +561,15 @@
     <!-- Configuration Reload -->
     <div class="card">
         <div class="card-header">
-            <h3 class="font-semibold text-white flex items-center gap-2">
+            <h3
+                class="font-semibold {$darkMode
+                    ? 'text-white'
+                    : 'text-gray-900'} flex items-center gap-2"
+            >
                 <svg
-                    class="w-5 h-5 text-gray-400"
+                    class="w-5 h-5 {$darkMode
+                        ? 'text-gray-400'
+                        : 'text-gray-500'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -396,7 +595,9 @@
                 <div class="flex-1">
                     <label
                         for="configPath"
-                        class="block text-sm font-medium text-gray-400 mb-2"
+                        class="block text-sm font-medium {$darkMode
+                            ? 'text-gray-400'
+                            : 'text-gray-700'} mb-2"
                     >
                         Config File Path
                     </label>
@@ -452,7 +653,11 @@
                     {/if}
                 </button>
             </div>
-            <p class="text-sm text-gray-500 mt-3">
+            <p
+                class="text-sm {$darkMode
+                    ? 'text-gray-500'
+                    : 'text-gray-700'} mt-3"
+            >
                 Reload the configuration file to apply changes without
                 restarting the server.
             </p>
@@ -462,9 +667,15 @@
     <!-- All Alerts -->
     <div class="card">
         <div class="card-header flex items-center justify-between">
-            <h3 class="font-semibold text-white flex items-center gap-2">
+            <h3
+                class="font-semibold {$darkMode
+                    ? 'text-white'
+                    : 'text-gray-900'} flex items-center gap-2"
+            >
                 <svg
-                    class="w-5 h-5 text-gray-400"
+                    class="w-5 h-5 {$darkMode
+                        ? 'text-gray-400'
+                        : 'text-gray-500'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

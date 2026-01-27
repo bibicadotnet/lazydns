@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { darkMode } from "../lib/stores";
+
     export let label: string;
     export let value: string | number;
     export let icon:
@@ -16,11 +18,15 @@
     <div class="flex items-start justify-between">
         <span class="stat-label">{label}</span>
         <div
-            class="w-10 h-10 rounded-lg bg-gray-700/50 flex items-center justify-center"
+            class="w-10 h-10 rounded-lg flex items-center justify-center {$darkMode
+                ? 'bg-gray-700/50'
+                : 'bg-gray-100'}"
         >
             {#if icon === "queries"}
                 <svg
-                    class="w-5 h-5 text-primary-400"
+                    class="w-5 h-5 {$darkMode
+                        ? 'text-primary-400'
+                        : 'text-primary-600'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -34,7 +40,9 @@
                 </svg>
             {:else if icon === "qps"}
                 <svg
-                    class="w-5 h-5 text-green-400"
+                    class="w-5 h-5 {$darkMode
+                        ? 'text-green-400'
+                        : 'text-green-600'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -48,7 +56,9 @@
                 </svg>
             {:else if icon === "cache"}
                 <svg
-                    class="w-5 h-5 text-yellow-400"
+                    class="w-5 h-5 {$darkMode
+                        ? 'text-yellow-400'
+                        : 'text-yellow-600'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -62,7 +72,9 @@
                 </svg>
             {:else if icon === "latency"}
                 <svg
-                    class="w-5 h-5 text-purple-400"
+                    class="w-5 h-5 {$darkMode
+                        ? 'text-purple-400'
+                        : 'text-purple-600'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -76,7 +88,9 @@
                 </svg>
             {:else if icon === "uptime"}
                 <svg
-                    class="w-5 h-5 text-blue-400"
+                    class="w-5 h-5 {$darkMode
+                        ? 'text-blue-400'
+                        : 'text-blue-600'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -90,7 +104,9 @@
                 </svg>
             {:else if icon === "alerts"}
                 <svg
-                    class="w-5 h-5 text-red-400"
+                    class="w-5 h-5 {$darkMode
+                        ? 'text-red-400'
+                        : 'text-red-600'}"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

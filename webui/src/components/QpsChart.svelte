@@ -2,6 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import * as echarts from "echarts";
     import type { TimeSeriesPoint } from "../lib/types";
+    import { darkMode } from "../lib/stores";
 
     export let data: TimeSeriesPoint[];
     export let title: string = "QPS Trend";
@@ -9,11 +10,29 @@
 
     let chartContainer: HTMLDivElement;
     let chart: echarts.ECharts | null = null;
+    let isDark = true;
+
+    darkMode.subscribe((value) => {
+        isDark = value;
+        if (chart) {
+            chart.dispose();
+            initChart();
+        }
+    });
 
     function initChart() {
         if (!chartContainer) return;
 
-        chart = echarts.init(chartContainer, "dark");
+        chart = echarts.init(chartContainer, isDark ? "dark" : undefined);
+
+        const textColor = isDark ? "#9ca3af" : "#4b5563";
+        const axisColor = isDark ? "#6b7280" : "#9ca3af";
+        const lineColor = isDark ? "#374151" : "#e5e7eb";
+        const tooltipBg = isDark
+            ? "rgba(17, 24, 39, 0.95)"
+            : "rgba(255, 255, 255, 0.95)";
+        const tooltipBorder = isDark ? "#374151" : "#e5e7eb";
+        const tooltipTextColor = isDark ? "#f3f4f6" : "#1f2937";
 
         const option: echarts.EChartsOption = {
             backgroundColor: "transparent",
@@ -21,23 +40,23 @@
                 text: title,
                 left: 0,
                 textStyle: {
-                    color: "#9ca3af",
+                    color: textColor,
                     fontSize: 14,
                     fontWeight: 500,
                 },
             },
             tooltip: {
                 trigger: "axis",
-                backgroundColor: "rgba(17, 24, 39, 0.95)",
-                borderColor: "#374151",
+                backgroundColor: tooltipBg,
+                borderColor: tooltipBorder,
                 textStyle: {
-                    color: "#f3f4f6",
+                    color: tooltipTextColor,
                 },
                 formatter: (params: any) => {
                     const point = params[0];
                     const time = new Date(point.axisValue).toLocaleTimeString();
                     return `<div class="font-medium">${time}</div>
-                  <div class="text-primary-400">${point.value.toFixed(1)} qps</div>`;
+                  <div style="color: ${color}">${point.value.toFixed(1)} qps</div>`;
                 },
             },
             grid: {
@@ -54,11 +73,11 @@
                         const date = new Date(value);
                         return `${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
                     },
-                    color: "#6b7280",
+                    color: axisColor,
                     fontSize: 11,
                 },
                 axisLine: {
-                    lineStyle: { color: "#374151" },
+                    lineStyle: { color: lineColor },
                 },
                 axisTick: { show: false },
                 splitLine: { show: false },
@@ -66,14 +85,14 @@
             yAxis: {
                 type: "value",
                 axisLabel: {
-                    color: "#6b7280",
+                    color: axisColor,
                     fontSize: 11,
                 },
                 axisLine: { show: false },
                 axisTick: { show: false },
                 splitLine: {
                     lineStyle: {
-                        color: "#374151",
+                        color: lineColor,
                         type: "dashed",
                     },
                 },

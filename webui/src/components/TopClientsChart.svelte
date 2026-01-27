@@ -2,16 +2,26 @@
     import { onMount, onDestroy } from "svelte";
     import * as echarts from "echarts";
     import type { TopClient } from "../lib/types";
+    import { darkMode } from "../lib/stores";
 
     export let clients: TopClient[];
 
     let chartContainer: HTMLDivElement;
     let chart: echarts.ECharts | null = null;
+    let isDark = true;
+
+    darkMode.subscribe((value) => {
+        isDark = value;
+        if (chart) {
+            chart.dispose();
+            initChart();
+        }
+    });
 
     function initChart() {
         if (!chartContainer) return;
 
-        chart = echarts.init(chartContainer, "dark");
+        chart = echarts.init(chartContainer, isDark ? "dark" : undefined);
 
         updateChart();
     }
@@ -21,13 +31,22 @@
 
         const topClients = clients.slice(0, 8);
 
+        const tooltipBg = isDark
+            ? "rgba(17, 24, 39, 0.95)"
+            : "rgba(255, 255, 255, 0.95)";
+        const tooltipBorder = isDark ? "#374151" : "#e5e7eb";
+        const tooltipTextColor = isDark ? "#f3f4f6" : "#1f2937";
+        const legendColor = isDark ? "#9ca3af" : "#4b5563";
+        const borderColor = isDark ? "#1f2937" : "#f3f4f6";
+        const emphasisColor = isDark ? "#fff" : "#1f2937";
+
         const option: echarts.EChartsOption = {
             backgroundColor: "transparent",
             tooltip: {
                 trigger: "item",
-                backgroundColor: "rgba(17, 24, 39, 0.95)",
-                borderColor: "#374151",
-                textStyle: { color: "#f3f4f6" },
+                backgroundColor: tooltipBg,
+                borderColor: tooltipBorder,
+                textStyle: { color: tooltipTextColor },
                 formatter: (params: any) => {
                     const client = topClients[params.dataIndex];
                     return `
@@ -44,7 +63,7 @@
                 right: 10,
                 top: "center",
                 textStyle: {
-                    color: "#9ca3af",
+                    color: legendColor,
                     fontSize: 11,
                 },
             },
@@ -56,7 +75,7 @@
                     avoidLabelOverlap: false,
                     itemStyle: {
                         borderRadius: 6,
-                        borderColor: "#1f2937",
+                        borderColor: borderColor,
                         borderWidth: 2,
                     },
                     label: {
@@ -67,7 +86,7 @@
                             show: true,
                             fontSize: 14,
                             fontWeight: "bold",
-                            color: "#fff",
+                            color: emphasisColor,
                         },
                     },
                     labelLine: {
@@ -117,7 +136,9 @@
 
 <div class="card">
     <div class="card-header">
-        <h3 class="font-semibold text-white">Top Clients</h3>
+        <h3 class="font-semibold {isDark ? 'text-white' : 'text-gray-900'}">
+            Top Clients
+        </h3>
     </div>
     <div class="card-body">
         <div bind:this={chartContainer} class="w-full h-80"></div>

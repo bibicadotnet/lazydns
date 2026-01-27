@@ -1,7 +1,12 @@
 <script lang="ts">
     import QueryLogTable from "../components/QueryLogTable.svelte";
     import SecurityEventList from "../components/SecurityEventList.svelte";
-    import { queryLogs, securityEvents, isLiveMode } from "../lib/stores";
+    import {
+        queryLogs,
+        securityEvents,
+        isLiveMode,
+        darkMode,
+    } from "../lib/stores";
 
     type TabType = "queries" | "security";
     let activeTab: TabType = "queries";
@@ -86,23 +91,33 @@
     <!-- Page Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-white">Audit Logs</h1>
-            <p class="text-gray-400 mt-1">
+            <h1
+                class="text-2xl font-bold {$darkMode
+                    ? 'text-white'
+                    : 'text-gray-900'}"
+            >
+                Audit Logs
+            </h1>
+            <p class="{$darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1">
                 Real-time query and security event monitoring
             </p>
         </div>
     </div>
 
     <!-- Tabs -->
-    <div class="flex items-center gap-1 border-b border-gray-700">
+    <div
+        class="flex items-center gap-1 border-b {$darkMode
+            ? 'border-gray-700'
+            : 'border-gray-200'}"
+    >
         <button
             on:click={() => (activeTab = "queries")}
             class="px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px"
             class:border-primary-500={activeTab === "queries"}
-            class:text-primary-400={activeTab === "queries"}
+            class:text-primary-500={activeTab === "queries"}
             class:border-transparent={activeTab !== "queries"}
-            class:text-gray-400={activeTab !== "queries"}
-            class:hover:text-gray-200={activeTab !== "queries"}
+            class:text-gray-400={activeTab !== "queries" && $darkMode}
+            class:text-gray-600={activeTab !== "queries" && !$darkMode}
         >
             <span class="flex items-center gap-2">
                 <svg
@@ -119,7 +134,11 @@
                     />
                 </svg>
                 Query Logs
-                <span class="px-2 py-0.5 rounded-full bg-gray-700 text-xs">
+                <span
+                    class="px-2 py-0.5 rounded-full text-xs {$darkMode
+                        ? 'bg-gray-700'
+                        : 'bg-gray-200 text-gray-700'}"
+                >
                     {$queryLogs.length}
                 </span>
             </span>
@@ -128,10 +147,10 @@
             on:click={() => (activeTab = "security")}
             class="px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px"
             class:border-primary-500={activeTab === "security"}
-            class:text-primary-400={activeTab === "security"}
+            class:text-primary-500={activeTab === "security"}
             class:border-transparent={activeTab !== "security"}
-            class:text-gray-400={activeTab !== "security"}
-            class:hover:text-gray-200={activeTab !== "security"}
+            class:text-gray-400={activeTab !== "security" && $darkMode}
+            class:text-gray-600={activeTab !== "security" && !$darkMode}
         >
             <span class="flex items-center gap-2">
                 <svg
@@ -149,7 +168,9 @@
                 </svg>
                 Security Events
                 <span
-                    class="px-2 py-0.5 rounded-full bg-yellow-900/50 text-yellow-400 text-xs"
+                    class="px-2 py-0.5 rounded-full text-xs {$darkMode
+                        ? 'bg-yellow-900/50 text-yellow-400'
+                        : 'bg-yellow-100 text-yellow-700'}"
                 >
                     {$securityEvents.length}
                 </span>
@@ -222,9 +243,15 @@
                 <input
                     type="checkbox"
                     bind:checked={$isLiveMode}
-                    class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-primary-500 focus:ring-primary-500"
+                    class="w-4 h-4 rounded text-primary-500 focus:ring-primary-500 {$darkMode
+                        ? 'border-gray-600 bg-gray-700'
+                        : 'border-gray-300 bg-white'}"
                 />
-                <span class="text-sm text-gray-300">Live Stream</span>
+                <span
+                    class="text-sm {$darkMode
+                        ? 'text-gray-300'
+                        : 'text-gray-700'}">Live Stream</span
+                >
             </label>
 
             <!-- Auto Scroll -->
@@ -232,9 +259,15 @@
                 <input
                     type="checkbox"
                     bind:checked={autoScroll}
-                    class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-primary-500 focus:ring-primary-500"
+                    class="w-4 h-4 rounded text-primary-500 focus:ring-primary-500 {$darkMode
+                        ? 'border-gray-600 bg-gray-700'
+                        : 'border-gray-300 bg-white'}"
                 />
-                <span class="text-sm text-gray-300">Auto-scroll</span>
+                <span
+                    class="text-sm {$darkMode
+                        ? 'text-gray-300'
+                        : 'text-gray-700'}">Auto-scroll</span
+                >
             </label>
 
             <!-- Export Button -->

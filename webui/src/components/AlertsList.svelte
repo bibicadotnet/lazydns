@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { Alert } from "../lib/types";
     import { getSeverityColor, formatTimeAgo } from "../lib/mock";
+    import { darkMode } from "../lib/stores";
 
     export let alerts: Alert[];
     export let limit: number = 5;
@@ -10,9 +11,13 @@
 
 <div class="card h-full flex flex-col">
     <div class="card-header flex items-center justify-between">
-        <h3 class="font-semibold text-white flex items-center gap-2">
+        <h3
+            class="font-semibold flex items-center gap-2 {$darkMode
+                ? 'text-white'
+                : 'text-gray-900'}"
+        >
             <svg
-                class="w-5 h-5 text-gray-400"
+                class="w-5 h-5 {$darkMode ? 'text-gray-400' : 'text-gray-500'}"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -26,12 +31,22 @@
             </svg>
             Recent Alerts
         </h3>
-        <span class="text-sm text-gray-400">{alerts.length} total</span>
+        <span class="text-sm {$darkMode ? 'text-gray-400' : 'text-gray-500'}"
+            >{alerts.length} total</span
+        >
     </div>
 
-    <div class="flex-1 overflow-y-auto divide-y divide-gray-700/50">
+    <div
+        class="flex-1 overflow-y-auto divide-y {$darkMode
+            ? 'divide-gray-700/50'
+            : 'divide-gray-200'}"
+    >
         {#if displayedAlerts.length === 0}
-            <div class="p-8 text-center text-gray-500">
+            <div
+                class="p-8 text-center {$darkMode
+                    ? 'text-gray-500'
+                    : 'text-gray-400'}"
+            >
                 <svg
                     class="w-12 h-12 mx-auto mb-3 opacity-50"
                     fill="none"
@@ -50,7 +65,9 @@
         {:else}
             {#each displayedAlerts as alert}
                 <div
-                    class="px-5 py-3 hover:bg-gray-700/30 transition-colors border-l-4"
+                    class="px-5 py-3 transition-colors border-l-4 {$darkMode
+                        ? 'hover:bg-gray-700/30'
+                        : 'hover:bg-gray-50'}"
                     class:border-blue-500={alert.severity === "info"}
                     class:border-yellow-500={alert.severity === "warning"}
                     class:border-red-500={alert.severity === "critical"}
@@ -66,15 +83,25 @@
                                 >
                                     {alert.severity}
                                 </span>
-                                <span class="text-xs text-gray-500">
+                                <span
+                                    class="text-xs {$darkMode
+                                        ? 'text-gray-500'
+                                        : 'text-gray-400'}"
+                                >
                                     {formatTimeAgo(alert.timestamp)}
                                 </span>
                             </div>
-                            <p class="text-sm text-gray-200">{alert.message}</p>
+                            <p
+                                class="text-sm {$darkMode
+                                    ? 'text-gray-200'
+                                    : 'text-gray-700'}"
+                            >
+                                {alert.message}
+                            </p>
                         </div>
                         {#if alert.acknowledged}
                             <svg
-                                class="w-4 h-4 text-green-400 flex-shrink-0"
+                                class="w-4 h-4 text-green-500 flex-shrink-0"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -93,10 +120,16 @@
         {/if}
     </div>
 
-    <div class="px-5 py-3 border-t border-gray-700">
+    <div
+        class="px-5 py-3 border-t {$darkMode
+            ? 'border-gray-700'
+            : 'border-gray-200'}"
+    >
         <a
             href="#/admin"
-            class="text-sm text-primary-400 hover:text-primary-300 transition-colors"
+            class="text-sm transition-colors {$darkMode
+                ? 'text-primary-400 hover:text-primary-300'
+                : 'text-primary-600 hover:text-primary-500'}"
         >
             View all alerts →
         </a>

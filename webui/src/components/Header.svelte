@@ -4,6 +4,7 @@
         isLiveMode,
         alerts,
         notifications,
+        darkMode,
     } from "../lib/stores";
     import { getSeverityColor } from "../lib/mock";
 
@@ -36,11 +37,19 @@
 <svelte:window on:click={handleClickOutside} />
 
 <header
-    class="h-16 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-6 sticky top-0 z-30"
+    class="h-16 border-b flex items-center justify-between px-6 sticky top-0 z-30 transition-colors duration-200 {$darkMode
+        ? 'bg-gray-900 border-gray-800'
+        : 'bg-white border-gray-200'}"
 >
     <!-- Page Title / Breadcrumb -->
     <div class="flex items-center gap-4">
-        <h1 class="text-xl font-semibold text-white">DNS Server Management</h1>
+        <h1
+            class="text-xl font-semibold {$darkMode
+                ? 'text-white'
+                : 'text-gray-900'}"
+        >
+            DNS Server Management
+        </h1>
     </div>
 
     <!-- Right Side Actions -->
@@ -49,8 +58,12 @@
         <button
             on:click={toggleLiveMode}
             class="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border {$isLiveMode
-                ? 'bg-green-900 bg-opacity-30 text-green-400 border-green-700'
-                : 'bg-gray-800 text-gray-400 border-gray-700'}"
+                ? $darkMode
+                    ? 'bg-green-900 bg-opacity-30 text-green-400 border-green-700'
+                    : 'bg-green-50 text-green-700 border-green-300'
+                : $darkMode
+                  ? 'bg-gray-800 text-gray-400 border-gray-700'
+                  : 'bg-gray-100 text-gray-600 border-gray-300'}"
         >
             <span class="relative flex h-2.5 w-2.5">
                 {#if $isLiveMode}
@@ -74,7 +87,9 @@
             <button
                 on:click|stopPropagation={() =>
                     (showAlertDropdown = !showAlertDropdown)}
-                class="relative p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                class="relative p-2 rounded-lg transition-colors {$darkMode
+                    ? 'text-gray-400 hover:text-white hover:bg-gray-800'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}"
             >
                 <svg
                     class="w-6 h-6"
@@ -100,20 +115,35 @@
 
             {#if showAlertDropdown}
                 <div
-                    class="absolute right-0 mt-2 w-96 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+                    class="absolute right-0 mt-2 w-96 rounded-xl shadow-2xl overflow-hidden {$darkMode
+                        ? 'bg-gray-800 border border-gray-700'
+                        : 'bg-white border border-gray-200'}"
                 >
                     <div
-                        class="px-4 py-3 border-b border-gray-700 flex items-center justify-between"
+                        class="px-4 py-3 border-b flex items-center justify-between {$darkMode
+                            ? 'border-gray-700'
+                            : 'border-gray-200'}"
                     >
-                        <h3 class="font-semibold text-white">Alerts</h3>
-                        <span class="text-sm text-gray-400"
+                        <h3
+                            class="font-semibold {$darkMode
+                                ? 'text-white'
+                                : 'text-gray-900'}"
+                        >
+                            Alerts
+                        </h3>
+                        <span
+                            class="text-sm {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-500'}"
                             >{$unacknowledgedAlerts} unread</span
                         >
                     </div>
                     <div class="max-h-96 overflow-y-auto">
                         {#each $alerts.slice(0, 10) as alert}
                             <div
-                                class="px-4 py-3 border-b border-gray-700/50 hover:bg-gray-700/50 transition-colors"
+                                class="px-4 py-3 border-b transition-colors {$darkMode
+                                    ? 'border-gray-700/50 hover:bg-gray-700/50'
+                                    : 'border-gray-100 hover:bg-gray-50'}"
                                 class:opacity-60={alert.acknowledged}
                             >
                                 <div
@@ -128,14 +158,20 @@
                                             >
                                                 {alert.severity}
                                             </span>
-                                            <span class="text-xs text-gray-500">
+                                            <span
+                                                class="text-xs {$darkMode
+                                                    ? 'text-gray-500'
+                                                    : 'text-gray-400'}"
+                                            >
                                                 {new Date(
                                                     alert.timestamp,
                                                 ).toLocaleTimeString()}
                                             </span>
                                         </div>
                                         <p
-                                            class="text-sm text-gray-200 mt-1 truncate"
+                                            class="text-sm mt-1 truncate {$darkMode
+                                                ? 'text-gray-200'
+                                                : 'text-gray-700'}"
                                         >
                                             {alert.message}
                                         </p>
@@ -144,7 +180,9 @@
                                         <button
                                             on:click|stopPropagation={() =>
                                                 acknowledgeAlert(alert.id)}
-                                            class="text-gray-400 hover:text-white p-1"
+                                            class="p-1 {$darkMode
+                                                ? 'text-gray-400 hover:text-white'
+                                                : 'text-gray-500 hover:text-gray-900'}"
                                             title="Mark as read"
                                         >
                                             <svg
@@ -168,7 +206,9 @@
                     </div>
                     <a
                         href="#/admin"
-                        class="block px-4 py-3 text-center text-sm text-primary-400 hover:text-primary-300 hover:bg-gray-700/50 transition-colors"
+                        class="block px-4 py-3 text-center text-sm transition-colors {$darkMode
+                            ? 'text-primary-400 hover:text-primary-300 hover:bg-gray-700/50'
+                            : 'text-primary-600 hover:text-primary-500 hover:bg-gray-50'}"
                     >
                         View all alerts
                     </a>
@@ -177,13 +217,20 @@
         </div>
 
         <!-- User Menu -->
-        <div class="flex items-center gap-3 pl-4 border-l border-gray-700">
+        <div
+            class="flex items-center gap-3 pl-4 border-l {$darkMode
+                ? 'border-gray-700'
+                : 'border-gray-200'}"
+        >
             <div
                 class="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm"
             >
                 A
             </div>
-            <span class="text-sm text-gray-300">Admin</span>
+            <span
+                class="text-sm {$darkMode ? 'text-gray-300' : 'text-gray-700'}"
+                >Admin</span
+            >
         </div>
     </div>
 </header>

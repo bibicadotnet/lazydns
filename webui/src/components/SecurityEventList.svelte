@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { SecurityEvent } from "../lib/types";
     import { formatTimeAgo } from "../lib/mock";
+    import { darkMode } from "../lib/stores";
 
     export let events: SecurityEvent[];
     export let maxHeight: string = "600px";
@@ -13,26 +14,26 @@
     > = {
         rate_limit_exceeded: {
             label: "Rate Limited",
-            color: "text-yellow-400",
+            color: "text-yellow-500",
             icon: "⚡",
         },
         blocked_domain_query: {
             label: "Blocked",
-            color: "text-red-400",
+            color: "text-red-500",
             icon: "🚫",
         },
         upstream_failure: {
             label: "Upstream Fail",
-            color: "text-orange-400",
+            color: "text-orange-500",
             icon: "⚠️",
         },
-        acl_denied: { label: "ACL Denied", color: "text-red-400", icon: "🔒" },
+        acl_denied: { label: "ACL Denied", color: "text-red-500", icon: "🔒" },
         malformed_query: {
             label: "Malformed",
-            color: "text-purple-400",
+            color: "text-purple-500",
             icon: "❓",
         },
-        query_timeout: { label: "Timeout", color: "text-gray-400", icon: "⏱️" },
+        query_timeout: { label: "Timeout", color: "text-gray-500", icon: "⏱️" },
     };
 
     function formatTime(timestamp: string): string {
@@ -48,7 +49,9 @@
 <div class="overflow-y-auto space-y-2" style="max-height: {maxHeight}">
     {#each events as event (event.timestamp + (event.client_ip || "") + (event.domain || ""))}
         <div
-            class="card p-4 border-l-4 border-yellow-500 hover:bg-gray-700/30 transition-colors"
+            class="card p-4 border-l-4 border-yellow-500 {$darkMode
+                ? 'hover:bg-gray-700/30'
+                : 'hover:bg-gray-50'} transition-colors"
         >
             <div class="flex items-start justify-between">
                 <div class="flex items-start gap-3">
@@ -64,13 +67,25 @@
                             >
                                 {eventTypeLabels[event.event_type].label}
                             </span>
-                            <span class="text-xs text-gray-500">
+                            <span
+                                class="text-xs {$darkMode
+                                    ? 'text-gray-500'
+                                    : 'text-gray-700'}"
+                            >
                                 {formatTime(event.timestamp)}
                             </span>
                         </div>
-                        <p class="text-sm text-gray-300">{event.message}</p>
+                        <p
+                            class="text-sm {$darkMode
+                                ? 'text-gray-300'
+                                : 'text-gray-700'}"
+                        >
+                            {event.message}
+                        </p>
                         <div
-                            class="flex items-center gap-4 mt-2 text-xs text-gray-400"
+                            class="flex items-center gap-4 mt-2 text-xs {$darkMode
+                                ? 'text-gray-400'
+                                : 'text-gray-700'}"
                         >
                             {#if event.client_ip}
                                 <span class="flex items-center gap-1">
@@ -111,13 +126,21 @@
                         </div>
                     </div>
                 </div>
-                <span class="text-xs text-gray-500 whitespace-nowrap">
+                <span
+                    class="text-xs {$darkMode
+                        ? 'text-gray-500'
+                        : 'text-gray-700'} whitespace-nowrap"
+                >
                     {formatTimeAgo(event.timestamp)}
                 </span>
             </div>
         </div>
     {:else}
-        <div class="text-center py-12 text-gray-500">
+        <div
+            class="text-center py-12 {$darkMode
+                ? 'text-gray-500'
+                : 'text-gray-400'}"
+        >
             <svg
                 class="w-12 h-12 mx-auto mb-3 opacity-50"
                 fill="none"
