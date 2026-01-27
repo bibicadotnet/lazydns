@@ -1,0 +1,492 @@
+<script lang="ts">
+    import { mockCacheStats, formatNumber } from "../lib/mock";
+    import { alerts, notifications } from "../lib/stores";
+    import AlertsList from "../components/AlertsList.svelte";
+
+    let configPath = "/etc/lazydns/config.yaml";
+    let isReloading = false;
+    let isClearingCache = false;
+
+    async function reloadConfig() {
+        isReloading = true;
+
+        // Simulate API call
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        notifications.add({
+            type: "success",
+            message: "Configuration reloaded successfully",
+        });
+
+        isReloading = false;
+    }
+
+    async function clearCache() {
+        if (!confirm("Are you sure you want to clear the entire cache?"))
+            return;
+
+        isClearingCache = true;
+
+        // Simulate API call
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        notifications.add({
+            type: "success",
+            message: `Cache cleared: ${mockCacheStats.size.toLocaleString()} entries removed`,
+        });
+
+        isClearingCache = false;
+    }
+
+    function acknowledgeAllAlerts() {
+        alerts.update((list) =>
+            list.map((a) => ({ ...a, acknowledged: true })),
+        );
+        notifications.add({
+            type: "info",
+            message: "All alerts acknowledged",
+        });
+    }
+
+    // Server info (mock)
+    const serverInfo = {
+        version: "0.2.73",
+        buildDate: "2026-01-15",
+        rustVersion: "1.75.0",
+        os: "Linux x86_64",
+        configPath: "/etc/lazydns/config.yaml",
+        startTime: new Date(Date.now() - 86400000).toISOString(),
+    };
+</script>
+
+<div class="space-y-6">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Admin</h1>
+            <p class="text-gray-400 mt-1">
+                Server management and configuration
+            </p>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Reload Config -->
+        <button
+            on:click={reloadConfig}
+            disabled={isReloading}
+            class="card p-5 text-left hover:bg-gray-700/50 transition-colors group disabled:opacity-50"
+        >
+            <div class="flex items-center gap-4">
+                <div
+                    class="w-12 h-12 rounded-lg bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-900/50 transition-colors"
+                >
+                    {#if isReloading}
+                        <svg
+                            class="w-6 h-6 text-blue-400 animate-spin"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                        >
+                            <circle
+                                class="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                stroke-width="4"
+                            ></circle>
+                            <path
+                                class="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                        </svg>
+                    {:else}
+                        <svg
+                            class="w-6 h-6 text-blue-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                        </svg>
+                    {/if}
+                </div>
+                <div>
+                    <div class="font-semibold text-white">Reload Config</div>
+                    <div class="text-sm text-gray-400">
+                        Reload configuration file
+                    </div>
+                </div>
+            </div>
+        </button>
+
+        <!-- Clear Cache -->
+        <button
+            on:click={clearCache}
+            disabled={isClearingCache}
+            class="card p-5 text-left hover:bg-gray-700/50 transition-colors group disabled:opacity-50"
+        >
+            <div class="flex items-center gap-4">
+                <div
+                    class="w-12 h-12 rounded-lg bg-yellow-900/30 flex items-center justify-center group-hover:bg-yellow-900/50 transition-colors"
+                >
+                    {#if isClearingCache}
+                        <svg
+                            class="w-6 h-6 text-yellow-400 animate-spin"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                        >
+                            <circle
+                                class="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                stroke-width="4"
+                            ></circle>
+                            <path
+                                class="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                        </svg>
+                    {:else}
+                        <svg
+                            class="w-6 h-6 text-yellow-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                        </svg>
+                    {/if}
+                </div>
+                <div>
+                    <div class="font-semibold text-white">Clear Cache</div>
+                    <div class="text-sm text-gray-400">
+                        {formatNumber(mockCacheStats.size)} entries
+                    </div>
+                </div>
+            </div>
+        </button>
+
+        <!-- Acknowledge All Alerts -->
+        <button
+            on:click={acknowledgeAllAlerts}
+            class="card p-5 text-left hover:bg-gray-700/50 transition-colors group"
+        >
+            <div class="flex items-center gap-4">
+                <div
+                    class="w-12 h-12 rounded-lg bg-green-900/30 flex items-center justify-center group-hover:bg-green-900/50 transition-colors"
+                >
+                    <svg
+                        class="w-6 h-6 text-green-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                    </svg>
+                </div>
+                <div>
+                    <div class="font-semibold text-white">Ack All Alerts</div>
+                    <div class="text-sm text-gray-400">Mark all as read</div>
+                </div>
+            </div>
+        </button>
+
+        <!-- Export Logs -->
+        <button
+            class="card p-5 text-left hover:bg-gray-700/50 transition-colors group"
+        >
+            <div class="flex items-center gap-4">
+                <div
+                    class="w-12 h-12 rounded-lg bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-900/50 transition-colors"
+                >
+                    <svg
+                        class="w-6 h-6 text-purple-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                    </svg>
+                </div>
+                <div>
+                    <div class="font-semibold text-white">Export Logs</div>
+                    <div class="text-sm text-gray-400">Download audit logs</div>
+                </div>
+            </div>
+        </button>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Cache Statistics -->
+        <div class="card">
+            <div class="card-header flex items-center justify-between">
+                <h3 class="font-semibold text-white flex items-center gap-2">
+                    <svg
+                        class="w-5 h-5 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
+                        />
+                    </svg>
+                    Cache Statistics
+                </h3>
+                <button
+                    on:click={clearCache}
+                    disabled={isClearingCache}
+                    class="btn-danger text-xs py-1"
+                >
+                    Clear Cache
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="p-4 bg-gray-700/30 rounded-lg">
+                        <div class="text-sm text-gray-400">Cache Size</div>
+                        <div class="text-2xl font-bold text-white mt-1">
+                            {mockCacheStats.size.toLocaleString()}
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">entries</div>
+                    </div>
+
+                    <div class="p-4 bg-gray-700/30 rounded-lg">
+                        <div class="text-sm text-gray-400">Hit Rate</div>
+                        <div class="text-2xl font-bold text-green-400 mt-1">
+                            {mockCacheStats.hit_rate.toFixed(1)}%
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">efficiency</div>
+                    </div>
+
+                    <div class="p-4 bg-gray-700/30 rounded-lg">
+                        <div class="text-sm text-gray-400">Cache Hits</div>
+                        <div class="text-2xl font-bold text-blue-400 mt-1">
+                            {formatNumber(mockCacheStats.hits)}
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">total hits</div>
+                    </div>
+
+                    <div class="p-4 bg-gray-700/30 rounded-lg">
+                        <div class="text-sm text-gray-400">Cache Misses</div>
+                        <div class="text-2xl font-bold text-yellow-400 mt-1">
+                            {formatNumber(mockCacheStats.misses)}
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            total misses
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-gray-700/30 rounded-lg">
+                        <div class="text-sm text-gray-400">Evictions</div>
+                        <div class="text-2xl font-bold text-orange-400 mt-1">
+                            {formatNumber(mockCacheStats.evictions)}
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            LRU evictions
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-gray-700/30 rounded-lg">
+                        <div class="text-sm text-gray-400">Expirations</div>
+                        <div class="text-2xl font-bold text-purple-400 mt-1">
+                            {formatNumber(mockCacheStats.expirations)}
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            TTL expired
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Server Information -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="font-semibold text-white flex items-center gap-2">
+                    <svg
+                        class="w-5 h-5 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"
+                        />
+                    </svg>
+                    Server Information
+                </h3>
+            </div>
+            <div class="card-body space-y-3">
+                {#each [{ label: "Version", value: serverInfo.version }, { label: "Build Date", value: serverInfo.buildDate }, { label: "Rust Version", value: serverInfo.rustVersion }, { label: "Operating System", value: serverInfo.os }, { label: "Config Path", value: serverInfo.configPath }, { label: "Started At", value: new Date(serverInfo.startTime).toLocaleString() }] as item}
+                    <div
+                        class="flex items-center justify-between py-2 border-b border-gray-700/50 last:border-0"
+                    >
+                        <span class="text-gray-400">{item.label}</span>
+                        <span class="text-white font-mono text-sm"
+                            >{item.value}</span
+                        >
+                    </div>
+                {/each}
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration Reload -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="font-semibold text-white flex items-center gap-2">
+                <svg
+                    class="w-5 h-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    />
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                </svg>
+                Configuration
+            </h3>
+        </div>
+        <div class="card-body">
+            <div class="flex items-end gap-4">
+                <div class="flex-1">
+                    <label
+                        for="configPath"
+                        class="block text-sm font-medium text-gray-400 mb-2"
+                    >
+                        Config File Path
+                    </label>
+                    <input
+                        id="configPath"
+                        type="text"
+                        bind:value={configPath}
+                        class="input font-mono"
+                        placeholder="/etc/lazydns/config.yaml"
+                    />
+                </div>
+                <button
+                    on:click={reloadConfig}
+                    disabled={isReloading}
+                    class="btn-primary flex items-center gap-2"
+                >
+                    {#if isReloading}
+                        <svg
+                            class="w-4 h-4 animate-spin"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                        >
+                            <circle
+                                class="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                stroke-width="4"
+                            ></circle>
+                            <path
+                                class="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                        </svg>
+                        Reloading...
+                    {:else}
+                        <svg
+                            class="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                        </svg>
+                        Reload Configuration
+                    {/if}
+                </button>
+            </div>
+            <p class="text-sm text-gray-500 mt-3">
+                Reload the configuration file to apply changes without
+                restarting the server.
+            </p>
+        </div>
+    </div>
+
+    <!-- All Alerts -->
+    <div class="card">
+        <div class="card-header flex items-center justify-between">
+            <h3 class="font-semibold text-white flex items-center gap-2">
+                <svg
+                    class="w-5 h-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                    />
+                </svg>
+                All Alerts
+            </h3>
+            <button
+                on:click={acknowledgeAllAlerts}
+                class="btn-secondary text-xs py-1"
+            >
+                Acknowledge All
+            </button>
+        </div>
+        <div class="p-4">
+            <AlertsList alerts={$alerts} limit={20} />
+        </div>
+    </div>
+</div>
