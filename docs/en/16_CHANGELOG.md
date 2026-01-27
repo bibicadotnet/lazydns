@@ -2,15 +2,16 @@
 
 This file contains high-level release notes and migration guidance.
 
-## Release v0.2.72 - 2026-01-26
+## Release v0.2.73 - 2026-01-27
 
 **Code Quality Improvements**
 - feat(plugins): add BackgroundTask trait to unify periodic cleanup task implementations
-- fix(downloader): use tokio::task::spawn_blocking for file I/O to avoid blocking the async runtime
 - feat(validation): expand config validation with comprehensive numeric parameter validation for ports, TTLs, timeouts, and rate limits
-- fix(concurrency): improve Mutex/RwLock error handling by replacing expect() and unwrap() with proper poison recovery patterns
 - refactor(server): update TCP, DoT, and DoH server implementations for better protocol handling
 - fix(main): return error on configuration load failure instead of using defaults
+- fix(plugin): handle missing plugins in sequence steps and add tests
+- fix(concurrency): improve Mutex/RwLock error handling by replacing expect() and unwrap() with proper poison recovery patterns
+- fix(downloader): use tokio::task::spawn_blocking for file I/O to avoid blocking the async runtime
 
 
 ## Release v0.2.70 - 2026-01-22

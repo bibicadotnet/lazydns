@@ -309,12 +309,19 @@ fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<V
 
                         // Get the exec action
                         if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
-                            let action = parse_exec_action(builder, exec_value)?;
-                            steps.push(SequenceStep::If {
-                                condition,
-                                action,
-                                desc: condition_str.to_string(),
-                            });
+                            match parse_exec_action(builder, exec_value) {
+                                Ok(action) => {
+                                    steps.push(SequenceStep::If {
+                                        condition,
+                                        action,
+                                        desc: condition_str.to_string(),
+                                    });
+                                }
+                                Err(e) => {
+                                    // Skip this step if plugin not found, but continue parsing
+                                    warn!("Skipping conditional step in sequence: {}", e);
+                                }
+                            }
                         } else {
                             return Err(Error::Config("matches step must have exec".to_string()));
                         }
@@ -323,8 +330,15 @@ fn parse_sequence_steps(builder: &PluginBuilder, sequence: &[Value]) -> Result<V
                     }
                 } else if let Some(exec_value) = map.get(Value::String("exec".to_string())) {
                     // Simple exec step
-                    let plugin = parse_exec_action(builder, exec_value)?;
-                    steps.push(SequenceStep::Exec(plugin));
+                    match parse_exec_action(builder, exec_value) {
+                        Ok(plugin) => {
+                            steps.push(SequenceStep::Exec(plugin));
+                        }
+                        Err(e) => {
+                            // Skip this step if plugin not found, but continue parsing
+                            warn!("Skipping exec step in sequence: {}", e);
+                        }
+                    }
                 } else {
                     return Err(Error::Config(
                         "sequence step must have exec or matches".to_string(),
@@ -931,6 +945,60 @@ mod tests {
                 .to_string()
                 .contains("sequence step must have exec or matches")
         );
+    }
+
+    #[test]
+    fn test_parse_sequence_steps_skips_missing_plugins() {
+        let builder = PluginBuilder::new();
+
+        // Create a sequence with both valid and invalid (missing) plugin references
+        let sequence = vec![
+            // Valid step
+            Value::Mapping({
+                let mut map = serde_yaml::Mapping::new();
+                map.insert(
+                    Value::String("exec".to_string()),
+                    Value::String("accept".to_string()),
+                );
+                map
+            }),
+            // Invalid step - references non-existent plugin
+            Value::Mapping({
+                let mut map = serde_yaml::Mapping::new();
+                map.insert(
+                    Value::String("exec".to_string()),
+                    Value::String("$nonexistent_plugin".to_string()),
+                );
+                map
+            }),
+            // Another valid step
+            Value::Mapping({
+                let mut map = serde_yaml::Mapping::new();
+                map.insert(
+                    Value::String("exec".to_string()),
+                    Value::String("reject".to_string()),
+                );
+                map
+            }),
+        ];
+
+        // Should succeed and contain only the valid steps (skip the missing one)
+        let steps = parse_sequence_steps(&builder, &sequence).unwrap();
+        assert_eq!(steps.len(), 2); // Only the two valid steps
+
+        match &steps[0] {
+            crate::plugins::executable::SequenceStep::Exec(plugin) => {
+                assert_eq!(plugin.name(), "accept");
+            }
+            _ => panic!("Expected Exec step"),
+        }
+
+        match &steps[1] {
+            crate::plugins::executable::SequenceStep::Exec(plugin) => {
+                assert_eq!(plugin.name(), "reject");
+            }
+            _ => panic!("Expected Exec step"),
+        }
     }
 
     #[test]
