@@ -29,11 +29,17 @@
 
 pub mod config;
 pub mod event;
+#[cfg(feature = "web")]
+pub mod event_bus;
 pub mod logger;
 pub mod plugin;
 
 // Public re-exports
 pub use config::{AuditConfig, QueryLogConfig, SecurityEventConfig};
 pub use event::{AuditEvent, QueryLogEntry, SecurityEventType};
+#[cfg(feature = "web")]
+pub use event_bus::{
+    AuditEventBus, QueryLogSubscriber, SecurityEventSubscriber, event_bus, init_event_bus,
+};
 pub use logger::{AUDIT_LOGGER, AuditLogger};
 pub use plugin::AuditPlugin;

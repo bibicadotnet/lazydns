@@ -57,6 +57,12 @@ pub use lazylog::{FileLogConfig, LogConfig, RotationPeriod, RotationTrigger, ini
 #[cfg(feature = "metrics")]
 pub mod metrics;
 
+/// WebUI backend server
+///
+/// Provides REST API and WebSocket server for real-time monitoring and analytics.
+#[cfg(feature = "web")]
+pub mod web;
+
 /// Error types and handling
 ///
 /// Provides unified error types for the entire crate.
@@ -243,6 +249,8 @@ pub mod error {
 
 // Re-export commonly used types
 pub use error::{Error, Result};
+#[cfg(feature = "web")]
+pub use web::WebServer;
 
 #[cfg(test)]
 mod tests {

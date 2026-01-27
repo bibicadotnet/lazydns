@@ -252,6 +252,12 @@ impl AuditLogger {
             return;
         }
 
+        // Publish to event bus for WebUI (if enabled)
+        #[cfg(feature = "web")]
+        {
+            super::event_bus::publish_query(entry.clone());
+        }
+
         let tx_lock = self.query_tx.read().await;
         if let Some(ref tx) = *tx_lock {
             // Use try_send to avoid blocking on full queue
@@ -278,7 +284,11 @@ impl AuditLogger {
         // Check if security logging is enabled
         let tx_lock = self.security_tx.read().await;
         if tx_lock.is_none() {
-            // Security logging not configured
+            // Security logging not configured, but still publish to event bus
+            #[cfg(feature = "web")]
+            {
+                super::event_bus::publish_security(event);
+            }
             return;
         }
 
@@ -290,6 +300,12 @@ impl AuditLogger {
             if !enabled.is_empty() && !enabled.contains(event_type) {
                 return;
             }
+        }
+
+        // Publish to event bus for WebUI (if enabled)
+        #[cfg(feature = "web")]
+        {
+            super::event_bus::publish_security(event.clone());
         }
 
         if let Some(ref tx) = *tx_lock {
