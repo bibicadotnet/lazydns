@@ -25,6 +25,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 // Re-export commonly used types
+#[cfg(feature = "web")]
+pub use crate::web::config::WebConfig;
 pub use reload::ConfigReloader;
 pub use types::PluginConfig;
 
@@ -414,6 +416,11 @@ pub struct Config {
     /// Monitoring server configuration
     #[serde(default = "default_monitoring_config", alias = "metrics")]
     pub monitoring: MonitoringConfig,
+
+    /// WebUI server configuration
+    #[cfg(feature = "web")]
+    #[serde(default = "default_web_config")]
+    pub web: crate::web::config::WebConfig,
 }
 
 fn default_log_config() -> LogConfig {
@@ -428,6 +435,11 @@ fn default_monitoring_config() -> MonitoringConfig {
     MonitoringConfig::default()
 }
 
+#[cfg(feature = "web")]
+fn default_web_config() -> crate::web::config::WebConfig {
+    crate::web::config::WebConfig::default()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -435,6 +447,8 @@ impl Default for Config {
             log: default_log_config(),
             admin: default_admin_config(),
             monitoring: default_monitoring_config(),
+            #[cfg(feature = "web")]
+            web: default_web_config(),
             // rotation disabled by default
             // `rotate_dir` defaults to None which means use parent dir of `file` if provided
         }

@@ -1,16 +1,72 @@
 <script lang="ts">
-    import { mockCacheStats, formatNumber } from "../lib/mock";
-    import { alerts, notifications, darkMode } from "../lib/stores";
+    import { onMount, onDestroy } from "svelte";
+    import { formatNumber } from "../lib/mock";
+    import { api, type Alert } from "../lib/api";
+    import { notifications, darkMode } from "../lib/stores";
     import AlertsList from "../components/AlertsList.svelte";
 
     let configPath = "/etc/lazydns/config.yaml";
     let isReloading = false;
     let isClearingCache = false;
 
+    // Real data
+    let alerts: Alert[] = [];
+    let serverInfo = {
+        version: "0.3.1",
+        status: "loading",
+        uptime_secs: 0,
+        total_queries: 0,
+        cache_size: 0,
+    };
+    let cacheStats = {
+        size: 0,
+        hit_rate: 0,
+        hits: 0,
+        misses: 0,
+        evictions: 0,
+        expirations: 0,
+    };
+
+    async function fetchData() {
+        try {
+            const [overviewRes, alertsRes] = await Promise.all([
+                api.getDashboardOverview(),
+                api.getRecentAlerts().catch(() => ({ alerts: [], total: 0 })),
+            ]);
+
+            serverInfo = {
+                version: "0.3.1",
+                status: overviewRes.status,
+                uptime_secs: overviewRes.uptime_secs,
+                total_queries: overviewRes.metrics.total_queries,
+                cache_size:
+                    overviewRes.metrics.cache_hits +
+                    overviewRes.metrics.cache_misses,
+            };
+
+            // Calculate cache stats from overview metrics
+            const hits = overviewRes.metrics.cache_hits;
+            const misses = overviewRes.metrics.cache_misses;
+            const total = hits + misses;
+            cacheStats = {
+                size: total,
+                hit_rate: total > 0 ? (hits / total) * 100 : 0,
+                hits: hits,
+                misses: misses,
+                evictions: 0, // Not available from current API
+                expirations: 0, // Not available from current API
+            };
+
+            alerts = alertsRes.alerts || [];
+        } catch (e) {
+            console.error("Admin fetch error:", e);
+        }
+    }
+
     async function reloadConfig() {
         isReloading = true;
 
-        // Simulate API call
+        // TODO: Call actual API when available
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
         notifications.add({
@@ -27,36 +83,51 @@
 
         isClearingCache = true;
 
-        // Simulate API call
+        // TODO: Call actual API when available
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
         notifications.add({
             type: "success",
-            message: `Cache cleared: ${mockCacheStats.size.toLocaleString()} entries removed`,
+            message: `Cache cleared successfully`,
         });
 
         isClearingCache = false;
     }
 
     function acknowledgeAllAlerts() {
-        alerts.update((list) =>
-            list.map((a) => ({ ...a, acknowledged: true })),
-        );
+        alerts = alerts.map((a) => ({ ...a, acknowledged: true }));
         notifications.add({
             type: "info",
             message: "All alerts acknowledged",
         });
     }
 
-    // Server info (mock)
-    const serverInfo = {
-        version: "0.2.73",
-        buildDate: "2026-01-15",
-        rustVersion: "1.75.0",
-        os: "Linux x86_64",
-        configPath: "/etc/lazydns/config.yaml",
-        startTime: new Date(Date.now() - 86400000).toISOString(),
-    };
+    let refreshInterval: ReturnType<typeof setInterval>;
+
+    function formatUptime(seconds: number): string {
+        if (seconds === 0) return "0s";
+
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+
+        if (days > 0) return `${days}d ${hours}h`;
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        if (minutes > 0) return `${minutes}m ${secs}s`;
+        return `${secs}s`;
+    }
+
+    onMount(() => {
+        fetchData();
+        refreshInterval = setInterval(fetchData, 10000);
+    });
+
+    onDestroy(() => {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+    });
 </script>
 
 <div class="space-y-6">
@@ -218,7 +289,7 @@
                             ? 'text-gray-400'
                             : 'text-gray-700'}"
                     >
-                        {formatNumber(mockCacheStats.size)} entries
+                        {formatNumber(serverInfo.cache_size)} entries
                     </div>
                 </div>
             </div>
@@ -374,7 +445,7 @@
                                 ? 'text-white'
                                 : 'text-gray-900'} mt-1"
                         >
-                            {mockCacheStats.size.toLocaleString()}
+                            {cacheStats.size.toLocaleString()}
                         </div>
                         <div
                             class="text-xs {$darkMode
@@ -398,7 +469,7 @@
                             Hit Rate
                         </div>
                         <div class="text-2xl font-bold text-green-500 mt-1">
-                            {mockCacheStats.hit_rate.toFixed(1)}%
+                            {cacheStats.hit_rate.toFixed(1)}%
                         </div>
                         <div
                             class="text-xs {$darkMode
@@ -422,7 +493,7 @@
                             Cache Hits
                         </div>
                         <div class="text-2xl font-bold text-blue-500 mt-1">
-                            {formatNumber(mockCacheStats.hits)}
+                            {formatNumber(cacheStats.hits)}
                         </div>
                         <div
                             class="text-xs {$darkMode
@@ -446,7 +517,7 @@
                             Cache Misses
                         </div>
                         <div class="text-2xl font-bold text-yellow-500 mt-1">
-                            {formatNumber(mockCacheStats.misses)}
+                            {formatNumber(cacheStats.misses)}
                         </div>
                         <div
                             class="text-xs {$darkMode
@@ -470,7 +541,7 @@
                             Evictions
                         </div>
                         <div class="text-2xl font-bold text-orange-500 mt-1">
-                            {formatNumber(mockCacheStats.evictions)}
+                            {formatNumber(cacheStats.evictions)}
                         </div>
                         <div
                             class="text-xs {$darkMode
@@ -494,7 +565,7 @@
                             Expirations
                         </div>
                         <div class="text-2xl font-bold text-purple-500 mt-1">
-                            {formatNumber(mockCacheStats.expirations)}
+                            {formatNumber(cacheStats.expirations)}
                         </div>
                         <div
                             class="text-xs {$darkMode
@@ -535,7 +606,7 @@
                 </h3>
             </div>
             <div class="card-body space-y-3">
-                {#each [{ label: "Version", value: serverInfo.version }, { label: "Build Date", value: serverInfo.buildDate }, { label: "Rust Version", value: serverInfo.rustVersion }, { label: "Operating System", value: serverInfo.os }, { label: "Config Path", value: serverInfo.configPath }, { label: "Started At", value: new Date(serverInfo.startTime).toLocaleString() }] as item}
+                {#each [{ label: "Version", value: serverInfo.version }, { label: "Status", value: serverInfo.status }, { label: "Uptime", value: formatUptime(serverInfo.uptime_secs) }, { label: "Total Queries", value: formatNumber(serverInfo.total_queries) }] as item}
                     <div
                         class="flex items-center justify-between py-2 border-b {$darkMode
                             ? 'border-gray-700/50'
@@ -697,7 +768,7 @@
             </button>
         </div>
         <div class="p-4">
-            <AlertsList alerts={$alerts} limit={20} />
+            <AlertsList {alerts} limit={20} />
         </div>
     </div>
 </div>

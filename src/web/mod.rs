@@ -33,6 +33,7 @@ pub mod config;
 pub mod metrics;
 pub mod routes;
 pub mod state;
+pub mod upstream_registry;
 pub mod websocket;
 
 use crate::Result;
@@ -43,6 +44,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
+
+// Re-export upstream registry for easy access
+pub use upstream_registry::{
+    UpstreamHealthData, UpstreamHealthSnapshot, UpstreamRegistry, get_all_upstream_health,
+    register_upstream, unregister_upstream, upstream_registry,
+};
 
 pub use state::WebState;
 
@@ -58,8 +65,11 @@ impl WebServer {
         // Validate configuration
         config.validate().map_err(crate::Error::Config)?;
 
-        // Initialize event bus
-        init_event_bus(config.event_bus_capacity);
+        // Initialize event bus if not already initialized (normally done in main.rs)
+        // This is a fallback for cases where WebServer is created directly
+        if crate::plugins::audit::event_bus().is_none() {
+            init_event_bus(config.event_bus_capacity);
+        }
 
         // Create shared state
         let state = Arc::new(WebState::new(&config).await?);

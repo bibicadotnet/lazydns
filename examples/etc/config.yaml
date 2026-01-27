@@ -38,6 +38,35 @@ metrics:
   addr: "127.0.0.1:8001"
 
 # ============================================================================
+# WEBUI CONFIGURATION
+# ============================================================================
+
+web:
+  # Enable WebUI dashboard for real-time monitoring
+  enabled: true
+  # Listen address (default: 127.0.0.1:8080)
+  listen: "0.0.0.0:8080"
+  # Path to static files directory (WebUI frontend)
+  # Use absolute path or path relative to working directory
+  static_dir: "../../webui/dist"
+  # Event bus capacity for real-time streaming
+  event_bus_capacity: 1024
+  # Metrics collection configuration
+  metrics:
+    window_secs: 300  # 5 minutes sliding window
+    top_n: 10         # Track top 10 domains/clients
+  # SSE configuration
+  sse:
+    keepalive_secs: 30
+    max_connections: 100
+  # WebSocket configuration  
+  websocket:
+    max_connections: 50
+  # CORS configuration (for development)
+  cors:
+    allowed_origins: []  # Empty = allow all
+
+# ============================================================================
 # PLUGINS CONFIGURATION
 # ============================================================================
 
@@ -212,31 +241,81 @@ plugins:
   # ========================================================================
   # Audit Plugin - Query Logging and Security Events
   # ========================================================================
+  # Global buffer and rotation settings apply to both query_log and security_events
+  # unless overridden at the individual log level.
   
   - tag: audit
     type: audit
     args:
+      # Enable audit logging globally (default: false)
       enabled: true
+
+      # Global log buffer size before flush (applies to both logs, default: 100)
+      # Flush to disk after this many entries (trade-off between memory and I/O)
+      buffer_size: 100
+
+      # Global maximum file size before rotation (default: 100MB)
+      # Supports human-readable sizes: 100K, 10M, 1G, etc.
+      max_file_size: 100M
+
+      # Global number of rotated files to keep (default: 10)
+      # Older files are deleted when count exceeds this limit
+      max_files: 10
+
+      # Query logging configuration
       query_log:
         # Log file path - relative to the working directory when lazydns starts
         # When running with "-d examples/etc/", paths are relative to examples/etc/
         path: log/lazydns/queries.log
+
+        # Output format: "json" or "text" (default: json)
         format: json
-        sampling_rate: 1.0  # Log all queries (0.0-1.0 for partial sampling)
+
+        # Sampling rate (0.0 to 1.0): fraction of queries to log (default: 1.0)
+        # Use 0.1 to log 10% of queries, reducing I/O overhead on high-traffic servers
+        sampling_rate: 1.0
+
+        # Include response details in log entries (default: true)
         include_response: true
+
+        # Include client IP in log entries (default: true)
         include_client_ip: true
-        buffer_size: 100  # Flush buffer after this many entries
-        max_file_size: 104857600  # 100MB - rotate log when exceeded
-        max_files: 10  # Keep last 10 rotated files
+
+        # Optional: Override global buffer_size for this log only
+        # buffer_size: 50
+
+        # Optional: Override global max_file_size for this log only
+        # max_file_size: 50M
+
+        # Optional: Override global max_files for this log only
+        # max_files: 5
+
+      # Security event logging configuration
       security_events:
+        # Enable security event logging (default: true when present)
         enabled: true
-        # Log file path - same working directory rules apply
+
+        # Log file path - relative to working directory
         path: log/lazydns/security.log
+
+        # Events to track (empty list = log all events)
+        # Available events: rate_limit_exceeded, blocked_domain_query, upstream_failure
         events:
           - rate_limit_exceeded
           - blocked_domain_query
           - upstream_failure
+
+        # Include full query details in security event logs (default: true)
         include_query_details: true
+
+        # Optional: Override global buffer_size for security events only
+        # buffer_size: 50
+
+        # Optional: Override global max_file_size for security events only
+        # max_file_size: 50M
+
+        # Optional: Override global max_files for security events only
+        # max_files: 5
 
   # redirect plugin for specific domains
   - tag: redirect
@@ -352,8 +431,6 @@ plugins:
       # check hosts files first
       - exec: $hosts_files
       - matches: has_resp
-        exec: $audit
-      - matches: has_resp
         exec: accept
 
       # reject PTR and DNSSEC to fix some iOS issues
@@ -375,15 +452,11 @@ plugins:
       - matches: "!qname 00006801.com"
         exec: $cache
       - matches: has_resp
-        exec: $audit
-      - matches: has_resp
         exec: accept
 
       # domestic domains
       - matches: qname $domain_direct_list
         exec: $upstream_direct
-      - matches: has_resp
-        exec: $audit
       - matches: has_resp
         exec: accept
 
@@ -391,14 +464,10 @@ plugins:
       - matches: qname $domain_proxy_list
         exec: $upstream_proxy
       - matches: has_resp
-        exec: $audit
-      - matches: has_resp
-        exec: jump sequence_gfwlist
+        exec: jump $sequence_gfwlist
 
       # other unknown domains
       - exec: $fallback
-      # Log responses from fallback
-      - exec: $audit
 
   # ========================================================================
   # Server Configurations, listen on multiple protocols and ports

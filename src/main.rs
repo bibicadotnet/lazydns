@@ -113,6 +113,13 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "rustls")]
     let _ = rustls::crypto::ring::default_provider().install_default();
 
+    // Initialize event bus BEFORE plugins load (audit plugin needs it)
+    #[cfg(feature = "web")]
+    if config.web.enabled {
+        lazydns::plugins::audit::init_event_bus(config.web.event_bus_capacity);
+        info!("Event bus initialized for WebUI");
+    }
+
     // Build plugins from configuration
     let mut builder = PluginBuilder::new();
     let mut plugin_count = 0;
@@ -161,6 +168,9 @@ async fn main() -> anyhow::Result<()> {
         .launch_monitoring_server(Arc::clone(&config_arc))
         .await
     {
+        startup_receivers.push(rx);
+    }
+    if let Some(rx) = launcher.launch_web_server(Arc::clone(&config_arc)).await {
         startup_receivers.push(rx);
     }
 

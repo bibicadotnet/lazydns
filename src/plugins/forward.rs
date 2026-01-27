@@ -970,12 +970,48 @@ impl Plugin for ForwardPlugin {
             _ => false,
         };
 
+        let plugin_tag = config.tag.clone().unwrap_or_else(|| "forward".to_string());
+
         let plugin = ForwardPlugin {
             core,
             current: AtomicUsize::new(0),
             concurrent_queries: concurrent,
             tag: config.tag.clone(),
         };
+
+        // Register upstreams with the web upstream registry
+        #[cfg(feature = "web")]
+        {
+            for upstream in &plugin.core.upstreams {
+                let key = format!("{}:{}", plugin_tag, upstream.addr);
+                let address = upstream.addr.clone();
+                let tag = upstream.tag.clone();
+                let plugin_name = plugin_tag.clone();
+                let health = Arc::clone(&upstream.health);
+
+                crate::web::upstream_registry::register_upstream(
+                    key,
+                    address,
+                    tag,
+                    plugin_name,
+                    move || {
+                        let (queries, successes, failures) = health.counters();
+                        let avg_response_time_us = health
+                            .avg_response_time_us
+                            .load(std::sync::atomic::Ordering::Relaxed);
+                        let last_success = *health.last_success.lock().unwrap();
+
+                        crate::web::upstream_registry::UpstreamHealthData {
+                            queries,
+                            successes,
+                            failures,
+                            avg_response_time_us,
+                            last_success,
+                        }
+                    },
+                );
+            }
+        }
 
         Ok(Arc::new(plugin))
     }

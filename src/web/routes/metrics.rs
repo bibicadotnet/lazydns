@@ -90,32 +90,23 @@ pub struct UpstreamHealthResponse {
 
 /// GET /api/metrics/upstream-health
 pub async fn upstream_health(State(_state): State<Arc<WebState>>) -> Json<UpstreamHealthResponse> {
-    // TODO: Get actual upstream health from forward plugin
-    // For now, return mock data
-    let upstreams = vec![
-        UpstreamHealthStatus {
-            address: "8.8.8.8:53".to_string(),
-            tag: Some("google-primary".to_string()),
-            status: "healthy".to_string(),
-            success_rate: 99.5,
-            avg_response_time_ms: 15.2,
-            queries: 10000,
-            successes: 9950,
-            failures: 50,
-            last_success: Some("2024-01-15T10:30:00Z".to_string()),
-        },
-        UpstreamHealthStatus {
-            address: "8.8.4.4:53".to_string(),
-            tag: Some("google-secondary".to_string()),
-            status: "healthy".to_string(),
-            success_rate: 99.8,
-            avg_response_time_ms: 12.5,
-            queries: 5000,
-            successes: 4990,
-            failures: 10,
-            last_success: Some("2024-01-15T10:30:00Z".to_string()),
-        },
-    ];
+    // Get actual upstream health from the global registry
+    let snapshots = crate::web::upstream_registry::get_all_upstream_health();
+
+    let upstreams = snapshots
+        .into_iter()
+        .map(|s| UpstreamHealthStatus {
+            address: s.address,
+            tag: s.tag,
+            status: s.status,
+            success_rate: s.success_rate,
+            avg_response_time_ms: s.avg_response_time_ms,
+            queries: s.queries,
+            successes: s.successes,
+            failures: s.failures,
+            last_success: s.last_success,
+        })
+        .collect();
 
     Json(UpstreamHealthResponse { upstreams })
 }

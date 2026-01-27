@@ -1,24 +1,121 @@
 <script lang="ts">
+    import { onMount, onDestroy } from "svelte";
     import QueryLogTable from "../components/QueryLogTable.svelte";
     import SecurityEventList from "../components/SecurityEventList.svelte";
-    import {
-        queryLogs,
-        securityEvents,
-        isLiveMode,
-        darkMode,
-    } from "../lib/stores";
+    import { api, type QueryLogEntry, type SecurityEvent } from "../lib/api";
+    import { isLiveMode, darkMode } from "../lib/stores";
 
     type TabType = "queries" | "security";
     let activeTab: TabType = "queries";
     let searchQuery = "";
     let autoScroll = true;
 
+    // Real data from SSE
+    let queryLogs: QueryLogEntry[] = [];
+    let securityEvents: SecurityEvent[] = [];
+    let queryLogStream: EventSource | null = null;
+    let securityEventStream: EventSource | null = null;
+    let connectionStatus:
+        | "connecting"
+        | "connected"
+        | "disconnected"
+        | "error" = "connecting";
+
     // Filters
     let filterRcode = "all";
     let filterProtocol = "all";
     let filterEventType = "all";
 
-    $: filteredQueryLogs = $queryLogs.filter((log) => {
+    function startQueryLogStream() {
+        if (queryLogStream) {
+            queryLogStream.close();
+        }
+
+        queryLogStream = api.createQueryLogStream();
+
+        queryLogStream.addEventListener("connected", () => {
+            connectionStatus = "connected";
+            console.log("Query log SSE connected");
+        });
+
+        queryLogStream.addEventListener("query", (event) => {
+            try {
+                const entry = JSON.parse(event.data) as QueryLogEntry;
+                queryLogs = [entry, ...queryLogs.slice(0, 499)];
+            } catch (e) {
+                console.error("Failed to parse query log entry:", e);
+            }
+        });
+
+        queryLogStream.addEventListener("error", (e) => {
+            console.error("Query log SSE error:", e);
+            connectionStatus = "error";
+        });
+
+        queryLogStream.addEventListener("closed", () => {
+            connectionStatus = "disconnected";
+        });
+    }
+
+    function startSecurityEventStream() {
+        if (securityEventStream) {
+            securityEventStream.close();
+        }
+
+        securityEventStream = api.createSecurityEventsStream();
+
+        securityEventStream.addEventListener("connected", () => {
+            console.log("Security events SSE connected");
+        });
+
+        securityEventStream.addEventListener("security", (event) => {
+            try {
+                const entry = JSON.parse(event.data) as SecurityEvent;
+                securityEvents = [entry, ...securityEvents.slice(0, 199)];
+            } catch (e) {
+                console.error("Failed to parse security event:", e);
+            }
+        });
+
+        securityEventStream.addEventListener("error", (e) => {
+            console.error("Security events SSE error:", e);
+        });
+    }
+
+    function stopStreams() {
+        if (queryLogStream) {
+            queryLogStream.close();
+            queryLogStream = null;
+        }
+        if (securityEventStream) {
+            securityEventStream.close();
+            securityEventStream = null;
+        }
+        connectionStatus = "disconnected";
+    }
+
+    // React to live mode toggle
+    $: {
+        if ($isLiveMode) {
+            startQueryLogStream();
+            startSecurityEventStream();
+        } else {
+            stopStreams();
+        }
+    }
+
+    onMount(() => {
+        if ($isLiveMode) {
+            startQueryLogStream();
+            startSecurityEventStream();
+        }
+    });
+
+    onDestroy(() => {
+        stopStreams();
+    });
+
+    $: filteredQueryLogs = queryLogs.filter((log) => {
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             if (
@@ -37,7 +134,7 @@
         return true;
     });
 
-    $: filteredSecurityEvents = $securityEvents.filter((event) => {
+    $: filteredSecurityEvents = securityEvents.filter((event) => {
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             if (
@@ -139,7 +236,7 @@
                         ? 'bg-gray-700'
                         : 'bg-gray-200 text-gray-700'}"
                 >
-                    {$queryLogs.length}
+                    {queryLogs.length}
                 </span>
             </span>
         </button>
@@ -172,7 +269,7 @@
                         ? 'bg-yellow-900/50 text-yellow-400'
                         : 'bg-yellow-100 text-yellow-700'}"
                 >
-                    {$securityEvents.length}
+                    {securityEvents.length}
                 </span>
             </span>
         </button>
@@ -302,22 +399,31 @@
                     >Showing <strong class="text-white"
                         >{filteredQueryLogs.length}</strong
                     >
-                    of {$queryLogs.length} queries</span
+                    of {queryLogs.length} queries</span
                 >
             {:else}
                 <span
                     >Showing <strong class="text-white"
                         >{filteredSecurityEvents.length}</strong
                     >
-                    of {$securityEvents.length} events</span
+                    of {securityEvents.length} events</span
                 >
             {/if}
             {#if $isLiveMode}
                 <span class="flex items-center gap-1">
                     <span
-                        class="w-2 h-2 rounded-full bg-green-400 animate-pulse"
+                        class="w-2 h-2 rounded-full {connectionStatus ===
+                        'connected'
+                            ? 'bg-green-400'
+                            : connectionStatus === 'error'
+                              ? 'bg-red-400'
+                              : 'bg-yellow-400'} animate-pulse"
                     ></span>
-                    Streaming live data
+                    {connectionStatus === "connected"
+                        ? "Streaming live data"
+                        : connectionStatus === "error"
+                          ? "Connection error"
+                          : "Connecting..."}
                 </span>
             {/if}
         </div>

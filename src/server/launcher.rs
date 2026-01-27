@@ -73,7 +73,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-#[cfg(any(feature = "admin", feature = "metrics"))]
+#[cfg(any(feature = "admin", feature = "metrics", feature = "web"))]
 use tracing::info;
 use tracing::{error, warn};
 
@@ -878,6 +878,57 @@ impl ServerLauncher {
             warn!("Admin server requested but admin feature is not enabled");
         }
 
+        None
+    }
+
+    /// Launch WebUI server (web feature enabled)
+    ///
+    /// Starts the WebUI server if enabled in configuration.
+    /// Returns a oneshot receiver that signals when the server is ready.
+    #[cfg(feature = "web")]
+    pub async fn launch_web_server(
+        &self,
+        config: Arc<RwLock<crate::config::Config>>,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
+        let cfg = config.read().await;
+        if !cfg.web.enabled {
+            return None;
+        }
+
+        let web_config = cfg.web.clone();
+        drop(cfg);
+
+        info!("Starting WebUI server on {}", web_config.listen);
+
+        let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
+
+        tokio::spawn(async move {
+            match crate::WebServer::new(web_config).await {
+                Ok(server) => {
+                    let _ = startup_tx.send(());
+                    if let Err(e) = server.run().await {
+                        error!("WebUI server error: {}", e);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to create WebUI server: {}", e);
+                }
+            }
+            info!("WebUI server task finished");
+        });
+
+        Some(startup_rx)
+    }
+
+    /// Launch WebUI server (web feature disabled)
+    ///
+    /// Stub implementation when the `web` feature is not enabled.
+    #[cfg(not(feature = "web"))]
+    pub async fn launch_web_server(
+        &self,
+        config: Arc<RwLock<crate::config::Config>>,
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
+        let _ = config;
         None
     }
 }

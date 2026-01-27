@@ -1,16 +1,22 @@
 <script lang="ts">
+    import { onMount, onDestroy } from "svelte";
     import TopDomainsChart from "../components/TopDomainsChart.svelte";
     import TopClientsChart from "../components/TopClientsChart.svelte";
     import LatencyDistributionChart from "../components/LatencyDistributionChart.svelte";
     import UpstreamPerformanceTable from "../components/UpstreamPerformanceTable.svelte";
     import {
-        mockTopDomains,
-        mockTopClients,
-        mockUpstreamHealth,
-        mockLatencyDistribution,
-    } from "../lib/mock";
+        api,
+        type UpstreamHealthItem,
+        type LatencyResponse,
+    } from "../lib/api";
     import { selectedTimeWindow, darkMode } from "../lib/stores";
-    import type { TimeWindow } from "../lib/types";
+    import type {
+        TimeWindow,
+        TopDomain,
+        TopClient,
+        UpstreamHealth,
+        LatencyDistribution,
+    } from "../lib/types";
 
     const timeWindows: { value: TimeWindow; label: string }[] = [
         { value: "1m", label: "1 Minute" },
@@ -19,13 +25,113 @@
         { value: "24h", label: "24 Hours" },
     ];
 
-    // Latency percentiles (mock data)
-    const latencyPercentiles = {
-        p50: 8.2,
-        p95: 25.6,
-        p99: 48.3,
-        max: 125.8,
+    // Reactive state
+    let loading = true;
+    let error: string | null = null;
+    let topDomains: TopDomain[] = [];
+    let topClients: TopClient[] = [];
+    let upstreams: UpstreamHealth[] = [];
+    let latencyData: LatencyDistribution[] = [];
+    let latencyPercentiles = {
+        p50: 0,
+        p95: 0,
+        p99: 0,
+        max: 0,
     };
+
+    // Convert API upstream to UI format
+    function convertUpstream(item: UpstreamHealthItem): UpstreamHealth {
+        return {
+            name: item.tag || item.address,
+            address: item.address,
+            status:
+                item.status === "healthy"
+                    ? "healthy"
+                    : item.status === "degraded"
+                      ? "degraded"
+                      : "down",
+            success_rate: item.success_rate,
+            avg_latency_ms: item.avg_response_time_ms,
+            total_requests: item.queries,
+            failed_requests: item.failures,
+            last_success_at: item.last_success,
+            last_failure_at: null,
+        };
+    }
+
+    async function fetchData() {
+        try {
+            const [domainsRes, clientsRes, upstreamRes, latencyRes] =
+                await Promise.all([
+                    api.getTopDomains(10),
+                    api.getTopClients(10),
+                    api.getUpstreamHealth(),
+                    api.getLatencyDistribution(),
+                ]);
+
+            topDomains = domainsRes.domains.map((d) => ({
+                domain: d.key,
+                count: d.count,
+                percentage: 0, // Will be calculated in component
+            }));
+
+            topClients = clientsRes.clients.map((c) => ({
+                ip: c.key,
+                queries: c.count,
+                blocked: 0,
+                rate_limited: 0,
+                avg_response_ms: 0,
+            }));
+
+            upstreams = upstreamRes.upstreams.map(convertUpstream);
+
+            // Convert latency buckets
+            latencyData = latencyRes.distribution.buckets.map((b) => ({
+                bucket: b.label,
+                count: b.count,
+                percentage:
+                    latencyRes.distribution.total_samples > 0
+                        ? (b.count / latencyRes.distribution.total_samples) *
+                          100
+                        : 0,
+            }));
+
+            latencyPercentiles = {
+                p50: latencyRes.distribution.p50_ms,
+                p95: latencyRes.distribution.p95_ms,
+                p99: latencyRes.distribution.p99_ms,
+                max:
+                    latencyRes.distribution.buckets.length > 0
+                        ? Math.max(
+                              ...latencyRes.distribution.buckets.map(
+                                  (b) => b.max_ms ?? b.min_ms,
+                              ),
+                          )
+                        : 0,
+            };
+
+            error = null;
+        } catch (e) {
+            error = e instanceof Error ? e.message : "Failed to fetch data";
+            console.error("Metrics fetch error:", e);
+        } finally {
+            loading = false;
+        }
+    }
+
+    let refreshInterval: ReturnType<typeof setInterval>;
+
+    onMount(() => {
+        fetchData();
+        // Refresh every 10 seconds
+        refreshInterval = setInterval(fetchData, 10000);
+    });
+
+    onDestroy(() => {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+    });
 </script>
 
 <div class="space-y-6">
@@ -211,17 +317,17 @@
     <!-- Charts Row 1 -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <TopDomainsChart
-            domains={mockTopDomains}
+            domains={topDomains}
             title="Top 10 Domains ({$selectedTimeWindow})"
         />
-        <TopClientsChart clients={mockTopClients} />
+        <TopClientsChart clients={topClients} />
     </div>
 
     <!-- Latency Distribution -->
-    <LatencyDistributionChart data={mockLatencyDistribution} />
+    <LatencyDistributionChart data={latencyData} />
 
     <!-- Upstream Performance Table -->
-    <UpstreamPerformanceTable upstreams={mockUpstreamHealth} />
+    <UpstreamPerformanceTable {upstreams} />
 
     <!-- Additional Stats -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
