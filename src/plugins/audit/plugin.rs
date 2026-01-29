@@ -134,10 +134,13 @@ impl AuditPlugin {
             // Store fractional milliseconds for latency tracking
             entry = entry.with_response_time_us(response_time_us);
 
-            // Check if cached (cache plugin sets "response_from_cache" metadata)
-            if let Some(cached) = ctx.get_metadata::<bool>("response_from_cache") {
-                entry = entry.with_cached(*cached);
-            }
+            // Check if cached (cache plugin sets "response_from_cache" metadata to true on hit)
+            // If metadata is None, it means this was a cache miss (response came from upstream)
+            let cached = ctx
+                .get_metadata::<bool>("response_from_cache")
+                .copied()
+                .unwrap_or(false);
+            entry = entry.with_cached(cached);
 
             // Add answer IPs for A/AAAA queries
             let answers: Vec<String> = response
