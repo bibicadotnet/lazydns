@@ -1,5 +1,7 @@
 // API client for LazyDNS WebUI
 
+import type { SecurityEvent, SecurityEventType } from './types';
+
 const API_BASE = '/api';
 
 export interface DashboardOverviewResponse {
@@ -73,15 +75,15 @@ export interface LatencyResponse {
     distribution: {
         buckets: Array<{
             label: string;
-            min_ms: number;
-            max_ms: number | null;
             count: number;
+            percentage: number;
         }>;
-        total_samples: number;
-        avg_latency_ms: number;
+        total: number;
         p50_ms: number;
         p95_ms: number;
         p99_ms: number;
+        max_ms: number;
+        avg_ms: number;
     };
 }
 
@@ -94,18 +96,6 @@ class ApiClient {
 
     private async fetch<T>(endpoint: string): Promise<T> {
         const response = await fetch(`${this.baseUrl}${endpoint}`);
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status} ${response.statusText}`);
-        }
-        return response.json();
-    }
-
-    private async post<T>(endpoint: string, body?: unknown): Promise<T> {
-        const response = await fetch(`${this.baseUrl}${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: body ? JSON.stringify(body) : undefined,
-        });
         if (!response.ok) {
             throw new Error(`API error: ${response.status} ${response.statusText}`);
         }
@@ -160,12 +150,12 @@ class ApiClient {
 // Types for alerts
 export interface Alert {
     id: string;
+    rule_name: string;
     severity: 'info' | 'warning' | 'critical';
-    type: string;
     message: string;
-    timestamp: string;
-    details: Record<string, unknown>;
+    timestamp: number;  // Unix seconds
     acknowledged: boolean;
+    context?: Record<string, string>;
 }
 
 // Types for query log entries (from SSE)
@@ -185,15 +175,8 @@ export interface QueryLogEntry {
     answers: string[] | null;
 }
 
-// Types for security events (from SSE)
-export interface SecurityEvent {
-    timestamp: string;
-    event_type: string;
-    client_ip: string | null;
-    domain: string | null;
-    message: string;
-    details: Record<string, unknown>;
-}
+// Re-export SecurityEvent from types for compatibility
+export type { SecurityEvent, SecurityEventType };
 
 export const api = new ApiClient();
 export default api;

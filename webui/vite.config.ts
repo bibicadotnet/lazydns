@@ -14,7 +14,18 @@ export default defineConfig({
         }
     },
     build: {
+        chunkSizeWarningLimit: 1500,
         outDir: 'dist',
-        emptyOutDir: true
+        emptyOutDir: true,
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    // Separate vendor libraries into their own chunks
+                    'vendor-core': ['svelte', 'svelte/animate', 'svelte/transition', 'svelte/easing'],
+                    'vendor-charts': ['echarts'],
+                    'vendor-router': ['svelte-spa-router']
+                }
+            }
+        }
     }
 })

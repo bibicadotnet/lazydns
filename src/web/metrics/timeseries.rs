@@ -260,17 +260,34 @@ pub struct TimeSeriesStats {
 pub struct LatencyDistribution {
     /// Buckets: <1ms, 1-10ms, 10-50ms, 50-100ms, 100-500ms, 500ms-1s, >1s
     buckets: RwLock<[u64; 7]>,
+    /// Raw latency samples for percentile calculation (limited to last N samples)
+    samples: RwLock<Vec<f64>>,
+    /// Maximum samples to keep
+    max_samples: usize,
 }
 
 impl LatencyDistribution {
     pub fn new() -> Self {
         Self {
             buckets: RwLock::new([0; 7]),
+            samples: RwLock::new(Vec::with_capacity(10000)),
+            max_samples: 10000,
         }
     }
 
     /// Add a latency measurement in milliseconds
     pub fn add(&self, latency_ms: f64) {
+        // Add to samples for percentile calculation
+        {
+            let mut samples = self.samples.write();
+            if samples.len() >= self.max_samples {
+                // Remove oldest 10% when full
+                let remove_count = self.max_samples / 10;
+                samples.drain(0..remove_count);
+            }
+            samples.push(latency_ms);
+        }
+
         let bucket_idx = if latency_ms < 1.0 {
             0
         } else if latency_ms < 10.0 {
@@ -290,10 +307,40 @@ impl LatencyDistribution {
         self.buckets.write()[bucket_idx] += 1;
     }
 
-    /// Get distribution as labeled buckets
+    /// Calculate percentile from sorted samples
+    fn percentile(sorted_samples: &[f64], p: f64) -> f64 {
+        if sorted_samples.is_empty() {
+            return 0.0;
+        }
+        let idx = ((sorted_samples.len() as f64 - 1.0) * p / 100.0).round() as usize;
+        sorted_samples[idx.min(sorted_samples.len() - 1)]
+    }
+
+    /// Get distribution as labeled buckets with percentiles
     pub fn distribution(&self) -> LatencyDistributionSnapshot {
         let buckets = *self.buckets.read();
         let total: u64 = buckets.iter().sum();
+
+        // Calculate percentiles from samples
+        let (p50, p95, p99, max_latency, avg) = {
+            let samples = self.samples.read();
+            if samples.is_empty() {
+                (0.0, 0.0, 0.0, 0.0, 0.0)
+            } else {
+                let mut sorted: Vec<f64> = samples.clone();
+                sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let sum: f64 = sorted.iter().sum();
+                let avg = sum / sorted.len() as f64;
+                let max = sorted.last().copied().unwrap_or(0.0);
+                (
+                    Self::percentile(&sorted, 50.0),
+                    Self::percentile(&sorted, 95.0),
+                    Self::percentile(&sorted, 99.0),
+                    max,
+                    avg,
+                )
+            }
+        };
 
         LatencyDistributionSnapshot {
             buckets: vec![
@@ -334,6 +381,11 @@ impl LatencyDistribution {
                 },
             ],
             total,
+            p50_ms: p50,
+            p95_ms: p95,
+            p99_ms: p99,
+            max_ms: max_latency,
+            avg_ms: avg,
         }
     }
 
@@ -348,6 +400,7 @@ impl LatencyDistribution {
     /// Clear all data
     pub fn clear(&self) {
         *self.buckets.write() = [0; 7];
+        self.samples.write().clear();
     }
 }
 
@@ -362,6 +415,16 @@ impl Default for LatencyDistribution {
 pub struct LatencyDistributionSnapshot {
     pub buckets: Vec<LatencyBucket>,
     pub total: u64,
+    /// 50th percentile latency in ms
+    pub p50_ms: f64,
+    /// 95th percentile latency in ms
+    pub p95_ms: f64,
+    /// 99th percentile latency in ms
+    pub p99_ms: f64,
+    /// Maximum latency in ms
+    pub max_ms: f64,
+    /// Average latency in ms
+    pub avg_ms: f64,
 }
 
 /// A single latency bucket

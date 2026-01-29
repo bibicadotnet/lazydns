@@ -106,6 +106,10 @@ pub struct QueryLogEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_time_ms: Option<u64>,
 
+    /// Response time in microseconds (for higher precision latency tracking)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_time_us: Option<u64>,
+
     /// Whether response was served from cache
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached: Option<bool>,
@@ -139,6 +143,7 @@ impl QueryLogEntry {
             rcode: None,
             answer_count: None,
             response_time_ms: None,
+            response_time_us: None,
             cached: None,
             upstream: None,
             answers: None,
@@ -161,6 +166,12 @@ impl QueryLogEntry {
         self.rcode = Some(rcode.to_string());
         self.answer_count = Some(answer_count);
         self.response_time_ms = Some(response_time_ms);
+        self
+    }
+
+    /// Set response time in microseconds for high precision latency tracking
+    pub fn with_response_time_us(mut self, response_time_us: u64) -> Self {
+        self.response_time_us = Some(response_time_us);
         self
     }
 

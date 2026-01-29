@@ -57,6 +57,7 @@ use crate::Result;
 use crate::dns::Message;
 use crate::server::{RequestContext, RequestHandler};
 use std::sync::Arc;
+use std::time::Instant;
 use tracing::{debug, warn};
 
 /// Request handler that uses the plugin registry
@@ -71,6 +72,9 @@ impl RequestHandler for PluginHandler {
         use crate::plugin::Context;
 
         let mut ctx = Context::new(req_ctx.message.clone());
+
+        // Record request start time for latency tracking
+        ctx.set_metadata("request_start_time", Instant::now());
 
         // Set client IP metadata if available from request context
         if let Some(client_info) = req_ctx.client_info {

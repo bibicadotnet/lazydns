@@ -970,7 +970,7 @@ impl Plugin for ForwardPlugin {
             _ => false,
         };
 
-        let plugin_tag = config.tag.clone().unwrap_or_else(|| "forward".to_string());
+        let _plugin_tag = config.tag.clone().unwrap_or_else(|| "forward".to_string());
 
         let plugin = ForwardPlugin {
             core,
@@ -983,10 +983,10 @@ impl Plugin for ForwardPlugin {
         #[cfg(feature = "web")]
         {
             for upstream in &plugin.core.upstreams {
-                let key = format!("{}:{}", plugin_tag, upstream.addr);
+                let key = format!("{}:{}", _plugin_tag, upstream.addr);
                 let address = upstream.addr.clone();
                 let tag = upstream.tag.clone();
-                let plugin_name = plugin_tag.clone();
+                let plugin_name = _plugin_tag.clone();
                 let health = Arc::clone(&upstream.health);
 
                 crate::web::upstream_registry::register_upstream(

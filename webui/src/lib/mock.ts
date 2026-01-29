@@ -248,46 +248,46 @@ export const mockAlerts: Alert[] = [
     {
         id: 'alert-001',
         severity: 'warning',
-        type: 'upstream_high_latency',
+        rule_name: 'upstream_high_latency',
         message: "Upstream 'quad9' response time > 100ms",
-        timestamp: new Date(Date.now() - 300000).toISOString(),
-        details: { upstream: 'quad9', latency_ms: 125 },
+        timestamp: Math.floor((Date.now() - 300000) / 1000),
+        context: { upstream: 'quad9', latency_ms: 125 },
         acknowledged: false
     },
     {
         id: 'alert-002',
         severity: 'info',
-        type: 'cache_cleared',
+        rule_name: 'cache_cleared',
         message: 'Cache was manually cleared by admin',
-        timestamp: new Date(Date.now() - 900000).toISOString(),
-        details: { cleared_entries: 12456 },
+        timestamp: Math.floor((Date.now() - 900000) / 1000),
+        context: { cleared_entries: 12456 },
         acknowledged: true
     },
     {
         id: 'alert-003',
         severity: 'warning',
-        type: 'high_block_rate',
+        rule_name: 'high_block_rate',
         message: 'Block rate exceeded 15% in last 5 minutes',
-        timestamp: new Date(Date.now() - 1200000).toISOString(),
-        details: { block_rate: 17.5, threshold: 15 },
+        timestamp: Math.floor((Date.now() - 1200000) / 1000),
+        context: { block_rate: 17.5, threshold: 15 },
         acknowledged: false
     },
     {
         id: 'alert-004',
         severity: 'critical',
-        type: 'upstream_down',
+        rule_name: 'upstream_down',
         message: "Upstream 'backup-dns' is unreachable",
-        timestamp: new Date(Date.now() - 1800000).toISOString(),
-        details: { upstream: 'backup-dns', consecutive_failures: 10 },
+        timestamp: Math.floor((Date.now() - 1800000) / 1000),
+        context: { upstream: 'backup-dns', consecutive_failures: 10 },
         acknowledged: true
     },
     {
         id: 'alert-005',
         severity: 'info',
-        type: 'config_reloaded',
+        rule_name: 'config_reloaded',
         message: 'Configuration reloaded successfully',
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        details: { path: '/etc/lazydns/config.yaml' },
+        timestamp: Math.floor((Date.now() - 3600000) / 1000),
+        context: { path: '/etc/lazydns/config.yaml' },
         acknowledged: true
     }
 ];

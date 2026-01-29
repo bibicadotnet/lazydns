@@ -109,11 +109,22 @@ impl MetricsCollector {
             self.top_clients.increment(client_ip.to_string());
         }
 
-        // Track latency if enabled
-        if self.config.track_latency
-            && let Some(latency_ms) = entry.response_time_ms
-        {
-            self.latency.add(latency_ms as f64);
+        // Track latency if enabled (use microsecond precision)
+        if self.config.track_latency {
+            // Prefer microsecond precision if available
+            let latency_ms = if let Some(us) = entry.response_time_us {
+                us as f64 / 1000.0
+            } else if let Some(ms) = entry.response_time_ms {
+                ms as f64
+            } else {
+                0.0
+            };
+            if latency_ms > 0.0
+                || entry.response_time_us.is_some()
+                || entry.response_time_ms.is_some()
+            {
+                self.latency.add(latency_ms);
+            }
         }
 
         // Track cache hits/misses

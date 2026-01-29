@@ -118,18 +118,24 @@ impl AuditPlugin {
         if self.include_response
             && let Some(response) = ctx.response()
         {
-            let response_time = start_time
-                .map(|t| t.elapsed().as_millis() as u64)
+            // Use microseconds for higher precision, then convert to fractional milliseconds
+            let response_time_us = start_time
+                .map(|t| t.elapsed().as_micros() as u64)
                 .unwrap_or(0);
+            // Convert to milliseconds (with 3 decimal places precision)
+            let response_time_ms = response_time_us / 1000;
 
             entry = entry.with_response(
                 &format!("{:?}", response.response_code()),
                 response.answers().len(),
-                response_time,
+                response_time_ms,
             );
 
-            // Check if cached
-            if let Some(cached) = ctx.get_metadata::<bool>("cached") {
+            // Store fractional milliseconds for latency tracking
+            entry = entry.with_response_time_us(response_time_us);
+
+            // Check if cached (cache plugin sets "response_from_cache" metadata)
+            if let Some(cached) = ctx.get_metadata::<bool>("response_from_cache") {
                 entry = entry.with_cached(*cached);
             }
 

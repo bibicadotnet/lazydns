@@ -2,7 +2,6 @@
 
 import { writable, derived } from 'svelte/store';
 import type { Alert, QueryLogEntry, SecurityEvent } from './types';
-import { mockAlerts, generateQueryLogs, generateSecurityEvents } from './mock';
 
 // Theme store
 export const darkMode = writable(true);
@@ -10,8 +9,8 @@ export const darkMode = writable(true);
 // Live data toggle
 export const isLiveMode = writable(true);
 
-// Alerts store
-export const alerts = writable<Alert[]>(mockAlerts);
+// Alerts store - initialized empty, populated from API
+export const alerts = writable<Alert[]>([]);
 
 // Unacknowledged alerts count
 export const unacknowledgedAlerts = derived(alerts, $alerts =>
@@ -19,10 +18,10 @@ export const unacknowledgedAlerts = derived(alerts, $alerts =>
 );
 
 // Query logs store (for live streaming)
-export const queryLogs = writable<QueryLogEntry[]>(generateQueryLogs(100));
+export const queryLogs = writable<QueryLogEntry[]>([]);
 
 // Security events store
-export const securityEvents = writable<SecurityEvent[]>(generateSecurityEvents(50));
+export const securityEvents = writable<SecurityEvent[]>([]);
 
 // Selected time window
 export const selectedTimeWindow = writable<'1m' | '5m' | '1h' | '24h'>('1h');
@@ -70,37 +69,20 @@ function createNotificationStore() {
 
 export const notifications = createNotificationStore();
 
-// Simulate live data updates
-let liveUpdateInterval: ReturnType<typeof setInterval> | null = null;
+// Live data updates - these should be driven by SSE streams from the API
+// The SSE connection logic is handled in the components that need real-time data
 
+// Start/stop functions kept for API compatibility but now do nothing
+// Real-time updates are handled via SSE streams in components
 export function startLiveUpdates() {
-    if (liveUpdateInterval) return;
-
-    liveUpdateInterval = setInterval(() => {
-        // Add new query log
-        const newLog = generateQueryLogs(1)[0];
-        queryLogs.update(logs => [newLog, ...logs.slice(0, 499)]);
-
-        // Occasionally add security event
-        if (Math.random() < 0.1) {
-            const newEvent = generateSecurityEvents(1)[0];
-            securityEvents.update(events => [newEvent, ...events.slice(0, 199)]);
-        }
-    }, 1000);
+    // No-op: Live updates now use SSE streams
 }
 
 export function stopLiveUpdates() {
-    if (liveUpdateInterval) {
-        clearInterval(liveUpdateInterval);
-        liveUpdateInterval = null;
-    }
+    // No-op: Live updates now use SSE streams
 }
 
 // Subscribe to live mode changes
-isLiveMode.subscribe(live => {
-    if (live) {
-        startLiveUpdates();
-    } else {
-        stopLiveUpdates();
-    }
+isLiveMode.subscribe(_live => {
+    // SSE streams are managed by individual components
 });

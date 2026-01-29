@@ -99,12 +99,12 @@ export interface UpstreamHealth {
 
 export interface Alert {
     id: string;
+    rule_name: string;
     severity: 'info' | 'warning' | 'critical';
-    type: string;
     message: string;
-    timestamp: string;
-    details: Record<string, unknown>;
+    timestamp: number;  // Unix seconds
     acknowledged: boolean;
+    context?: Record<string, string | number>;
 }
 
 export interface TimeSeriesPoint {
