@@ -36,6 +36,9 @@ pub mod state;
 pub mod upstream_registry;
 pub mod websocket;
 
+#[cfg(feature = "web-embed")]
+pub mod embedded;
+
 use crate::Result;
 use crate::plugins::audit::init_event_bus;
 use axum::{Router, routing::get};
@@ -140,13 +143,29 @@ impl WebServer {
             .nest("/ws", ws_router)
             .layer(cors);
 
-        // Static file serving (development mode)
+        // Static file serving
+        // Priority: static_dir config > embedded assets (web-embed feature)
         if let Some(ref static_dir) = self.config.static_dir {
-            info!(path = %static_dir, "Serving static files");
+            info!(path = %static_dir, "Serving static files from directory");
             router = router.fallback_service(
                 tower_http::services::ServeDir::new(static_dir)
                     .append_index_html_on_directories(true),
             );
+        } else {
+            #[cfg(feature = "web-embed")]
+            {
+                if embedded::has_embedded_assets() {
+                    info!("Serving embedded WebUI assets");
+                    router = router.merge(embedded::embedded_assets_router());
+                } else {
+                    info!("No embedded assets found, WebUI will not be served");
+                }
+            }
+
+            #[cfg(not(feature = "web-embed"))]
+            {
+                info!("No static_dir configured and web-embed feature not enabled");
+            }
         }
 
         router

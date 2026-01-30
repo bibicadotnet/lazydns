@@ -3,7 +3,7 @@ members = [".", "lazydns-macros"]
 
 [package]
 name = "lazydns"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A light and fast DNS server/forwarder implementation in Rust"
@@ -106,6 +106,9 @@ futures-util = { version = "0.3", features = ["sink"], optional = true }
 uuid = { version = "1.11", features = ["v4"], optional = true }
 async-stream = { version = "0.3", optional = true }
 
+# Embedded WebUI assets (optional)
+rust-embed = { version = "8", optional = true, features = ["mime-guess"] }
+
 # Optional TLS-enabled HTTP server for DoH production deployments.
 axum-server = { version = "0.8", optional = true, package = "axum-server", default-features = false, features = [
     "tls-rustls-no-provider",
@@ -174,6 +177,8 @@ web = [
     "uuid",
     "async-stream",
 ]
+# Enable embedded WebUI assets (compile webui/dist into binary)
+web-embed = ["web", "rust-embed"]
 
 [profile.release]
 opt-level = 3
