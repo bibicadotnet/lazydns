@@ -221,4 +221,179 @@ mod tests {
         assert_eq!(top1.get(&"b".to_string()), 20);
         assert_eq!(top1.get(&"c".to_string()), 30);
     }
+
+    #[test]
+    fn test_empty_top_n() {
+        let top = TopN::<String>::new(5);
+
+        assert!(top.is_empty());
+        assert_eq!(top.len(), 0);
+        assert_eq!(top.total(), 0);
+        assert!(top.top().is_empty());
+    }
+
+    #[test]
+    fn test_clear() {
+        let top = TopN::new(5);
+        top.add("a".to_string(), 10);
+        top.add("b".to_string(), 20);
+
+        assert_eq!(top.len(), 2);
+
+        top.clear();
+
+        assert!(top.is_empty());
+        assert_eq!(top.total(), 0);
+    }
+
+    #[test]
+    fn test_top_entries() {
+        let top = TopN::new(3);
+        top.add("first".to_string(), 100);
+        top.add("second".to_string(), 50);
+        top.add("third".to_string(), 25);
+
+        let entries = top.top_entries();
+        assert_eq!(entries.len(), 3);
+
+        assert_eq!(entries[0].rank, 1);
+        assert_eq!(entries[0].key, "first");
+        assert_eq!(entries[0].count, 100);
+
+        assert_eq!(entries[1].rank, 2);
+        assert_eq!(entries[1].key, "second");
+        assert_eq!(entries[1].count, 50);
+
+        assert_eq!(entries[2].rank, 3);
+        assert_eq!(entries[2].key, "third");
+        assert_eq!(entries[2].count, 25);
+    }
+
+    #[test]
+    fn test_top_n_respects_limit() {
+        let top = TopN::new(3);
+
+        for i in 0..10 {
+            top.add(format!("item{}", i), (i + 1) as u64);
+        }
+
+        let result = top.top();
+        assert_eq!(result.len(), 3);
+
+        // Should contain highest counts
+        assert!(result.iter().any(|(k, _)| k == "item9"));
+        assert!(result.iter().any(|(k, _)| k == "item8"));
+        assert!(result.iter().any(|(k, _)| k == "item7"));
+    }
+
+    #[test]
+    fn test_cumulative_add() {
+        let top = TopN::new(5);
+
+        top.add("item".to_string(), 5);
+        top.add("item".to_string(), 10);
+        top.add("item".to_string(), 15);
+
+        assert_eq!(top.get(&"item".to_string()), 30);
+    }
+
+    #[test]
+    fn test_single_item() {
+        let top = TopN::new(10);
+        top.increment("single".to_string());
+
+        assert_eq!(top.len(), 1);
+        assert_eq!(top.get(&"single".to_string()), 1);
+
+        let result = top.top();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "single");
+    }
+
+    #[test]
+    fn test_integer_keys() {
+        let top = TopN::new(3);
+        top.add(1, 100);
+        top.add(2, 200);
+        top.add(3, 50);
+
+        assert_eq!(top.get(&2), 200);
+        let result = top.top();
+        assert_eq!(result[0].0, 2);
+    }
+
+    #[test]
+    fn test_merge_empty() {
+        let top1 = TopN::new(5);
+        top1.add("a".to_string(), 10);
+
+        let top2 = TopN::<String>::new(5);
+
+        top1.merge(&top2);
+
+        assert_eq!(top1.get(&"a".to_string()), 10);
+        assert_eq!(top1.len(), 1);
+    }
+
+    #[test]
+    fn test_concurrent_access() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let top = Arc::new(TopN::new(10));
+        let mut handles = vec![];
+
+        for i in 0..10 {
+            let top_clone = Arc::clone(&top);
+            handles.push(thread::spawn(move || {
+                for j in 0..100 {
+                    top_clone.increment(format!("item{}", (i + j) % 20));
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        assert_eq!(top.total(), 1000);
+    }
+
+    #[test]
+    fn test_prune_keeps_high_counts() {
+        let top = TopN::with_max_items(3, 6);
+
+        // Add items with varying counts
+        top.add("low1".to_string(), 1);
+        top.add("low2".to_string(), 2);
+        top.add("low3".to_string(), 3);
+        top.add("high1".to_string(), 100);
+        top.add("high2".to_string(), 200);
+        top.add("high3".to_string(), 300);
+        top.add("low4".to_string(), 4);
+
+        // After pruning, high counts should be retained
+        let result = top.top();
+        assert!(result.iter().any(|(k, _)| k == "high3"));
+        assert!(result.iter().any(|(k, _)| k == "high2"));
+        assert!(result.iter().any(|(k, _)| k == "high1"));
+    }
+
+    #[test]
+    fn test_get_nonexistent() {
+        let top = TopN::new(5);
+        top.add("exists".to_string(), 10);
+
+        assert_eq!(top.get(&"exists".to_string()), 10);
+        assert_eq!(top.get(&"nonexistent".to_string()), 0);
+    }
+
+    #[test]
+    fn test_is_empty_after_add() {
+        let top = TopN::new(5);
+        assert!(top.is_empty());
+
+        top.increment("item".to_string());
+        assert!(!top.is_empty());
+    }
 }

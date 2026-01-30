@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
+import { defineConfig as defineVitestConfig } from 'vitest/config'
 
 export default defineConfig({
     plugins: [svelte()],
@@ -12,6 +13,12 @@ export default defineConfig({
                 changeOrigin: true
             }
         }
+    },
+    test: {
+        globals: true,
+        environment: 'jsdom',
+        include: ['src/**/*.{test,spec}.{js,ts}'],
+        setupFiles: ['./src/test/setup.ts']
     },
     build: {
         chunkSizeWarningLimit: 1500,

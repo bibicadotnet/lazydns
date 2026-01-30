@@ -477,4 +477,263 @@ mod tests {
         assert_eq!(snapshot.buckets[0].count, 1);
         assert_eq!(snapshot.buckets[6].count, 1);
     }
+
+    #[test]
+    fn test_time_series_empty() {
+        let ts = TimeSeries::new(Duration::from_secs(60), Duration::from_secs(1));
+
+        assert_eq!(ts.count(), 0);
+        assert_eq!(ts.sum(), 0.0);
+        assert_eq!(ts.rate(), 0.0);
+        assert!(ts.points().is_empty());
+    }
+
+    #[test]
+    fn test_time_series_stats() {
+        let ts = TimeSeries::new(Duration::from_secs(60), Duration::from_secs(1));
+        ts.add(10.0);
+        ts.add(20.0);
+        ts.add(30.0);
+
+        let stats = ts.stats();
+        assert_eq!(stats.count, 3);
+        assert_eq!(stats.sum, 60.0);
+        assert_eq!(stats.avg, 20.0);
+        assert_eq!(stats.min, 10.0);
+        assert_eq!(stats.max, 30.0);
+    }
+
+    #[test]
+    fn test_time_series_stats_empty() {
+        let ts = TimeSeries::new(Duration::from_secs(60), Duration::from_secs(1));
+
+        let stats = ts.stats();
+        assert_eq!(stats.count, 0);
+        assert_eq!(stats.sum, 0.0);
+        assert_eq!(stats.avg, 0.0);
+        assert_eq!(stats.min, 0.0);
+        assert_eq!(stats.max, 0.0);
+    }
+
+    #[test]
+    fn test_time_series_increment() {
+        let ts = TimeSeries::new(Duration::from_secs(60), Duration::from_secs(1));
+
+        for _ in 0..50 {
+            ts.increment();
+        }
+
+        assert_eq!(ts.count(), 50);
+        assert_eq!(ts.sum(), 50.0);
+    }
+
+    #[test]
+    fn test_time_series_clear() {
+        let ts = TimeSeries::new(Duration::from_secs(60), Duration::from_secs(1));
+        ts.add(10.0);
+        ts.add(20.0);
+
+        assert_eq!(ts.count(), 2);
+
+        ts.clear();
+
+        assert_eq!(ts.count(), 0);
+        assert_eq!(ts.sum(), 0.0);
+    }
+
+    #[test]
+    fn test_time_series_averages() {
+        let ts = TimeSeries::new(Duration::from_secs(60), Duration::from_secs(1));
+        ts.add(10.0);
+        ts.add(20.0);
+        ts.add(30.0);
+
+        let averages = ts.averages();
+        assert!(!averages.is_empty());
+        // All values in same bucket, average should be 20.0
+        assert_eq!(averages[0].value, 20.0);
+    }
+
+    #[test]
+    fn test_time_series_points() {
+        let ts = TimeSeries::new(Duration::from_secs(60), Duration::from_secs(1));
+        ts.add(5.0);
+        ts.add(15.0);
+
+        let points = ts.points();
+        assert!(!points.is_empty());
+        assert_eq!(points[0].value, 20.0); // Sum of values in bucket
+    }
+
+    #[test]
+    fn test_time_series_default_qps() {
+        let ts = TimeSeries::default_qps();
+        ts.increment();
+        assert_eq!(ts.count(), 1);
+    }
+
+    #[test]
+    fn test_time_series_hourly() {
+        let ts = TimeSeries::hourly();
+        ts.add(100.0);
+        assert_eq!(ts.sum(), 100.0);
+    }
+
+    #[test]
+    fn test_latency_distribution_percentiles() {
+        let dist = LatencyDistribution::new();
+
+        // Add samples with known distribution
+        for i in 1..=100 {
+            dist.add(i as f64);
+        }
+
+        let snapshot = dist.distribution();
+        assert_eq!(snapshot.total, 100);
+
+        // P50 should be around 50
+        assert!((snapshot.p50_ms - 50.0).abs() < 2.0);
+        // P95 should be around 95
+        assert!((snapshot.p95_ms - 95.0).abs() < 2.0);
+        // P99 should be around 99
+        assert!((snapshot.p99_ms - 99.0).abs() < 2.0);
+        // Max should be 100
+        assert_eq!(snapshot.max_ms, 100.0);
+        // Avg should be 50.5
+        assert!((snapshot.avg_ms - 50.5).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_latency_distribution_buckets() {
+        let dist = LatencyDistribution::new();
+
+        // Add values to specific buckets
+        dist.add(0.1); // <1ms
+        dist.add(0.5); // <1ms
+        dist.add(5.0); // 1-10ms
+        dist.add(15.0); // 10-50ms
+        dist.add(30.0); // 10-50ms
+        dist.add(75.0); // 50-100ms
+        dist.add(300.0); // 100-500ms
+        dist.add(600.0); // 500ms-1s
+        dist.add(1500.0); // >1s
+
+        let snapshot = dist.distribution();
+        assert_eq!(snapshot.buckets[0].count, 2); // <1ms
+        assert_eq!(snapshot.buckets[1].count, 1); // 1-10ms
+        assert_eq!(snapshot.buckets[2].count, 2); // 10-50ms
+        assert_eq!(snapshot.buckets[3].count, 1); // 50-100ms
+        assert_eq!(snapshot.buckets[4].count, 1); // 100-500ms
+        assert_eq!(snapshot.buckets[5].count, 1); // 500ms-1s
+        assert_eq!(snapshot.buckets[6].count, 1); // >1s
+    }
+
+    #[test]
+    fn test_latency_distribution_percentage() {
+        let dist = LatencyDistribution::new();
+
+        // 50 in first bucket, 50 in second bucket
+        for _ in 0..50 {
+            dist.add(0.5); // <1ms
+        }
+        for _ in 0..50 {
+            dist.add(5.0); // 1-10ms
+        }
+
+        let snapshot = dist.distribution();
+        assert!((snapshot.buckets[0].percentage - 50.0).abs() < 0.1);
+        assert!((snapshot.buckets[1].percentage - 50.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_latency_distribution_empty() {
+        let dist = LatencyDistribution::new();
+        let snapshot = dist.distribution();
+
+        assert_eq!(snapshot.total, 0);
+        assert_eq!(snapshot.p50_ms, 0.0);
+        assert_eq!(snapshot.p95_ms, 0.0);
+        assert_eq!(snapshot.p99_ms, 0.0);
+        assert_eq!(snapshot.max_ms, 0.0);
+        assert_eq!(snapshot.avg_ms, 0.0);
+    }
+
+    #[test]
+    fn test_latency_distribution_clear() {
+        let dist = LatencyDistribution::new();
+
+        for i in 0..100 {
+            dist.add((i + 1) as f64);
+        }
+
+        assert_eq!(dist.distribution().total, 100);
+
+        dist.clear();
+
+        let snapshot = dist.distribution();
+        assert_eq!(snapshot.total, 0);
+        assert!(snapshot.buckets.iter().all(|b| b.count == 0));
+    }
+
+    #[test]
+    fn test_latency_distribution_sample_pruning() {
+        let dist = LatencyDistribution::new();
+
+        // Add more than max_samples (10000)
+        for i in 0..15000 {
+            dist.add((i % 1000) as f64);
+        }
+
+        // Distribution should still work correctly
+        let snapshot = dist.distribution();
+        assert!(snapshot.total > 0);
+        assert!(snapshot.avg_ms > 0.0);
+    }
+
+    #[test]
+    fn test_bucket_operations() {
+        let mut bucket = Bucket::new(100);
+
+        assert_eq!(bucket.timestamp, 100);
+        assert_eq!(bucket.count, 0);
+        assert_eq!(bucket.sum, 0.0);
+        assert_eq!(bucket.average(), 0.0);
+
+        bucket.add(10.0);
+        bucket.add(20.0);
+        bucket.add(30.0);
+
+        assert_eq!(bucket.count, 3);
+        assert_eq!(bucket.sum, 60.0);
+        assert_eq!(bucket.average(), 20.0);
+        assert_eq!(bucket.min, 10.0);
+        assert_eq!(bucket.max, 30.0);
+    }
+
+    #[test]
+    fn test_time_series_concurrent_access() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let ts = Arc::new(TimeSeries::new(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+        ));
+        let mut handles = vec![];
+
+        for _ in 0..10 {
+            let ts_clone = Arc::clone(&ts);
+            handles.push(thread::spawn(move || {
+                for _ in 0..100 {
+                    ts_clone.increment();
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        assert_eq!(ts.count(), 1000);
+    }
 }
