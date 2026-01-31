@@ -66,6 +66,11 @@ pub struct QueryLogConfig {
     #[serde(default = "default_include_client_ip")]
     pub include_client_ip: bool,
 
+    /// Exclude DNS-SD discovery queries (default: true)
+    /// Filters out queries matching _dns-sd._udp patterns to reduce noise
+    #[serde(default = "default_exclude_dns_sd")]
+    pub exclude_dns_sd: bool,
+
     /// Log buffer size before flush (overrides global audit.buffer_size if set)
     #[serde(default)]
     pub buffer_size: Option<usize>,
@@ -99,6 +104,10 @@ fn default_include_client_ip() -> bool {
     true
 }
 
+fn default_exclude_dns_sd() -> bool {
+    true
+}
+
 fn default_buffer_size() -> usize {
     100
 }
@@ -119,6 +128,7 @@ impl Default for QueryLogConfig {
             sampling_rate: default_sampling_rate(),
             include_response: default_include_response(),
             include_client_ip: default_include_client_ip(),
+            exclude_dns_sd: default_exclude_dns_sd(),
             buffer_size: None,
             max_file_size: None,
             max_files: None,

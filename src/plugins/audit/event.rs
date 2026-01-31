@@ -218,8 +218,11 @@ impl QueryLogEntry {
             parts.push(format!("answers={}", count));
         }
 
+        // Display response time or dash if not available
         if let Some(ms) = self.response_time_ms {
             parts.push(format!("time={}ms", ms));
+        } else {
+            parts.push("time=-".to_string());
         }
 
         if let Some(cached) = self.cached {

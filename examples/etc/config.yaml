@@ -334,6 +334,12 @@ plugins:
         # Include client IP in log entries (default: true)
         include_client_ip: true
 
+        # Exclude DNS-SD discovery queries (default: true)
+        # Filters out queries matching _dns-sd._udp patterns to reduce noise
+        # DNS-SD queries are typically internal discovery queries (e.g., b._dns-sd._udp.*.in-addr.arpa)
+        # Set to false to log all queries including DNS-SD discovery
+        exclude_dns_sd: true
+
         # Optional: Override global buffer_size for this log only
         # buffer_size: 50
 

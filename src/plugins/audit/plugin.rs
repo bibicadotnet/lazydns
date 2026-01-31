@@ -29,6 +29,8 @@ pub struct AuditPlugin {
     include_response: bool,
     /// Whether to include client IP in query logs
     include_client_ip: bool,
+    /// Whether to exclude DNS-SD discovery queries
+    exclude_dns_sd: bool,
     /// Whether security event logging is enabled
     security_events_enabled: bool,
 }
@@ -49,6 +51,12 @@ impl AuditPlugin {
             .map(|q| q.include_client_ip)
             .unwrap_or(true);
 
+        let exclude_dns_sd = config
+            .query_log
+            .as_ref()
+            .map(|q| q.exclude_dns_sd)
+            .unwrap_or(true);
+
         let security_events_enabled = config
             .security_events
             .as_ref()
@@ -59,6 +67,7 @@ impl AuditPlugin {
             query_log_enabled,
             include_response,
             include_client_ip,
+            exclude_dns_sd,
             security_events_enabled,
         }
     }
@@ -71,6 +80,16 @@ impl AuditPlugin {
             "Initializing audit plugin"
         );
         AUDIT_LOGGER.init(config).await
+    }
+
+    /// Check if a domain is a DNS-SD discovery query
+    fn is_dns_sd_query(qname: &str) -> bool {
+        // DNS-SD discovery queries match _dns-sd._udp pattern
+        // Examples:
+        //   b._dns-sd._udp.0.8.100.10.in-addr.arpa
+        //   db._dns-sd._udp.0.8.100.10.in-addr.arpa
+        //   _services._dns-sd._udp.local
+        qname.contains("._dns-sd._udp")
     }
 
     /// Log a query entry
@@ -90,7 +109,15 @@ impl AuditPlugin {
             }
         };
 
-        tracing::debug!(qname = %question.qname(), "Audit plugin logging query");
+        let qname = question.qname().to_string();
+
+        // Skip DNS-SD discovery queries if configured
+        if self.exclude_dns_sd && Self::is_dns_sd_query(&qname) {
+            tracing::trace!(qname = %qname, "Skipping DNS-SD discovery query");
+            return;
+        }
+
+        tracing::debug!(qname = %qname, "Audit plugin logging query");
 
         // Get protocol from metadata
         let protocol = ctx
@@ -102,7 +129,7 @@ impl AuditPlugin {
         let mut entry = super::event::QueryLogEntry::new(
             request.id(),
             protocol,
-            question.qname().to_string(),
+            qname,
             format!("{:?}", question.qtype()),
             format!("{:?}", question.qclass()),
         );
@@ -170,6 +197,7 @@ impl Default for AuditPlugin {
             query_log_enabled: true,
             include_response: true,
             include_client_ip: true,
+            exclude_dns_sd: true,
             security_events_enabled: false,
         }
     }
@@ -230,8 +258,27 @@ mod tests {
         let plugin = AuditPlugin::default();
         assert!(plugin.query_log_enabled);
         assert!(plugin.include_response);
+        assert!(plugin.exclude_dns_sd);
         assert!(!plugin.security_events_enabled);
         assert_eq!(plugin.name(), "audit");
+    }
+
+    #[test]
+    fn test_dns_sd_query_detection() {
+        // Test various DNS-SD query patterns
+        assert!(AuditPlugin::is_dns_sd_query(
+            "b._dns-sd._udp.0.8.100.10.in-addr.arpa"
+        ));
+        assert!(AuditPlugin::is_dns_sd_query(
+            "db._dns-sd._udp.0.8.100.10.in-addr.arpa"
+        ));
+        assert!(AuditPlugin::is_dns_sd_query("_services._dns-sd._udp.local"));
+        assert!(AuditPlugin::is_dns_sd_query("r._dns-sd._udp.example.com"));
+
+        // Test non-DNS-SD queries
+        assert!(!AuditPlugin::is_dns_sd_query("example.com"));
+        assert!(!AuditPlugin::is_dns_sd_query("www.example.com"));
+        assert!(!AuditPlugin::is_dns_sd_query("_tcp.example.com"));
     }
 
     #[test]
@@ -309,6 +356,7 @@ mod tests {
             include_response: true,
             security_events_enabled: false,
             include_client_ip: true,
+            exclude_dns_sd: true,
         };
 
         let mut request = Message::new();
