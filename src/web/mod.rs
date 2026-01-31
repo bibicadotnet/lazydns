@@ -52,6 +52,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
 // Re-export upstream registry for easy access
@@ -135,8 +136,13 @@ impl WebServer {
                 .allow_headers(Any)
         };
 
+        // Request tracing/logging layer for debugging
+        let trace_layer = TraceLayer::new_for_http();
+
         // API routes
         let api_router = Router::new()
+            // Health check endpoint
+            .route("/health", get(routes::dashboard::overview))
             // Dashboard
             .route("/dashboard/overview", get(routes::dashboard::overview))
             .route("/alerts/recent", get(routes::dashboard::recent_alerts))
@@ -178,21 +184,24 @@ impl WebServer {
             .route("/admin/alerts/clear", post(routes::admin::clear_alerts))
             // Log export
             .route("/admin/logs/export", post(routes::admin::export_logs))
+            .layer(trace_layer.clone())
             .with_state(state.clone());
 
         // WebSocket routes
         let ws_router = Router::new()
             .route("/metrics", get(websocket::handler::metrics_ws))
+            .layer(trace_layer.clone())
             .with_state(state.clone());
 
         // Main router
         let mut router = Router::new()
             .nest("/api", api_router)
             .nest("/ws", ws_router)
-            .layer(cors);
+            .layer(cors)
+            .layer(trace_layer);
 
         // Static file serving
-        // Priority: static_dir config > embedded assets (web-embed feature)
+        // Priority: static_dir config > embedded assets (web-embed feature) > root handler
         if let Some(ref static_dir) = self.config.static_dir {
             info!(path = %static_dir, "Serving static files from directory");
             router = router.fallback_service(
@@ -207,12 +216,16 @@ impl WebServer {
                     router = router.merge(embedded::embedded_assets_router());
                 } else {
                     info!("No embedded assets found, WebUI will not be served");
+                    // Add root handler only if no embedded assets
+                    router = router.route("/", get(root_handler));
                 }
             }
 
             #[cfg(not(feature = "web-embed"))]
             {
                 info!("No static_dir configured and web-embed feature not enabled");
+                // Add root handler when web-embed is not available
+                router = router.route("/", get(root_handler));
             }
         }
 
@@ -264,4 +277,89 @@ impl WebServer {
     pub fn state(&self) -> Arc<WebState> {
         Arc::clone(&self.state)
     }
+}
+
+/// Root handler - returns a simple info page or redirects to dashboard
+async fn root_handler() -> axum::response::Html<&'static str> {
+    axum::response::Html(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LazyDNS WebUI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+        }
+        .info {
+            color: #666;
+            margin: 20px 0;
+        }
+        .links {
+            margin: 20px 0;
+        }
+        a {
+            display: inline-block;
+            padding: 10px 15px;
+            margin: 5px 0;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        a:hover {
+            background: #0056b3;
+        }
+        .divider {
+            border-top: 1px solid #eee;
+            margin: 20px 0;
+        }
+        .status {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 LazyDNS WebUI</h1>
+        <div class="status">✓ Server is running</div>
+        <p class="info">A light and fast DNS server implementation in Rust</p>
+        
+        <div class="divider"></div>
+        
+        <h3>API Endpoints:</h3>
+        <div class="links">
+            <a href="/api/dashboard/overview">Dashboard Overview</a>
+            <a href="/api/admin/server/info">Server Info</a>
+            <a href="/api/admin/cache/stats">Cache Stats</a>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <p style="color: #999; font-size: 12px;">
+            For detailed API documentation, see the REST API at /api/...
+        </p>
+    </div>
+</body>
+</html>"#,
+    )
 }

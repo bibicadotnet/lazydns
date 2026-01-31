@@ -26,6 +26,7 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
+use tracing::{debug, warn};
 
 #[cfg(all(feature = "web-embed", webui_dist))]
 use rust_embed::Embed;
@@ -83,19 +84,27 @@ async fn serve_index() -> impl IntoResponse {
 
 /// Helper function to serve an embedded file
 fn serve_embedded_file(path: &str) -> Response<Body> {
+    debug!("Attempting to serve embedded file: {}", path);
+
     // Try to get the file from embedded assets
     match assets_get(path) {
-        Some((data, mime_type)) => Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, mime_type)
-            .header(header::CACHE_CONTROL, cache_control_header(path))
-            .body(Body::from(data))
-            .unwrap(),
+        Some((data, mime_type)) => {
+            debug!("Found embedded file: {} ({})", path, mime_type);
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, mime_type)
+                .header(header::CACHE_CONTROL, cache_control_header(path))
+                .body(Body::from(data))
+                .unwrap()
+        }
         None => {
+            debug!("File not found in embedded assets: {}", path);
+
             // For SPA routing, serve index.html for non-asset paths
             if (!path.contains('.') || path.ends_with(".html"))
                 && let Some((data, _mime)) = assets_get("index.html")
             {
+                debug!("Serving index.html for SPA route: {}", path);
                 return Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
@@ -105,6 +114,7 @@ fn serve_embedded_file(path: &str) -> Response<Body> {
             }
 
             // Return 404 for truly missing files
+            warn!("Embedded asset not found: {}", path);
             Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header(header::CONTENT_TYPE, "text/plain")
@@ -160,6 +170,20 @@ fn cache_control_header(path: &str) -> &'static str {
 ///     .merge(embedded_assets_router());
 /// ```
 pub fn embedded_assets_router() -> Router {
+    // Debug: log all embedded assets on startup
+    let assets = list_assets();
+    if !assets.is_empty() {
+        debug!("Embedded assets available (total: {})", assets.len());
+        for asset in assets.iter().take(10) {
+            debug!("  - {}", asset);
+        }
+        if assets.len() > 10 {
+            debug!("  ... and {} more", assets.len() - 10);
+        }
+    } else {
+        warn!("No embedded assets found!");
+    }
+
     Router::new()
         .route("/", get(serve_index))
         .route("/{*path}", get(serve_asset))
