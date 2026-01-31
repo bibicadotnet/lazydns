@@ -3,7 +3,7 @@ members = [".", "lazydns-macros"]
 
 [package]
 name = "lazydns"
-version = "0.3.5"
+version = "0.3.6"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A light and fast DNS server/forwarder implementation in Rust"
@@ -147,7 +147,6 @@ full = [
     "doq",
     "admin",
     "metrics",
-    "web",
     "web-embed",
 ]
 # Enable cron expression parsing for cron plugin

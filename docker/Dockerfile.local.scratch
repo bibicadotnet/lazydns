@@ -45,6 +45,7 @@ EXPOSE 853/tcp
 EXPOSE 784/tcp
 EXPOSE 8000/tcp
 EXPOSE 8001/tcp
+EXPOSE 8002/tcp
 
 # Run the static binary directly in scratch. If you need an ENTRYPOINT script (e.g. to start crond),
 # use an alpine-based image instead of scratch.

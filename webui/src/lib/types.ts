@@ -108,7 +108,7 @@ export interface Alert {
 }
 
 export interface TimeSeriesPoint {
-    timestamp: string;
+    timestamp: number;  // Seconds since collection start (relative time)
     value: number;
 }
 

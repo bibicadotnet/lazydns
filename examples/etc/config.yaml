@@ -44,8 +44,8 @@ metrics:
 web:
   # Enable WebUI dashboard for real-time monitoring
   enabled: true
-  # Listen address (default: 127.0.0.1:8080)
-  listen: "0.0.0.0:8080"
+  # Listen address (default: 127.0.0.1:8002)
+  listen: "0.0.0.0:8002"
   # Path to static files directory (WebUI frontend)
   # Comment out or remove to use embedded assets when compiled with web-embed feature
   # static_dir: "../../webui/dist"
@@ -303,6 +303,12 @@ plugins:
       # Enable audit logging globally (default: false)
       enabled: true
 
+      # Enable writing logs to filesystem (default: true)
+      # When false: only event bus publishing is active (WebUI displays real-time data)
+      # When true: both filesystem writes AND event bus publishing are active
+      # Note: Disabling file writes does NOT affect WebUI audit display (event bus is independent)
+      log_to_file: false
+
       # Global log buffer size before flush (applies to both logs, default: 100)
       # Flush to disk after this many entries (trade-off between memory and I/O)
       buffer_size: 100
@@ -340,6 +346,9 @@ plugins:
         # Set to false to log all queries including DNS-SD discovery
         exclude_dns_sd: true
 
+        # Optional: Override global log_to_file setting for this log only
+        # log_to_file: true
+
         # Optional: Override global buffer_size for this log only
         # buffer_size: 50
 
@@ -368,6 +377,9 @@ plugins:
 
         # Include full query details in security event logs (default: true)
         include_query_details: true
+
+        # Optional: Override global log_to_file setting for this log only
+        # log_to_file: true
 
         # Optional: Override global buffer_size for security events only
         # buffer_size: 50

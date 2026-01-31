@@ -93,6 +93,19 @@ impl AuditLogger {
     ) -> crate::Result<()> {
         debug!("Initializing query log with path: {}", config.path);
 
+        // Check if file writing is enabled (can override global setting)
+        let log_to_file = config.log_to_file.unwrap_or(audit_config.log_to_file);
+        if !log_to_file {
+            debug!("Query log file writing disabled, only event bus publishing active");
+            info!(
+                path = %config.path,
+                sampling_rate = config.sampling_rate,
+                format = %config.format,
+                "Query logging initialized (event bus only, file writing disabled)"
+            );
+            return Ok(());
+        }
+
         // Create parent directories if needed
         if let Some(parent) = Path::new(&config.path).parent()
             && !parent.exists()
@@ -164,6 +177,30 @@ impl AuditLogger {
             return Ok(());
         }
 
+        // Check if file writing is enabled (can override global setting)
+        let log_to_file = config.log_to_file.unwrap_or(audit_config.log_to_file);
+
+        // Parse enabled events
+        let mut enabled = HashSet::new();
+        for event_str in &config.events {
+            if let Some(event_type) = SecurityEventType::parse(event_str) {
+                enabled.insert(event_type);
+            } else {
+                warn!(event = %event_str, "Unknown security event type");
+            }
+        }
+        *self.enabled_events.write().await = enabled;
+
+        if !log_to_file {
+            debug!("Security event file writing disabled, only event bus publishing active");
+            info!(
+                path = %config.path,
+                events = ?config.events,
+                "Security event logging initialized (event bus only, file writing disabled)"
+            );
+            return Ok(());
+        }
+
         // Create parent directories if needed
         if let Some(parent) = Path::new(&config.path).parent()
             && !parent.exists()
@@ -176,17 +213,6 @@ impl AuditLogger {
             })?;
             debug!("Created security log directory: {:?}", parent);
         }
-
-        // Parse enabled events
-        let mut enabled = HashSet::new();
-        for event_str in &config.events {
-            if let Some(event_type) = SecurityEventType::parse(event_str) {
-                enabled.insert(event_type);
-            } else {
-                warn!(event = %event_str, "Unknown security event type");
-            }
-        }
-        *self.enabled_events.write().await = enabled;
 
         // Create bounded channel (capacity=100) to prevent memory exhaustion
         let (tx, rx) = mpsc::channel(100);
@@ -716,10 +742,12 @@ mod tests {
         let logger = AuditLogger::new();
         let config = AuditConfig {
             enabled: true,
+            log_to_file: true,
             buffer_size: 100,
             max_file_size: 100 * 1024 * 1024,
             max_files: 10,
             query_log: Some(QueryLogConfig {
+                log_to_file: None,
                 path: path.to_string_lossy().to_string(),
                 format: "json".into(),
                 sampling_rate: 1.0,
@@ -752,12 +780,14 @@ mod tests {
         let logger = AuditLogger::new();
         let config = AuditConfig {
             enabled: true,
+            log_to_file: true,
             buffer_size: 100,
             max_file_size: 100 * 1024 * 1024,
             max_files: 10,
             query_log: None,
             security_events: Some(SecurityEventConfig {
                 enabled: true,
+                log_to_file: None,
                 path: path.to_string_lossy().to_string(),
                 events: vec![], // all events
                 ..Default::default()
@@ -793,12 +823,14 @@ mod tests {
         let logger = AuditLogger::new();
         let config = AuditConfig {
             enabled: true,
+            log_to_file: true,
             buffer_size: 100,
             max_file_size: 100 * 1024 * 1024,
             max_files: 10,
             query_log: None,
             security_events: Some(SecurityEventConfig {
                 enabled: true,
+                log_to_file: None,
                 path: path.to_string_lossy().to_string(),
                 events: vec!["rate_limit_exceeded".into()], // only this event
                 ..Default::default()

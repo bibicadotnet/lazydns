@@ -45,12 +45,11 @@ export const mockCacheStats: CacheStats = {
 
 // QPS Time Series (last hour, 1-minute intervals)
 export function generateQpsTimeSeries(points: number = 60): TimeSeriesPoint[] {
-    const now = Date.now();
     const data: TimeSeriesPoint[] = [];
     let baseQps = 200;
 
-    for (let i = points - 1; i >= 0; i--) {
-        const timestamp = new Date(now - i * 60000).toISOString();
+    for (let i = 0; i < points; i++) {
+        const timestamp = i * 60; // Relative seconds
         // Add some realistic variation
         const variation = Math.sin(i / 10) * 50 + Math.random() * 30 - 15;
         const value = Math.max(0, baseQps + variation);

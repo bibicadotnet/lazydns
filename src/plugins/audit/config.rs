@@ -15,6 +15,11 @@ pub struct AuditConfig {
     #[serde(default)]
     pub enabled: bool,
 
+    /// Enable writing logs to filesystem (default: true)
+    /// When false, only event bus publishing is active for real-time WebUI streaming
+    #[serde(default = "default_log_to_file")]
+    pub log_to_file: bool,
+
     /// Global log buffer size before flush (applies to both logs, default: 100)
     #[serde(default = "default_buffer_size")]
     pub buffer_size: usize,
@@ -45,6 +50,10 @@ pub struct AuditConfig {
 /// Buffer and rotation settings inherit from AuditConfig if not specified.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QueryLogConfig {
+    /// Enable writing query logs to filesystem (overrides global setting if specified)
+    #[serde(default)]
+    pub log_to_file: Option<bool>,
+
     /// Path to query log file
     #[serde(default = "default_query_log_path")]
     pub path: String,
@@ -108,6 +117,10 @@ fn default_exclude_dns_sd() -> bool {
     true
 }
 
+fn default_log_to_file() -> bool {
+    true
+}
+
 fn default_buffer_size() -> usize {
     100
 }
@@ -123,6 +136,7 @@ fn default_max_files() -> u32 {
 impl Default for QueryLogConfig {
     fn default() -> Self {
         Self {
+            log_to_file: None,
             path: default_query_log_path(),
             format: default_format(),
             sampling_rate: default_sampling_rate(),
@@ -145,6 +159,10 @@ pub struct SecurityEventConfig {
     /// Enable security event logging (default: true when present)
     #[serde(default = "default_security_enabled")]
     pub enabled: bool,
+
+    /// Enable writing security events to filesystem (overrides global setting if specified)
+    #[serde(default)]
+    pub log_to_file: Option<bool>,
 
     /// Path to security event log file
     #[serde(default = "default_security_log_path")]
@@ -187,6 +205,7 @@ impl Default for SecurityEventConfig {
     fn default() -> Self {
         Self {
             enabled: default_security_enabled(),
+            log_to_file: None,
             path: default_security_log_path(),
             events: Vec::new(), // empty = all events
             include_query_details: default_include_query_details(),

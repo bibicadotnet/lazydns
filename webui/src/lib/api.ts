@@ -59,7 +59,7 @@ export interface TopClientsResponse {
 
 export interface QpsHistoryResponse {
     points: Array<{
-        timestamp: string;
+        timestamp: number;  // Relative seconds since collection start
         value: number;
     }>;
     current_qps: number;

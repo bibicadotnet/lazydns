@@ -55,9 +55,9 @@ doc:
 
 # Build for a single PLATFORM (e.g. PLATFORM=linux/arm/v7)
 build-for:
-	@PLATFORM=$(PLATFORM); EXTRA=$(EXTRA); \
+	@PLATFORM='$(PLATFORM)'; EXTRA='$(EXTRA)'; \
 	if [ -z "$$PLATFORM" ]; then echo "Usage: make build-for PLATFORM=linux/arm/v7 [EXTRA='--no-default-features --features \"log,cron\"']"; exit 1; fi; \
-	sh scripts/cross_build.sh "$$PLATFORM" "$$EXTRA"
+	sh scripts/cross_build.sh "$$PLATFORM" $$EXTRA
 
 build-all:
 	$(MAKE) build-for PLATFORM=linux/amd64; \
@@ -75,7 +75,7 @@ build-all:
 # or
 # make local PLATFORM=linux/amd64 EXTRA='--features full'	
 PLATFORM ?= linux/arm/v7
-EXTRA ?= "--no-default-features --features log,cron"
+EXTRA ?= --no-default-features --features log,cron
 local: build-for
 	@echo "Building Docker image for $(PLATFORM)"
 	@echo "Using EXTRA features: $(EXTRA)"; \
