@@ -40,11 +40,17 @@ pub mod websocket;
 pub mod embedded;
 
 use crate::Result;
+use crate::config::Config;
+use crate::plugin::Registry;
 use crate::plugins::audit::init_event_bus;
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use config::WebConfig;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 
@@ -78,6 +84,31 @@ impl WebServer {
         let state = Arc::new(WebState::new(&config).await?);
 
         Ok(Self { config, state })
+    }
+
+    /// Create a new WebUI server with admin capabilities
+    pub async fn with_admin(
+        config: WebConfig,
+        registry: Arc<Registry>,
+        global_config: Arc<RwLock<Config>>,
+    ) -> Result<Self> {
+        // Validate configuration
+        config.validate().map_err(crate::Error::Config)?;
+
+        // Initialize event bus if not already initialized
+        if crate::plugins::audit::event_bus().is_none() {
+            init_event_bus(config.event_bus_capacity);
+        }
+
+        // Create shared state with admin capabilities
+        let mut state = WebState::new(&config).await?;
+        state.set_registry(registry);
+        state.set_config_arc(global_config);
+
+        Ok(Self {
+            config,
+            state: Arc::new(state),
+        })
     }
 
     /// Build the router with all routes
@@ -130,6 +161,23 @@ impl WebServer {
                 "/audit/security-events/stream",
                 get(routes::audit::security_events_stream),
             )
+            // Admin routes
+            .route("/admin/cache/clear", post(routes::admin::clear_cache))
+            .route("/admin/cache/stats", get(routes::admin::cache_stats))
+            .route("/admin/config/reload", post(routes::admin::reload_config))
+            .route("/admin/server/info", get(routes::admin::server_info))
+            // Alert management
+            .route(
+                "/admin/alerts/acknowledge-all",
+                post(routes::admin::acknowledge_all_alerts),
+            )
+            .route(
+                "/admin/alerts/acknowledge/{id}",
+                post(routes::admin::acknowledge_alert),
+            )
+            .route("/admin/alerts/clear", post(routes::admin::clear_alerts))
+            // Log export
+            .route("/admin/logs/export", post(routes::admin::export_logs))
             .with_state(state.clone());
 
         // WebSocket routes

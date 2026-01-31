@@ -163,7 +163,7 @@
               ? 'text-green-400'
               : 'text-green-600'} mt-1"
           >
-            {latencyPercentiles.p50}ms
+            {latencyPercentiles.p50.toFixed(1)}ms
           </div>
         </div>
         <div
@@ -190,7 +190,7 @@
               ? 'text-yellow-400'
               : 'text-yellow-600'} mt-1"
           >
-            {latencyPercentiles.p95}ms
+            {latencyPercentiles.p95.toFixed(1)}ms
           </div>
         </div>
         <div
@@ -218,7 +218,7 @@
               ? 'text-orange-400'
               : 'text-orange-600'} mt-1"
           >
-            {latencyPercentiles.p99}ms
+            {latencyPercentiles.p99.toFixed(1)}ms
           </div>
         </div>
         <div
@@ -246,7 +246,7 @@
               ? 'text-red-400'
               : 'text-red-600'} mt-1"
           >
-            {latencyPercentiles.max}ms
+            {latencyPercentiles.max.toFixed(1)}ms
           </div>
         </div>
         <div

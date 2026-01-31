@@ -1,12 +1,20 @@
 <script lang="ts">
+  import { createEventDispatcher } from "svelte";
   import type { Alert } from "../lib/types";
   import { getSeverityColor, formatTimeAgo } from "../lib/utils";
   import { darkMode } from "../lib/stores";
 
   export let alerts: Alert[];
   export let limit: number = 5;
+  export let showAcknowledgeButton: boolean = false;
+
+  const dispatch = createEventDispatcher<{ acknowledge: string }>();
 
   $: displayedAlerts = alerts.slice(0, limit);
+
+  function handleAcknowledge(id: string) {
+    dispatch("acknowledge", id);
+  }
 </script>
 
 <div class="card h-full flex flex-col">
@@ -109,6 +117,16 @@
                   d="M5 13l4 4L19 7"
                 />
               </svg>
+            {:else if showAcknowledgeButton}
+              <button
+                on:click|stopPropagation={() => handleAcknowledge(alert.id)}
+                class="text-xs px-2 py-1 rounded transition-colors flex-shrink-0 {$darkMode
+                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}"
+                title="Acknowledge alert"
+              >
+                Ack
+              </button>
             {/if}
           </div>
         </div>

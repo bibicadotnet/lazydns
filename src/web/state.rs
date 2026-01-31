@@ -1,9 +1,12 @@
 //! Shared state for the WebUI server
 
 use crate::Result;
+use crate::config::Config;
+use crate::plugin::Registry;
 use crate::web::config::WebConfig;
 use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::RwLock;
 
 use super::alerts::AlertEngine;
 use super::metrics::MetricsCollector;
@@ -18,6 +21,10 @@ pub struct WebState {
     alert_engine: Arc<AlertEngine>,
     /// Server start time
     start_time: Instant,
+    /// Plugin registry (optional, for admin operations)
+    registry: Option<Arc<Registry>>,
+    /// Global config (optional, for config reload)
+    config_arc: Option<Arc<RwLock<Config>>>,
 }
 
 impl WebState {
@@ -31,7 +38,29 @@ impl WebState {
             metrics_collector,
             alert_engine,
             start_time: Instant::now(),
+            registry: None,
+            config_arc: None,
         })
+    }
+
+    /// Set the plugin registry for admin operations
+    pub fn set_registry(&mut self, registry: Arc<Registry>) {
+        self.registry = Some(registry);
+    }
+
+    /// Set the global config for reload operations
+    pub fn set_config_arc(&mut self, config: Arc<RwLock<Config>>) {
+        self.config_arc = Some(config);
+    }
+
+    /// Get the plugin registry
+    pub fn registry(&self) -> Option<Arc<Registry>> {
+        self.registry.clone()
+    }
+
+    /// Get the global config
+    pub fn config_arc(&self) -> Option<Arc<RwLock<Config>>> {
+        self.config_arc.clone()
     }
 
     /// Get the configuration

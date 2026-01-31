@@ -36,42 +36,47 @@
 
   async function fetchData() {
     try {
-      const [overviewRes, alertsRes, latencyRes] = await Promise.all([
-        api.getDashboardOverview(),
-        api.getRecentAlerts().catch(() => ({ alerts: [], total: 0 })),
-        api.getLatencyDistribution().catch(() => ({
-          distribution: {
-            buckets: [],
-            total: 0,
-            p50_ms: 0,
-            p95_ms: 0,
-            p99_ms: 0,
-            max_ms: 0,
-            avg_ms: 0,
-          },
-        })),
-      ]);
+      const [overviewRes, alertsRes, latencyRes, cacheStatsRes] =
+        await Promise.all([
+          api.getDashboardOverview(),
+          api.getRecentAlerts().catch(() => ({ alerts: [], total: 0 })),
+          api.getLatencyDistribution().catch(() => ({
+            distribution: {
+              buckets: [],
+              total: 0,
+              p50_ms: 0,
+              p95_ms: 0,
+              p99_ms: 0,
+              max_ms: 0,
+              avg_ms: 0,
+            },
+          })),
+          api.getCacheStats().catch(() => ({
+            size: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            expirations: 0,
+            hit_rate: 0,
+          })),
+        ]);
 
       serverInfo = {
         version: "0.3.1",
         status: overviewRes.status,
         uptime_secs: overviewRes.uptime_secs,
         total_queries: overviewRes.metrics.total_queries,
-        cache_size:
-          overviewRes.metrics.cache_hits + overviewRes.metrics.cache_misses,
+        cache_size: cacheStatsRes.size,
       };
 
-      // Calculate cache stats from overview metrics
-      const hits = overviewRes.metrics.cache_hits;
-      const misses = overviewRes.metrics.cache_misses;
-      const total = hits + misses;
+      // Use actual cache stats from admin API
       cacheStats = {
-        size: total,
-        hit_rate: overviewRes.metrics.cache_hit_rate,
-        hits: hits,
-        misses: misses,
-        evictions: 0, // Not available from current API
-        expirations: 0, // Not available from current API
+        size: cacheStatsRes.size,
+        hit_rate: cacheStatsRes.hit_rate,
+        hits: cacheStatsRes.hits,
+        misses: cacheStatsRes.misses,
+        evictions: cacheStatsRes.evictions,
+        expirations: cacheStatsRes.expirations,
       };
 
       // Latency stats
@@ -92,15 +97,23 @@
   async function reloadConfig() {
     isReloading = true;
 
-    // TODO: Call actual API when available
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    notifications.add({
-      type: "success",
-      message: "Configuration reloaded successfully",
-    });
-
-    isReloading = false;
+    try {
+      const result = await api.reloadConfig(configPath || undefined);
+      notifications.add({
+        type: "success",
+        message: result.message,
+      });
+      // Refresh data after reload
+      await fetchData();
+    } catch (e) {
+      notifications.add({
+        type: "error",
+        message:
+          e instanceof Error ? e.message : "Failed to reload configuration",
+      });
+    } finally {
+      isReloading = false;
+    }
   }
 
   async function clearCache() {
@@ -108,23 +121,102 @@
 
     isClearingCache = true;
 
-    // TODO: Call actual API when available
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    notifications.add({
-      type: "success",
-      message: `Cache cleared successfully`,
-    });
-
-    isClearingCache = false;
+    try {
+      const result = await api.clearCache();
+      notifications.add({
+        type: "success",
+        message: result.message,
+      });
+      // Refresh data after clearing
+      await fetchData();
+    } catch (e) {
+      notifications.add({
+        type: "error",
+        message: e instanceof Error ? e.message : "Failed to clear cache",
+      });
+    } finally {
+      isClearingCache = false;
+    }
   }
 
-  function acknowledgeAllAlerts() {
-    alerts = alerts.map((a) => ({ ...a, acknowledged: true }));
-    notifications.add({
-      type: "info",
-      message: "All alerts acknowledged",
-    });
+  async function acknowledgeAllAlerts() {
+    try {
+      await api.acknowledgeAllAlerts();
+      alerts = alerts.map((a) => ({ ...a, acknowledged: true }));
+      notifications.add({
+        type: "success",
+        message: "All alerts acknowledged",
+      });
+    } catch (e) {
+      notifications.add({
+        type: "error",
+        message:
+          e instanceof Error ? e.message : "Failed to acknowledge alerts",
+      });
+    }
+  }
+
+  async function acknowledgeAlert(id: string) {
+    try {
+      await api.acknowledgeAlert(id);
+      alerts = alerts.map((a) =>
+        a.id === id ? { ...a, acknowledged: true } : a,
+      );
+      notifications.add({
+        type: "success",
+        message: "Alert acknowledged",
+      });
+    } catch (e) {
+      notifications.add({
+        type: "error",
+        message: e instanceof Error ? e.message : "Failed to acknowledge alert",
+      });
+    }
+  }
+
+  async function clearAllAlerts() {
+    try {
+      await api.clearAlerts();
+      alerts = [];
+      notifications.add({
+        type: "success",
+        message: "All alerts cleared",
+      });
+    } catch (e) {
+      notifications.add({
+        type: "error",
+        message: e instanceof Error ? e.message : "Failed to clear alerts",
+      });
+    }
+  }
+
+  let isExportingLogs = false;
+
+  async function exportLogs(logType: string = "query", format: string = "csv") {
+    if (isExportingLogs) return;
+    isExportingLogs = true;
+    try {
+      const blob = await api.exportLogs(logType, format, 10000);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${logType}-logs-${new Date().toISOString().slice(0, 10)}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      notifications.add({
+        type: "success",
+        message: `Logs exported as ${format.toUpperCase()}`,
+      });
+    } catch (e) {
+      notifications.add({
+        type: "error",
+        message: e instanceof Error ? e.message : "Failed to export logs",
+      });
+    } finally {
+      isExportingLogs = false;
+    }
   }
 
   let refreshInterval: ReturnType<typeof setInterval>;
@@ -346,9 +438,11 @@
 
     <!-- Export Logs -->
     <button
+      on:click={() => exportLogs("alerts", "csv")}
+      disabled={isExportingLogs}
       class="card p-5 text-left {$darkMode
         ? 'hover:bg-gray-700/50'
-        : 'hover:bg-gray-50'} transition-colors group"
+        : 'hover:bg-gray-50'} transition-colors group disabled:opacity-50"
     >
       <div class="flex items-center gap-4">
         <div
@@ -374,10 +468,10 @@
           <div
             class="font-semibold {$darkMode ? 'text-white' : 'text-gray-900'}"
           >
-            Export Logs
+            Export Alerts
           </div>
           <div class="text-sm {$darkMode ? 'text-gray-400' : 'text-gray-700'}">
-            Download audit logs
+            Download Security Alerts
           </div>
         </div>
       </div>
@@ -638,7 +732,7 @@
             P50 Latency
           </div>
           <div class="text-2xl font-bold text-blue-500 mt-1">
-            {latencyStats.p50_ms.toFixed(2)}
+            {latencyStats.p50_ms.toFixed(1)}
           </div>
           <div
             class="text-xs {$darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1"
@@ -656,7 +750,7 @@
             P95 Latency
           </div>
           <div class="text-2xl font-bold text-green-500 mt-1">
-            {latencyStats.p95_ms.toFixed(2)}
+            {latencyStats.p95_ms.toFixed(1)}
           </div>
           <div
             class="text-xs {$darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1"
@@ -674,7 +768,7 @@
             P99 Latency
           </div>
           <div class="text-2xl font-bold text-yellow-500 mt-1">
-            {latencyStats.p99_ms.toFixed(2)}
+            {latencyStats.p99_ms.toFixed(1)}
           </div>
           <div
             class="text-xs {$darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1"
@@ -692,7 +786,7 @@
             Max Latency
           </div>
           <div class="text-2xl font-bold text-red-500 mt-1">
-            {latencyStats.max_ms.toFixed(2)}
+            {latencyStats.max_ms.toFixed(1)}
           </div>
           <div
             class="text-xs {$darkMode ? 'text-gray-500' : 'text-gray-500'} mt-1"
@@ -841,15 +935,25 @@
         </svg>
         All Alerts
       </h3>
-      <button
-        on:click={acknowledgeAllAlerts}
-        class="btn-secondary text-xs py-1"
-      >
-        Acknowledge All
-      </button>
+      <div class="flex gap-2">
+        <button on:click={clearAllAlerts} class="btn-secondary text-xs py-1">
+          Clear All
+        </button>
+        <button
+          on:click={acknowledgeAllAlerts}
+          class="btn-secondary text-xs py-1"
+        >
+          Acknowledge All
+        </button>
+      </div>
     </div>
     <div class="p-4">
-      <AlertsList {alerts} limit={20} />
+      <AlertsList
+        {alerts}
+        limit={20}
+        showAcknowledgeButton={true}
+        on:acknowledge={(e) => acknowledgeAlert(e.detail)}
+      />
     </div>
   </div>
 </div>

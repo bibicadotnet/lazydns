@@ -130,7 +130,7 @@ fn cache_control_header(path: &str) -> &'static str {
 pub fn embedded_assets_router() -> Router {
     Router::new()
         .route("/", get(serve_index))
-        .route("/*path", get(serve_asset))
+        .route("/{*path}", get(serve_asset))
 }
 
 /// Check if embedded assets are available

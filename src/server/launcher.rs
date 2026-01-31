@@ -902,8 +902,12 @@ impl ServerLauncher {
 
         let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
 
+        // Clone references for the spawned task
+        let registry = Arc::clone(&self.registry);
+        let global_config = Arc::clone(&config);
+
         tokio::spawn(async move {
-            match crate::WebServer::new(web_config).await {
+            match crate::WebServer::with_admin(web_config, registry, global_config).await {
                 Ok(server) => {
                     let _ = startup_tx.send(());
                     if let Err(e) = server.run().await {

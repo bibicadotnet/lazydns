@@ -102,6 +102,21 @@ class ApiClient {
         return response.json();
     }
 
+    private async post<T>(endpoint: string, body?: unknown): Promise<T> {
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({}));
+            throw new Error(errorBody.error || `API error: ${response.status} ${response.statusText}`);
+        }
+        return response.json();
+    }
+
     // Dashboard
     async getDashboardOverview(): Promise<DashboardOverviewResponse> {
         return this.fetch<DashboardOverviewResponse>('/dashboard/overview');
@@ -130,6 +145,61 @@ class ApiClient {
 
     async getLatencyDistribution(): Promise<LatencyResponse> {
         return this.fetch<LatencyResponse>('/metrics/latency');
+    }
+
+    // Admin operations
+    async clearCache(): Promise<{ success: boolean; message: string }> {
+        return this.post<{ success: boolean; message: string }>('/admin/cache/clear');
+    }
+
+    async reloadConfig(path?: string): Promise<{ success: boolean; message: string }> {
+        return this.post<{ success: boolean; message: string }>('/admin/config/reload', { path });
+    }
+
+    async getCacheStats(): Promise<{
+        size: number;
+        hits: number;
+        misses: number;
+        evictions: number;
+        expirations: number;
+        hit_rate: number;
+    }> {
+        return this.fetch('/admin/cache/stats');
+    }
+
+    async getServerInfo(): Promise<{
+        version: string;
+        uptime_secs: number;
+    }> {
+        return this.fetch('/admin/server/info');
+    }
+
+    // Alert management
+    async acknowledgeAllAlerts(): Promise<{ success: boolean; message: string }> {
+        return this.post<{ success: boolean; message: string }>('/admin/alerts/acknowledge-all');
+    }
+
+    async acknowledgeAlert(alertId: string): Promise<{ success: boolean; message: string }> {
+        return this.post<{ success: boolean; message: string }>(`/admin/alerts/acknowledge/${alertId}`);
+    }
+
+    async clearAlerts(): Promise<{ success: boolean; message: string }> {
+        return this.post<{ success: boolean; message: string }>('/admin/alerts/clear');
+    }
+
+    // Log export
+    async exportLogs(logType: string, format: string = 'json', limit: number = 1000): Promise<Blob> {
+        const response = await fetch(`${this.baseUrl}/admin/logs/export`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ log_type: logType, format, limit }),
+        });
+        if (!response.ok) {
+            throw new Error(`Export failed: ${response.status} ${response.statusText}`);
+        }
+        return response.blob();
     }
 
     // SSE endpoints for audit logs

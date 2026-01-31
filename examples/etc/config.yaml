@@ -47,8 +47,8 @@ web:
   # Listen address (default: 127.0.0.1:8080)
   listen: "0.0.0.0:8080"
   # Path to static files directory (WebUI frontend)
-  # Use absolute path or path relative to working directory
-  static_dir: "../../webui/dist"
+  # Comment out or remove to use embedded assets when compiled with web-embed feature
+  # static_dir: "../../webui/dist"
   # Event bus capacity for real-time streaming
   event_bus_capacity: 1024
   # Metrics collection configuration
@@ -65,6 +65,59 @@ web:
   # CORS configuration (for development)
   cors:
     allowed_origins: []  # Empty = allow all
+  alerts:
+    enabled: true
+    dedup_window_secs: 60
+    max_alerts: 100
+    rules:
+      # Alert when rate limiting triggers
+      - name: "Rate Limit Exceeded"
+        condition:
+          type: security_event
+          event_type: "rate_limit_exceeded"
+        severity: warning
+        message: "Rate limit exceeded for {client_ip}"
+      
+      # Alert when domain is blocked
+      - name: "Blocked Domain Query"
+        condition:
+          type: security_event
+          event_type: "blocked_domain_query"
+        severity: warning
+        message: "Query blocked for {domain} from {client_ip}"
+      
+      # Alert when upstream DNS fails
+      - name: "Upstream DNS Failure"
+        condition:
+          type: security_event
+          event_type: "upstream_failure"
+        severity: critical
+        message: "Upstream DNS server failed"
+      
+      # Alert when ACL denies access
+      - name: "ACL Denied"
+        condition:
+          type: security_event
+          event_type: "acl_denied"
+        severity: warning
+        message: "ACL denied query from {client_ip} for {domain}"
+      
+      # Alert when query is malformed
+      - name: "Malformed Query"
+        condition:
+          type: security_event
+          event_type: "malformed_query"
+        severity: info
+        message: "Malformed DNS query from {client_ip}"
+      
+      # Alert when query times out
+      - name: "Query Timeout"
+        condition:
+          type: security_event
+          event_type: "query_timeout"
+        severity: warning
+        message: "Query timeout for {domain}"
+    
 
 # ============================================================================
 # PLUGINS CONFIGURATION
@@ -299,11 +352,13 @@ plugins:
         path: log/lazydns/security.log
 
         # Events to track (empty list = log all events)
-        # Available events: rate_limit_exceeded, blocked_domain_query, upstream_failure
         events:
-          - rate_limit_exceeded
-          - blocked_domain_query
-          - upstream_failure
+          - rate_limit_exceeded       # Client exceeded query rate limit
+          - blocked_domain_query      # Query for a blocked domain
+          - upstream_failure          # Upstream DNS server failed
+          - acl_denied                # Query denied by ACL rules
+          - malformed_query           # Malformed DNS query
+          - query_timeout             # Query timeout occurred
 
         # Include full query details in security event logs (default: true)
         include_query_details: true
@@ -369,7 +424,7 @@ plugins:
   - tag: rate_limiter_default
     type: rate_limit
     args:
-      max_queries: 500
+      max_queries: 1000
       window_secs: 60
 
   # domain validator plugin

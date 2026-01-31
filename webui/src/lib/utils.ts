@@ -43,9 +43,21 @@ export function formatTimeAgo(timestamp: string | number | null): string {
     
     if (typeof timestamp === 'number') {
         // Unix seconds - convert to milliseconds
+        // Handle edge case where timestamp is 0 or very small
+        if (timestamp === 0 || timestamp < 1000000000) {
+            return 'Never';
+        }
         then = timestamp * 1000;
     } else {
-        then = new Date(timestamp).getTime();
+        // Handle empty or invalid strings
+        if (!timestamp || timestamp === '') {
+            return 'Never';
+        }
+        const parsed = new Date(timestamp).getTime();
+        if (isNaN(parsed)) {
+            return 'Never';
+        }
+        then = parsed;
     }
     
     const diff = Math.floor((now - then) / 1000);
