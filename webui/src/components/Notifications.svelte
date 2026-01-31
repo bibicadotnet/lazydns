@@ -84,6 +84,7 @@
       >
       <button
         on:click={() => notifications.remove(notification.id)}
+        aria-label="Close notification"
         class="ml-2 transition-colors {$darkMode
           ? 'text-gray-400 hover:text-white'
           : 'text-gray-500 hover:text-gray-900'}"

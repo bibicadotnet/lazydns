@@ -26,13 +26,50 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
+
+#[cfg(all(feature = "web-embed", webui_dist))]
 use rust_embed::Embed;
 
 /// Embedded WebUI assets from webui/dist directory
+#[cfg(all(feature = "web-embed", webui_dist))]
 #[derive(Embed)]
 #[folder = "webui/dist"]
 #[prefix = ""]
 pub struct Assets;
+
+// Helper to fetch asset data and mime type in a unified format
+#[allow(dead_code)]
+fn assets_get(path: &str) -> Option<(Vec<u8>, String)> {
+    #[cfg(all(feature = "web-embed", webui_dist))]
+    {
+        Assets::get(path).map(|content| {
+            (
+                content.data.into_owned(),
+                content.metadata.mimetype().to_string(),
+            )
+        })
+    }
+
+    #[cfg(not(all(feature = "web-embed", webui_dist)))]
+    {
+        let _ = path; // silence unused variable warning
+        None
+    }
+}
+
+// Unified asset iterator
+#[allow(dead_code)]
+fn assets_list() -> Vec<String> {
+    #[cfg(all(feature = "web-embed", webui_dist))]
+    {
+        Assets::iter().map(|s| s.into_owned()).collect()
+    }
+
+    #[cfg(not(all(feature = "web-embed", webui_dist)))]
+    {
+        Vec::new()
+    }
+}
 
 /// Serve an embedded asset by path
 async fn serve_asset(Path(path): Path<String>) -> impl IntoResponse {
@@ -47,28 +84,23 @@ async fn serve_index() -> impl IntoResponse {
 /// Helper function to serve an embedded file
 fn serve_embedded_file(path: &str) -> Response<Body> {
     // Try to get the file from embedded assets
-    match Assets::get(path) {
-        Some(content) => {
-            // Determine content type from file extension
-            let mime_type = content.metadata.mimetype();
-
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, mime_type)
-                .header(header::CACHE_CONTROL, cache_control_header(path))
-                .body(Body::from(content.data.into_owned()))
-                .unwrap()
-        }
+    match assets_get(path) {
+        Some((data, mime_type)) => Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, mime_type)
+            .header(header::CACHE_CONTROL, cache_control_header(path))
+            .body(Body::from(data))
+            .unwrap(),
         None => {
             // For SPA routing, serve index.html for non-asset paths
             if (!path.contains('.') || path.ends_with(".html"))
-                && let Some(content) = Assets::get("index.html")
+                && let Some((data, _mime)) = assets_get("index.html")
             {
                 return Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
                     .header(header::CACHE_CONTROL, "no-cache")
-                    .body(Body::from(content.data.into_owned()))
+                    .body(Body::from(data))
                     .unwrap();
             }
 
@@ -138,13 +170,13 @@ pub fn embedded_assets_router() -> Router {
 /// Returns true if the webui/dist was present at compile time and
 /// contains at least an index.html file.
 pub fn has_embedded_assets() -> bool {
-    Assets::get("index.html").is_some()
+    assets_get("index.html").is_some()
 }
 
 /// List all embedded asset paths (useful for debugging)
 #[allow(dead_code)]
 pub fn list_assets() -> Vec<String> {
-    Assets::iter().map(|s| s.into_owned()).collect()
+    assets_list()
 }
 
 #[cfg(test)]

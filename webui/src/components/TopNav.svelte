@@ -132,7 +132,7 @@
   </div>
 
   <!-- Spacer -->
-  <div class="flex-1" />
+  <div class="flex-1"></div>
 
   <!-- Theme Toggle Button -->
   <button

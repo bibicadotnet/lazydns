@@ -18,7 +18,26 @@ export default defineConfig({
         globals: true,
         environment: 'jsdom',
         include: ['src/**/*.{test,spec}.{js,ts}'],
-        setupFiles: ['./src/test/setup.ts']
+        setupFiles: ['./src/test/setup.ts'],
+        coverage: {
+            provider: 'v8',
+            reporter: ['text', 'json', 'html', 'lcov'],
+            include: ['src/lib/**/*.{js,ts}'],
+            exclude: [
+                'node_modules/',
+                'src/test/',
+                'src/**/*.test.ts',
+                'src/**/*.spec.ts',
+                'src/lib/mock.ts'
+            ],
+            all: true,
+            thresholds: {
+                lines: 15,
+                functions: 60,
+                branches: 50,
+                statements: 15
+            }
+        }
     },
     build: {
         chunkSizeWarningLimit: 1500,

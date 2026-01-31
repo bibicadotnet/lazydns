@@ -61,6 +61,16 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: "webui/package-lock.json"
+
+      - name: Build WebUI
+        run: cd webui && make install && make build
+
       - name: Install cross
         run: cargo install --version 0.2.5 cross
 
@@ -261,4 +271,3 @@ jobs:
     secrets:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      

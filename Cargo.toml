@@ -3,7 +3,7 @@ members = [".", "lazydns-macros"]
 
 [package]
 name = "lazydns"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2024"
 authors = ["lazywalker <lazywalkerz@gmail.com>"]
 description = "A light and fast DNS server/forwarder implementation in Rust"
@@ -101,7 +101,6 @@ libc = "0.2"
 # WebUI dependencies (optional)
 tower = { version = "0.5", optional = true }
 tower-http = { version = "0.6", features = ["fs", "cors"], optional = true }
-tokio-stream = { version = "0.1", optional = true }
 futures-util = { version = "0.3", features = ["sink"], optional = true }
 uuid = { version = "1.11", features = ["v4"], optional = true }
 async-stream = { version = "0.3", optional = true }
@@ -173,7 +172,6 @@ web = [
     "tokio/sync",
     "tower",
     "tower-http",
-    "tokio-stream",
     "futures-util",
     "uuid",
     "async-stream",
