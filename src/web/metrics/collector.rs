@@ -150,9 +150,19 @@ impl MetricsCollector {
         self.top_domains.top_entries()
     }
 
+    /// Get top domains within a time window (seconds ago)
+    pub fn get_top_domains_within(&self, window_secs: u64) -> Vec<TopNEntry<String>> {
+        self.top_domains.top_entries_within(window_secs)
+    }
+
     /// Get top clients
     pub fn get_top_clients(&self) -> Vec<TopNEntry<String>> {
         self.top_clients.top_entries()
+    }
+
+    /// Get top clients within a time window (seconds ago)
+    pub fn get_top_clients_within(&self, window_secs: u64) -> Vec<TopNEntry<String>> {
+        self.top_clients.top_entries_within(window_secs)
     }
 
     /// Get QPS history

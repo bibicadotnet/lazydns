@@ -16,10 +16,23 @@ pub struct TopNParams {
     /// Number of items to return (default: 10)
     #[serde(default = "default_limit")]
     pub limit: usize,
+    /// Time window: 1m, 5m, 1h, 24h (default: all time)
+    pub window: Option<String>,
 }
 
 fn default_limit() -> usize {
     10
+}
+
+/// Convert time window string to seconds
+fn parse_time_window(window: &Option<String>) -> Option<u64> {
+    window.as_ref().and_then(|w| match w.as_str() {
+        "1m" => Some(60),
+        "5m" => Some(300),
+        "1h" => Some(3600),
+        "24h" => Some(86400),
+        _ => None,
+    })
 }
 
 /// Top domains response
@@ -34,7 +47,13 @@ pub async fn top_domains(
     State(state): State<Arc<WebState>>,
     Query(params): Query<TopNParams>,
 ) -> Json<TopDomainsResponse> {
-    let mut domains = state.metrics_collector().get_top_domains();
+    let mut domains = if let Some(window_secs) = parse_time_window(&params.window) {
+        state
+            .metrics_collector()
+            .get_top_domains_within(window_secs)
+    } else {
+        state.metrics_collector().get_top_domains()
+    };
     domains.truncate(params.limit);
 
     let overview = state.metrics_collector().get_overview();
@@ -57,7 +76,13 @@ pub async fn top_clients(
     State(state): State<Arc<WebState>>,
     Query(params): Query<TopNParams>,
 ) -> Json<TopClientsResponse> {
-    let mut clients = state.metrics_collector().get_top_clients();
+    let mut clients = if let Some(window_secs) = parse_time_window(&params.window) {
+        state
+            .metrics_collector()
+            .get_top_clients_within(window_secs)
+    } else {
+        state.metrics_collector().get_top_clients()
+    };
     clients.truncate(params.limit);
 
     let overview = state.metrics_collector().get_overview();

@@ -57,16 +57,21 @@
     try {
       const [domainsRes, clientsRes, upstreamRes, latencyRes] =
         await Promise.all([
-          api.getTopDomains(10),
-          api.getTopClients(10),
+          api.getTopDomains(10, $selectedTimeWindow),
+          api.getTopClients(10, $selectedTimeWindow),
           api.getUpstreamHealth(),
-          api.getLatencyDistribution(),
+          api.getLatencyDistribution($selectedTimeWindow),
         ]);
 
+      const totalDomainQueries = domainsRes.domains.reduce(
+        (sum, d) => sum + d.count,
+        0,
+      );
       topDomains = domainsRes.domains.map((d) => ({
         domain: d.key,
         count: d.count,
-        percentage: 0, // Will be calculated in component
+        percentage:
+          totalDomainQueries > 0 ? (d.count / totalDomainQueries) * 100 : 0,
       }));
 
       topClients = clientsRes.clients.map((c) => ({
@@ -113,6 +118,11 @@
       clearInterval(refreshInterval);
     }
   });
+
+  // Watch for time window changes and refetch data
+  $: if ($selectedTimeWindow) {
+    fetchData();
+  }
 </script>
 
 <div class="space-y-6">

@@ -6,14 +6,26 @@ use parking_lot::RwLock;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::time::Instant;
+
+/// Time-stamped count entry
+#[derive(Debug, Clone)]
+struct TimestampedCount {
+    /// Total count
+    count: u64,
+    /// First occurrence time
+    first_seen: Instant,
+    /// Last updated time
+    last_updated: Instant,
+}
 
 /// Top-N tracker using count-min sketch approximation with exact top tracking
 #[derive(Debug)]
 pub struct TopN<K: Hash + Eq + Clone> {
     /// Maximum number of items to track
     n: usize,
-    /// Item counts
-    counts: RwLock<HashMap<K, u64>>,
+    /// Item counts with timestamps
+    counts: RwLock<HashMap<K, TimestampedCount>>,
     /// Maximum items to keep before pruning
     max_items: usize,
 }
@@ -45,8 +57,19 @@ impl<K: Hash + Eq + Clone> TopN<K> {
 
     /// Add a count for a key
     pub fn add(&self, key: K, count: u64) {
+        let now = Instant::now();
         let mut counts = self.counts.write();
-        *counts.entry(key).or_insert(0) += count;
+        counts
+            .entry(key)
+            .and_modify(|entry| {
+                entry.count += count;
+                entry.last_updated = now;
+            })
+            .or_insert_with(|| TimestampedCount {
+                count,
+                first_seen: now,
+                last_updated: now,
+            });
 
         // Prune if too many items
         if counts.len() > self.max_items {
@@ -55,24 +78,44 @@ impl<K: Hash + Eq + Clone> TopN<K> {
     }
 
     /// Prune to keep only top items (requires write lock already held)
-    fn prune_locked(&self, counts: &mut HashMap<K, u64>) {
+    fn prune_locked(&self, counts: &mut HashMap<K, TimestampedCount>) {
         if counts.len() <= self.n * 2 {
             return;
         }
 
         // Find threshold (n-th largest count)
-        let mut count_values: Vec<u64> = counts.values().copied().collect();
+        let mut count_values: Vec<u64> = counts.values().map(|v| v.count).collect();
         count_values.sort_unstable_by(|a, b| b.cmp(a));
 
         if let Some(&threshold) = count_values.get(self.n * 2) {
-            counts.retain(|_, &mut v| v > threshold);
+            counts.retain(|_, v| v.count > threshold);
         }
     }
 
     /// Get the top N items with their counts
     pub fn top(&self) -> Vec<(K, u64)> {
         let counts = self.counts.read();
-        let mut items: Vec<(K, u64)> = counts.iter().map(|(k, &v)| (k.clone(), v)).collect();
+        let mut items: Vec<(K, u64)> = counts.iter().map(|(k, v)| (k.clone(), v.count)).collect();
+
+        // Sort by count descending
+        items.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+        // Take top N
+        items.truncate(self.n);
+        items
+    }
+
+    /// Get the top N items within a time window (seconds ago)
+    pub fn top_within(&self, window_secs: u64) -> Vec<(K, u64)> {
+        let now = Instant::now();
+        let window = std::time::Duration::from_secs(window_secs);
+        let counts = self.counts.read();
+
+        let mut items: Vec<(K, u64)> = counts
+            .iter()
+            .filter(|(_, entry)| now.duration_since(entry.last_updated) <= window)
+            .map(|(k, entry)| (k.clone(), entry.count))
+            .collect();
 
         // Sort by count descending
         items.sort_unstable_by(|a, b| b.1.cmp(&a.1));
@@ -84,12 +127,12 @@ impl<K: Hash + Eq + Clone> TopN<K> {
 
     /// Get the count for a specific key
     pub fn get(&self, key: &K) -> u64 {
-        self.counts.read().get(key).copied().unwrap_or(0)
+        self.counts.read().get(key).map(|v| v.count).unwrap_or(0)
     }
 
     /// Get total count of all items
     pub fn total(&self) -> u64 {
-        self.counts.read().values().sum()
+        self.counts.read().values().map(|v| v.count).sum()
     }
 
     /// Get number of unique items tracked
@@ -112,8 +155,15 @@ impl<K: Hash + Eq + Clone> TopN<K> {
         let other_counts = other.counts.read();
         let mut self_counts = self.counts.write();
 
-        for (key, count) in other_counts.iter() {
-            *self_counts.entry(key.clone()).or_insert(0) += count;
+        for (key, entry) in other_counts.iter() {
+            self_counts
+                .entry(key.clone())
+                .and_modify(|e| e.count += entry.count)
+                .or_insert_with(|| TimestampedCount {
+                    count: entry.count,
+                    first_seen: entry.first_seen,
+                    last_updated: entry.last_updated,
+                });
         }
 
         if self_counts.len() > self.max_items {
@@ -126,6 +176,19 @@ impl<K: Hash + Eq + Clone + Serialize> TopN<K> {
     /// Get top N as serializable entries
     pub fn top_entries(&self) -> Vec<TopNEntry<K>> {
         self.top()
+            .into_iter()
+            .enumerate()
+            .map(|(rank, (key, count))| TopNEntry {
+                rank: rank + 1,
+                key,
+                count,
+            })
+            .collect()
+    }
+
+    /// Get top N entries within a time window (seconds ago)
+    pub fn top_entries_within(&self, window_secs: u64) -> Vec<TopNEntry<K>> {
+        self.top_within(window_secs)
             .into_iter()
             .enumerate()
             .map(|(rank, (key, count))| TopNEntry {

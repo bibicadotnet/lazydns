@@ -131,20 +131,28 @@ class ApiClient {
         return this.fetch<UpstreamHealthResponse>('/metrics/upstream-health');
     }
 
-    async getTopDomains(limit: number = 10): Promise<TopDomainsResponse> {
-        return this.fetch<TopDomainsResponse>(`/metrics/top-domains?limit=${limit}`);
+    async getTopDomains(limit: number = 10, timeWindow?: string): Promise<TopDomainsResponse> {
+        const params = new URLSearchParams({ limit: limit.toString() });
+        if (timeWindow) params.append('window', timeWindow);
+        return this.fetch<TopDomainsResponse>(`/metrics/top-domains?${params}`);
     }
 
-    async getTopClients(limit: number = 10): Promise<TopClientsResponse> {
-        return this.fetch<TopClientsResponse>(`/metrics/top-clients?limit=${limit}`);
+    async getTopClients(limit: number = 10, timeWindow?: string): Promise<TopClientsResponse> {
+        const params = new URLSearchParams({ limit: limit.toString() });
+        if (timeWindow) params.append('window', timeWindow);
+        return this.fetch<TopClientsResponse>(`/metrics/top-clients?${params}`);
     }
 
-    async getQpsHistory(): Promise<QpsHistoryResponse> {
-        return this.fetch<QpsHistoryResponse>('/metrics/qps');
+    async getQpsHistory(timeWindow?: string): Promise<QpsHistoryResponse> {
+        const params = new URLSearchParams();
+        if (timeWindow) params.append('window', timeWindow);
+        return this.fetch<QpsHistoryResponse>(`/metrics/qps?${params}`);
     }
 
-    async getLatencyDistribution(): Promise<LatencyResponse> {
-        return this.fetch<LatencyResponse>('/metrics/latency');
+    async getLatencyDistribution(timeWindow?: string): Promise<LatencyResponse> {
+        const params = new URLSearchParams();
+        if (timeWindow) params.append('window', timeWindow);
+        return this.fetch<LatencyResponse>(`/metrics/latency?${params}`);
     }
 
     // Admin operations
