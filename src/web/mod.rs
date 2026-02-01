@@ -136,7 +136,22 @@ impl WebServer {
         };
 
         // Request tracing/logging layer for debugging
-        let trace_layer = TraceLayer::new_for_http();
+        use tower_http::LatencyUnit;
+        use tower_http::trace::{DefaultOnRequest, DefaultOnResponse};
+
+        let trace_layer = TraceLayer::new_for_http()
+            .make_span_with(|req: &axum::http::Request<axum::body::Body>| {
+                tracing::span!(tracing::Level::TRACE, "http_request",
+                    method = %req.method(),
+                    uri = %req.uri()
+                )
+            })
+            .on_request(DefaultOnRequest::new().level(tracing::Level::TRACE))
+            .on_response(
+                DefaultOnResponse::new()
+                    .level(tracing::Level::TRACE)
+                    .latency_unit(LatencyUnit::Millis),
+            );
 
         // API routes
         #[cfg(feature = "admin")]

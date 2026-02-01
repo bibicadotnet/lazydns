@@ -5,6 +5,7 @@
 use crate::RegisterPlugin;
 use crate::Result;
 use crate::dns::ResponseCode;
+use crate::dns::types::RecordType;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use lru::LruCache;
@@ -83,8 +84,25 @@ impl DomainValidatorPlugin {
                 && domain.as_bytes()[domain.len() - suffix.len() - 1] == b'.')
     }
 
-    /// Validate a domain name
+    /// Validate a domain name (legacy API)
+    ///
+    /// This keeps backwards compatibility with unit tests and callers that don't
+    /// know the question qtype. It calls into `validate_domain_with_qtype` with
+    /// `None` which enforces the original strict rules.
     pub fn validate_domain(&self, domain: &str) -> ValidationResult {
+        self.validate_domain_with_qtype(domain, None)
+    }
+
+    /// Validate a domain name with optional query type context
+    ///
+    /// When `qtype` is `Some(RecordType::SVCB)` or `Some(RecordType::HTTPS)`, a
+    /// label starting with `_` (underscore) is accepted as the first character
+    /// which is commonly used for service name labels (e.g. `_dns.resolver.arpa`).
+    pub fn validate_domain_with_qtype(
+        &self,
+        domain: &str,
+        qtype: Option<RecordType>,
+    ) -> ValidationResult {
         // Check blacklist first
         if self.is_blacklisted(domain) {
             return ValidationResult::Blacklisted;
@@ -113,9 +131,18 @@ impl DomainValidatorPlugin {
                 return ValidationResult::InvalidLength;
             }
 
-            // First character must be alphanumeric
-            if !bytes[0].is_ascii_alphanumeric() {
-                return ValidationResult::InvalidChars;
+            // First character must be alphanumeric, except when qtype indicates
+            // a service-binding record query (SVCB/HTTPS) and the label starts
+            // with an underscore (e.g. `_dns`).
+            let first = bytes[0];
+            if !first.is_ascii_alphanumeric() {
+                let allow_underscore = (first == b'_')
+                    && qtype
+                        .map(|t| matches!(t, RecordType::SVCB | RecordType::HTTPS))
+                        .unwrap_or(false);
+                if !allow_underscore {
+                    return ValidationResult::InvalidChars;
+                }
             }
 
             // Last character must be alphanumeric
@@ -177,8 +204,9 @@ impl Plugin for DomainValidatorPlugin {
             }
         }
 
-        // Validate
-        let result = self.validate_domain(&qname);
+        // Validate (pass qtype so we can allow service name labels like `_dns` for SVCB/HTTPS)
+        let qtype = ctx.request().questions().first().map(|q| q.qtype());
+        let result = self.validate_domain_with_qtype(&qname, qtype);
 
         // Record metrics
         #[cfg(feature = "metrics")]
