@@ -40,6 +40,91 @@ pub async fn overview(State(state): State<Arc<WebState>>) -> Json<DashboardOverv
     Json(response)
 }
 
+/// Cache statistics response
+#[derive(Debug, Serialize)]
+pub struct CacheStatsResponse {
+    pub size: usize,
+    pub hits: u64,
+    pub misses: u64,
+    pub evictions: u64,
+    pub expirations: u64,
+    pub hit_rate: f64,
+}
+
+/// GET /api/dashboard/cache/stats
+pub async fn cache_stats(State(state): State<Arc<WebState>>) -> Json<CacheStatsResponse> {
+    let Some(registry) = state.registry() else {
+        return Json(CacheStatsResponse {
+            size: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            expirations: 0,
+            hit_rate: 0.0,
+        });
+    };
+
+    let Some(cache) = registry.get("cache") else {
+        return Json(CacheStatsResponse {
+            size: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            expirations: 0,
+            hit_rate: 0.0,
+        });
+    };
+
+    if let Some(cache_plugin) = cache
+        .as_ref()
+        .as_any()
+        .downcast_ref::<crate::plugins::CachePlugin>()
+    {
+        let stats = cache_plugin.stats();
+        let hits = stats.hits();
+        let misses = stats.misses();
+        let total = hits + misses;
+        let hit_rate = if total > 0 {
+            (hits as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        Json(CacheStatsResponse {
+            size: cache_plugin.size(),
+            hits,
+            misses,
+            evictions: stats.evictions(),
+            expirations: stats.expirations(),
+            hit_rate,
+        })
+    } else {
+        Json(CacheStatsResponse {
+            size: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            expirations: 0,
+            hit_rate: 0.0,
+        })
+    }
+}
+
+/// Server info response
+#[derive(Debug, Serialize)]
+pub struct ServerInfoResponse {
+    pub version: String,
+    pub uptime_secs: u64,
+}
+
+/// GET /api/dashboard/server/info
+pub async fn server_info(State(state): State<Arc<WebState>>) -> Json<ServerInfoResponse> {
+    Json(ServerInfoResponse {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        uptime_secs: state.uptime_secs(),
+    })
+}
+
 /// Recent alerts response
 #[derive(Debug, Serialize)]
 pub struct RecentAlertsResponse {

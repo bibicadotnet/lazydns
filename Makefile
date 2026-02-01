@@ -75,7 +75,7 @@ build-all:
 # or
 # make local PLATFORM=linux/amd64 EXTRA='--features full'	
 PLATFORM ?= linux/arm/v7
-EXTRA ?= --no-default-features --features log,cron
+EXTRA ?= --no-default-features --features log,cron,dot,doh,doq,web-embed
 local: build-for
 	@echo "Building Docker image for $(PLATFORM)"
 	@echo "Using EXTRA features: $(EXTRA)"; \

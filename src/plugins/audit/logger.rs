@@ -1,6 +1,8 @@
 //! Audit logger implementation
 //!
 //! Provides async file-based audit logging with buffering and rotation.
+//! Uses a unified event bus architecture - all consumers (WebUI, file writers, metrics)
+//! subscribe to the same event bus for consistent event distribution.
 
 use super::config::{AuditConfig, QueryLogConfig, SecurityEventConfig};
 use super::event::{AuditEvent, QueryLogEntry, SecurityEventType};
@@ -8,24 +10,28 @@ use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::RwLock;
-use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
 /// Global audit logger instance
 pub static AUDIT_LOGGER: Lazy<AuditLogger> = Lazy::new(AuditLogger::new);
 
 /// Audit logger with async write support
+///
+/// Uses a unified event bus architecture:
+/// - All events are published once to the event bus
+/// - Multiple consumers (WebUI SSE, file writers, metrics) subscribe independently
+/// - No duplicate channels - cleaner architecture
 pub struct AuditLogger {
     /// Configuration
     config: RwLock<Option<AuditConfig>>,
 
-    /// Query log sender channel (bounded to prevent memory exhaustion)
-    query_tx: RwLock<Option<mpsc::Sender<QueryLogEntry>>>,
+    /// Whether query log file writing is enabled
+    query_log_file_enabled: AtomicBool,
 
-    /// Security event sender channel (bounded to prevent memory exhaustion)
-    security_tx: RwLock<Option<mpsc::Sender<AuditEvent>>>,
+    /// Whether security log file writing is enabled  
+    security_log_file_enabled: AtomicBool,
 
     /// Enabled security event types (empty = all)
     enabled_events: RwLock<HashSet<SecurityEventType>>,
@@ -36,11 +42,7 @@ pub struct AuditLogger {
     /// Statistics
     queries_logged: AtomicU64,
     queries_sampled_out: AtomicU64,
-    queries_dropped: AtomicU64,
     security_events_logged: AtomicU64,
-    security_events_dropped: AtomicU64,
-    query_channel_max_depth: AtomicU64,
-    security_channel_max_depth: AtomicU64,
 }
 
 impl AuditLogger {
@@ -48,17 +50,13 @@ impl AuditLogger {
     pub fn new() -> Self {
         Self {
             config: RwLock::new(None),
-            query_tx: RwLock::new(None),
-            security_tx: RwLock::new(None),
+            query_log_file_enabled: AtomicBool::new(false),
+            security_log_file_enabled: AtomicBool::new(false),
             enabled_events: RwLock::new(HashSet::new()),
             sampling_threshold: AtomicU64::new(u64::MAX), // 100% by default
             queries_logged: AtomicU64::new(0),
             queries_sampled_out: AtomicU64::new(0),
-            queries_dropped: AtomicU64::new(0),
             security_events_logged: AtomicU64::new(0),
-            security_events_dropped: AtomicU64::new(0),
-            query_channel_max_depth: AtomicU64::new(0),
-            security_channel_max_depth: AtomicU64::new(0),
         }
     }
 
@@ -93,6 +91,17 @@ impl AuditLogger {
     ) -> crate::Result<()> {
         debug!("Initializing query log with path: {}", config.path);
 
+        // Set sampling threshold
+        let threshold = if config.sampling_rate >= 1.0 {
+            u64::MAX
+        } else if config.sampling_rate <= 0.0 {
+            0
+        } else {
+            (config.sampling_rate * u64::MAX as f64) as u64
+        };
+        self.sampling_threshold.store(threshold, Ordering::Relaxed);
+        debug!("Set sampling threshold: {}", threshold);
+
         // Check if file writing is enabled (can override global setting)
         let log_to_file = config.log_to_file.unwrap_or(audit_config.log_to_file);
         if !log_to_file {
@@ -119,43 +128,37 @@ impl AuditLogger {
             debug!("Created query log directory: {:?}", parent);
         }
 
-        // Set sampling threshold
-        let threshold = if config.sampling_rate >= 1.0 {
-            u64::MAX
-        } else if config.sampling_rate <= 0.0 {
-            0
-        } else {
-            (config.sampling_rate * u64::MAX as f64) as u64
-        };
-        self.sampling_threshold.store(threshold, Ordering::Relaxed);
-        debug!("Set sampling threshold: {}", threshold);
+        // Mark file writing as enabled
+        self.query_log_file_enabled.store(true, Ordering::Relaxed);
 
-        // Create bounded channel (capacity=100) to prevent memory exhaustion
-        // If channel fills up, senders will block/fail and events will be dropped
-        let (tx, rx) = mpsc::channel(100);
-        *self.query_tx.write().await = Some(tx);
-        debug!("Created query log channel with capacity=100");
-
-        // Spawn writer task - inherit rotation parameters from audit config if not overridden
+        // Subscribe to event bus and spawn writer task
         let path = config.path.clone();
         let format = config.format.clone();
         let buffer_size = config.buffer_size.unwrap_or(audit_config.buffer_size);
         let max_file_size = config.max_file_size.unwrap_or(audit_config.max_file_size);
         let max_files = config.max_files.unwrap_or(audit_config.max_files);
 
-        tokio::spawn(async move {
-            debug!("Query log writer task started");
-            query_log_writer(
-                rx,
-                path,
-                format,
-                buffer_size,
-                max_file_size,
-                max_files,
-                &AUDIT_LOGGER,
-            )
-            .await;
-        });
+        // Get event bus and subscribe
+        if let Some(bus) = super::event_bus::event_bus() {
+            let subscriber = bus.subscribe_queries();
+            debug!("Query log writer subscribed to event bus");
+
+            tokio::spawn(async move {
+                debug!("Query log writer task started");
+                query_log_writer(
+                    subscriber,
+                    path,
+                    format,
+                    buffer_size,
+                    max_file_size,
+                    max_files,
+                )
+                .await;
+            });
+        } else {
+            warn!("Event bus not initialized, query log file writing disabled");
+            self.query_log_file_enabled.store(false, Ordering::Relaxed);
+        }
 
         info!(
             path = %config.path,
@@ -177,9 +180,6 @@ impl AuditLogger {
             return Ok(());
         }
 
-        // Check if file writing is enabled (can override global setting)
-        let log_to_file = config.log_to_file.unwrap_or(audit_config.log_to_file);
-
         // Parse enabled events
         let mut enabled = HashSet::new();
         for event_str in &config.events {
@@ -191,6 +191,8 @@ impl AuditLogger {
         }
         *self.enabled_events.write().await = enabled;
 
+        // Check if file writing is enabled (can override global setting)
+        let log_to_file = config.log_to_file.unwrap_or(audit_config.log_to_file);
         if !log_to_file {
             debug!("Security event file writing disabled, only event bus publishing active");
             info!(
@@ -214,27 +216,29 @@ impl AuditLogger {
             debug!("Created security log directory: {:?}", parent);
         }
 
-        // Create bounded channel (capacity=100) to prevent memory exhaustion
-        let (tx, rx) = mpsc::channel(100);
-        *self.security_tx.write().await = Some(tx);
+        // Mark file writing as enabled
+        self.security_log_file_enabled
+            .store(true, Ordering::Relaxed);
 
-        // Spawn writer task - inherit rotation parameters from audit config if not overridden
+        // Subscribe to event bus and spawn writer task
         let path = config.path.clone();
         let buffer_size = config.buffer_size.unwrap_or(audit_config.buffer_size);
         let max_file_size = config.max_file_size.unwrap_or(audit_config.max_file_size);
         let max_files = config.max_files.unwrap_or(audit_config.max_files);
 
-        tokio::spawn(async move {
-            security_log_writer(
-                rx,
-                path,
-                buffer_size,
-                max_file_size,
-                max_files,
-                &AUDIT_LOGGER,
-            )
-            .await;
-        });
+        // Get event bus and subscribe
+        if let Some(bus) = super::event_bus::event_bus() {
+            let subscriber = bus.subscribe_security();
+            debug!("Security log writer subscribed to event bus");
+
+            tokio::spawn(async move {
+                security_log_writer(subscriber, path, buffer_size, max_file_size, max_files).await;
+            });
+        } else {
+            warn!("Event bus not initialized, security log file writing disabled");
+            self.security_log_file_enabled
+                .store(false, Ordering::Relaxed);
+        }
 
         info!(
             path = %config.path,
@@ -250,9 +254,18 @@ impl AuditLogger {
         self.config.read().await.as_ref().is_some_and(|c| c.enabled)
     }
 
-    /// Check if query logging is enabled
+    /// Check if query logging is enabled (event bus is always active when audit is enabled)
     pub async fn is_query_log_enabled(&self) -> bool {
-        self.query_tx.read().await.is_some()
+        self.config
+            .read()
+            .await
+            .as_ref()
+            .is_some_and(|c| c.enabled && c.query_log.is_some())
+    }
+
+    /// Check if query log file writing is enabled
+    pub fn is_query_log_file_enabled(&self) -> bool {
+        self.query_log_file_enabled.load(Ordering::Relaxed)
     }
 
     /// Check if a query should be logged (based on sampling)
@@ -265,59 +278,34 @@ impl AuditLogger {
             return false;
         }
 
-        // Use random sampling (use thread-local RNG to avoid recreating RNG per call)
+        // Use random sampling
         let sample: u64 = rand::random::<u64>();
         sample <= threshold
     }
 
     /// Log a DNS query
-    pub async fn log_query(&self, entry: QueryLogEntry) {
-        // Check sampling
+    ///
+    /// Publishes to the event bus which distributes to all subscribers
+    /// (WebUI SSE, file writers, metrics collectors, etc.)
+    pub fn log_query(&self, entry: QueryLogEntry) {
+        // Check sampling first (fast path)
         if !self.should_sample() {
             self.queries_sampled_out.fetch_add(1, Ordering::Relaxed);
             return;
         }
 
-        // Publish to event bus for WebUI (if enabled)
-        #[cfg(feature = "web")]
-        {
-            super::event_bus::publish_query(entry.clone());
-        }
-
-        let tx_lock = self.query_tx.read().await;
-        if let Some(ref tx) = *tx_lock {
-            // Use try_send to avoid blocking on full queue
-            match tx.try_send(entry) {
-                Ok(_) => {
-                    self.queries_logged.fetch_add(1, Ordering::Relaxed);
-                    trace!("Query logged successfully");
-                }
-                Err(mpsc::error::TrySendError::Full(_)) => {
-                    self.queries_dropped.fetch_add(1, Ordering::Relaxed);
-                    warn!("Query channel full, dropping query (may indicate slow I/O)");
-                }
-                Err(mpsc::error::TrySendError::Closed(_)) => {
-                    warn!("Query channel closed, dropping query");
-                }
-            }
-        } else {
-            warn!("Query channel not initialized");
+        // Publish to event bus - all consumers receive from here
+        let subscribers = super::event_bus::publish_query(entry);
+        if subscribers > 0 {
+            self.queries_logged.fetch_add(1, Ordering::Relaxed);
+            trace!(subscribers, "Query published to event bus");
         }
     }
 
     /// Log a security event
+    ///
+    /// Publishes to the event bus which distributes to all subscribers
     pub async fn log_security(&self, event: AuditEvent) {
-        // Check if security logging is enabled
-        let tx_lock = self.security_tx.read().await;
-        if tx_lock.is_none() {
-            // Security logging not configured, but still publish to event bus
-            #[cfg(feature = "web")]
-            {
-                super::event_bus::publish_security(event);
-            }
-            return;
-        }
-
         // Check if this event type is enabled
         if let AuditEvent::Security { event_type, .. } = &event {
             let enabled = self.enabled_events.read().await;
@@ -328,27 +316,11 @@ impl AuditLogger {
             }
         }
 
-        // Publish to event bus for WebUI (if enabled)
-        #[cfg(feature = "web")]
-        {
-            super::event_bus::publish_security(event.clone());
-        }
-
-        if let Some(ref tx) = *tx_lock {
-            // Use try_send to avoid blocking on full queue
-            match tx.try_send(event) {
-                Ok(_) => {
-                    self.security_events_logged.fetch_add(1, Ordering::Relaxed);
-                    trace!("Security event logged successfully");
-                }
-                Err(mpsc::error::TrySendError::Full(_)) => {
-                    self.security_events_dropped.fetch_add(1, Ordering::Relaxed);
-                    warn!("Security event channel full, dropping event (may indicate slow I/O)");
-                }
-                Err(mpsc::error::TrySendError::Closed(_)) => {
-                    warn!("Security event channel closed, dropping event");
-                }
-            }
+        // Publish to event bus - all consumers receive from here
+        let subscribers = super::event_bus::publish_security(event);
+        if subscribers > 0 {
+            self.security_events_logged.fetch_add(1, Ordering::Relaxed);
+            trace!(subscribers, "Security event published to event bus");
         }
     }
 
@@ -360,8 +332,7 @@ impl AuditLogger {
         client_ip: Option<std::net::IpAddr>,
         qname: Option<String>,
     ) {
-        // Respect include_client_ip setting from configuration: if the audit config
-        // disables including client IP, omit it from the recorded event.
+        // Respect include_client_ip setting from configuration
         let include_ip = {
             if let Some(cfg) = self.config.read().await.as_ref() {
                 cfg.query_log
@@ -381,23 +352,26 @@ impl AuditLogger {
 
     /// Get statistics
     pub fn stats(&self) -> AuditStats {
+        // Get event bus stats for dropped events
+        let bus_stats = super::event_bus::event_bus()
+            .map(|b| b.stats())
+            .unwrap_or_default();
+
         AuditStats {
             queries_logged: self.queries_logged.load(Ordering::Relaxed),
             queries_sampled_out: self.queries_sampled_out.load(Ordering::Relaxed),
             security_events_logged: self.security_events_logged.load(Ordering::Relaxed),
-            queries_dropped: self.queries_dropped.load(Ordering::Relaxed),
-            security_events_dropped: self.security_events_dropped.load(Ordering::Relaxed),
-            query_channel_max_depth: self.query_channel_max_depth.load(Ordering::Relaxed),
-            security_channel_max_depth: self.security_channel_max_depth.load(Ordering::Relaxed),
+            events_dropped: bus_stats.events_dropped,
+            active_subscribers: bus_stats.active_subscribers,
         }
     }
 
     /// Shutdown the audit logger
     pub async fn shutdown(&self) {
-        // Drop senders to signal writers to stop
-        *self.query_tx.write().await = None;
-        *self.security_tx.write().await = None;
         *self.config.write().await = None;
+        self.query_log_file_enabled.store(false, Ordering::Relaxed);
+        self.security_log_file_enabled
+            .store(false, Ordering::Relaxed);
 
         info!(
             queries = self.queries_logged.load(Ordering::Relaxed),
@@ -420,31 +394,29 @@ pub struct AuditStats {
     pub queries_logged: u64,
     pub queries_sampled_out: u64,
     pub security_events_logged: u64,
-    pub queries_dropped: u64,
-    pub security_events_dropped: u64,
-    pub query_channel_max_depth: u64,
-    pub security_channel_max_depth: u64,
+    pub events_dropped: u64,
+    pub active_subscribers: usize,
 }
 
 /// Background task for writing query logs
+/// Subscribes to event bus and writes to file with buffering and rotation
 async fn query_log_writer(
-    mut rx: mpsc::Receiver<QueryLogEntry>,
+    mut subscriber: super::event_bus::QueryLogSubscriber,
     path: String,
     format: String,
     buffer_size: usize,
     max_file_size: u64,
     max_files: u32,
-    logger: &'static AuditLogger,
 ) {
     debug!("Query log writer task started for path: {}", path);
 
     let mut buffer: Vec<QueryLogEntry> = Vec::with_capacity(buffer_size);
     let use_json = format == "json";
-    let mut last_depth_check = tokio::time::Instant::now();
+    let mut flush_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
 
     loop {
         tokio::select! {
-            entry = rx.recv() => {
+            entry = subscriber.recv() => {
                 match entry {
                     Some(entry) => {
                         trace!("Received query log entry: {:?}", entry.qname);
@@ -464,25 +436,11 @@ async fn query_log_writer(
                     }
                 }
             }
-            // Periodic flush every 5 seconds
-            _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+            // Periodic flush
+            _ = flush_interval.tick() => {
                 if !buffer.is_empty() {
                     debug!("Periodic flush: flushing {} entries", buffer.len());
                     flush_query_buffer(&mut buffer, &path, use_json, max_file_size, max_files);
-                }
-
-                // Monitor queue depth every 5 seconds
-                if last_depth_check.elapsed() >= tokio::time::Duration::from_secs(5) {
-                    let current_depth = rx.len() as u64;
-                    let max_depth = logger.query_channel_max_depth.load(Ordering::Relaxed);
-                    if current_depth > max_depth {
-                        logger.query_channel_max_depth.store(current_depth, Ordering::Relaxed);
-                        trace!("Query channel max depth updated: {}", current_depth);
-                    }
-                    if current_depth > 80 {
-                        warn!("Query channel depth is high: {} / 100", current_depth);
-                    }
-                    last_depth_check = tokio::time::Instant::now();
                 }
             }
         }
@@ -513,7 +471,7 @@ fn flush_query_buffer(
     if let Ok(metadata) = std::fs::metadata(path)
         && metadata.len() >= max_file_size
     {
-        rotate_log_file(path, max_file_size, max_files);
+        rotate_log_file(path, max_files);
     }
 
     // Open file for append
@@ -567,55 +525,53 @@ fn flush_query_buffer(
 
 /// Background task for writing security logs
 async fn security_log_writer(
-    mut rx: mpsc::Receiver<AuditEvent>,
+    mut subscriber: super::event_bus::SecurityEventSubscriber,
     path: String,
     buffer_size: usize,
     max_file_size: u64,
     max_files: u32,
-    logger: &'static AuditLogger,
 ) {
-    let mut buffer = Vec::with_capacity(buffer_size);
+    let mut buffer: Vec<String> = Vec::with_capacity(buffer_size);
     let mut accumulated_size: u64 = 0;
-    let mut last_depth_check = tokio::time::Instant::now();
+    let mut flush_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
 
     loop {
         tokio::select! {
-            Some(event) = rx.recv() => {
-                if let Ok(json) = event.to_json() {
-                    let event_size = json.len() as u64 + 1; // +1 for newline
-                    buffer.push(json);
-                    accumulated_size += event_size;
+            event = subscriber.recv() => {
+                match event {
+                    Some(event) => {
+                        if let Ok(json) = event.to_json() {
+                            let event_size = json.len() as u64 + 1; // +1 for newline
+                            buffer.push(json);
+                            accumulated_size += event_size;
 
-                    // Flush if buffer reaches size limit
-                    if buffer.len() >= buffer_size {
-                        flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
+                            // Flush if buffer reaches size limit
+                            if buffer.len() >= buffer_size {
+                                flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
+                            }
+                        } else {
+                            error!("Failed to serialize security event");
+                        }
                     }
-                } else {
-                    error!("Failed to serialize security event");
+                    None => {
+                        // Channel closed, flush and exit
+                        if !buffer.is_empty() {
+                            flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
+                        }
+                        break;
+                    }
                 }
             }
-            _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+            _ = flush_interval.tick() => {
                 // Periodic flush
                 if !buffer.is_empty() {
                     flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
                 }
-
-                // Monitor queue depth every 5 seconds
-                if last_depth_check.elapsed() >= tokio::time::Duration::from_secs(5) {
-                    let current_depth = rx.len() as u64;
-                    let max_depth = logger.security_channel_max_depth.load(Ordering::Relaxed);
-                    if current_depth > max_depth {
-                        logger.security_channel_max_depth.store(current_depth, Ordering::Relaxed);
-                        trace!("Security event channel max depth updated: {}", current_depth);
-                    }
-                    if current_depth > 80 {
-                        warn!("Security event channel depth is high: {} / 100", current_depth);
-                    }
-                    last_depth_check = tokio::time::Instant::now();
-                }
             }
         }
     }
+
+    debug!("Security log writer stopped");
 }
 
 /// Flush security event buffer to file
@@ -635,7 +591,7 @@ fn flush_security_buffer(
         let current_size = metadata.len();
         if current_size + *accumulated_size > max_file_size && current_size > 0 {
             // Need to rotate
-            rotate_log_file(path, max_file_size, max_files);
+            rotate_log_file(path, max_files);
             *accumulated_size = 0;
         }
     }
@@ -669,12 +625,15 @@ fn flush_security_buffer(
         }
     }
 
+    if let Err(e) = writer.flush() {
+        error!(error = %e, "Failed to flush security log");
+    }
+
     *accumulated_size = 0;
 }
 
 /// Rotate log files (simple numbered rotation)
-/// Checks file size and rotates if needed
-fn rotate_log_file(path: &str, _max_file_size: u64, max_files: u32) {
+fn rotate_log_file(path: &str, max_files: u32) {
     // Delete oldest file if at limit
     let oldest = format!("{}.{}", path, max_files);
     let _ = std::fs::remove_file(&oldest);
@@ -699,6 +658,11 @@ fn rotate_log_file(path: &str, _max_file_size: u64, max_files: u32) {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    /// Helper to initialize event bus for tests
+    fn init_test_event_bus() {
+        super::super::event_bus::init_event_bus(1024);
+    }
 
     #[test]
     fn test_audit_logger_new() {
@@ -736,6 +700,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_audit_logger_query_log() {
+        init_test_event_bus();
         let dir = tempdir().unwrap();
         let path = dir.path().join("queries.log");
 
@@ -758,13 +723,14 @@ mod tests {
 
         logger.init(config).await.unwrap();
         assert!(logger.is_query_log_enabled().await);
+        assert!(logger.is_query_log_file_enabled());
 
         // Log a query
         let entry = QueryLogEntry::new(1234, "udp", "example.com".into(), "A".into(), "IN".into());
-        logger.log_query(entry).await;
+        logger.log_query(entry);
 
-        // Give writer time to flush
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        // Give writer time to receive and flush
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         let stats = logger.stats();
         assert_eq!(stats.queries_logged, 1);
@@ -774,6 +740,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_audit_logger_security_event() {
+        init_test_event_bus();
         let dir = tempdir().unwrap();
         let path = dir.path().join("security.log");
 
@@ -807,7 +774,7 @@ mod tests {
             .await;
 
         // Give writer time
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         let stats = logger.stats();
         assert_eq!(stats.security_events_logged, 1);
@@ -817,6 +784,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_audit_logger_filtered_events() {
+        init_test_event_bus();
         let dir = tempdir().unwrap();
         let path = dir.path().join("security.log");
 
@@ -849,10 +817,48 @@ mod tests {
             .log_security_event(SecurityEventType::BlockedDomainQuery, "Test", None, None)
             .await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         let stats = logger.stats();
         assert_eq!(stats.security_events_logged, 1);
+
+        logger.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_event_bus_only_mode() {
+        init_test_event_bus();
+
+        let logger = AuditLogger::new();
+        let config = AuditConfig {
+            enabled: true,
+            log_to_file: false, // Disable file writing
+            buffer_size: 100,
+            max_file_size: 100 * 1024 * 1024,
+            max_files: 10,
+            query_log: Some(QueryLogConfig {
+                log_to_file: None,
+                path: "/tmp/queries.log".into(),
+                format: "json".into(),
+                sampling_rate: 1.0,
+                ..Default::default()
+            }),
+            security_events: None,
+        };
+
+        logger.init(config).await.unwrap();
+        assert!(logger.is_query_log_enabled().await);
+        assert!(!logger.is_query_log_file_enabled()); // File writing disabled
+
+        // Log should still work (publishes to event bus)
+        let entry = QueryLogEntry::new(1234, "udp", "example.com".into(), "A".into(), "IN".into());
+        logger.log_query(entry);
+
+        // Stats should reflect the logged query (event bus publishing)
+        let stats = logger.stats();
+        // Note: queries_logged only increments if there are subscribers
+        // In test mode without subscribers, it won't increment
+        assert_eq!(stats.queries_sampled_out, 0);
 
         logger.shutdown().await;
     }

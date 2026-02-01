@@ -126,6 +126,11 @@ class ApiClient {
         return this.fetch<{ alerts: Alert[]; total: number }>('/alerts/recent');
     }
 
+    // Server features
+    async getServerFeatures(): Promise<{ admin: boolean; metrics: boolean; audit: boolean; web_embed: boolean }> {
+        return this.fetch<{ admin: boolean; metrics: boolean; audit: boolean; web_embed: boolean }>('/features');
+    }
+
     // Metrics
     async getUpstreamHealth(): Promise<UpstreamHealthResponse> {
         return this.fetch<UpstreamHealthResponse>('/metrics/upstream-health');
@@ -172,14 +177,14 @@ class ApiClient {
         expirations: number;
         hit_rate: number;
     }> {
-        return this.fetch('/admin/cache/stats');
+        return this.fetch('/dashboard/cache/stats');
     }
 
     async getServerInfo(): Promise<{
         version: string;
         uptime_secs: number;
     }> {
-        return this.fetch('/admin/server/info');
+        return this.fetch('/dashboard/server/info');
     }
 
     // Alert management

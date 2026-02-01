@@ -48,7 +48,7 @@ impl EventBusStats {
 }
 
 /// Snapshot of event bus statistics
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct EventBusStatsSnapshot {
     pub events_published: u64,
     pub events_dropped: u64,

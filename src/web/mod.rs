@@ -43,10 +43,9 @@ use crate::Result;
 use crate::config::Config;
 use crate::plugin::Registry;
 use crate::plugins::audit::init_event_bus;
-use axum::{
-    Router,
-    routing::{get, post},
-};
+#[cfg(feature = "admin")]
+use axum::routing::post;
+use axum::{Json, Router, routing::get};
 use config::WebConfig;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -140,11 +139,18 @@ impl WebServer {
         let trace_layer = TraceLayer::new_for_http();
 
         // API routes
-        let api_router = Router::new()
+        #[cfg(feature = "admin")]
+        let mut api_router = Router::new()
             // Health check endpoint
             .route("/health", get(routes::dashboard::overview))
+            // Server features detection
+            .route("/features", get(server_features))
             // Dashboard
             .route("/dashboard/overview", get(routes::dashboard::overview))
+            .route(
+                "/dashboard/cache/stats",
+                get(routes::dashboard::cache_stats),
+            )
             .route("/alerts/recent", get(routes::dashboard::recent_alerts))
             // Metrics
             .route("/metrics/top-domains", get(routes::metrics::top_domains))
@@ -166,24 +172,68 @@ impl WebServer {
             .route(
                 "/audit/security-events/stream",
                 get(routes::audit::security_events_stream),
-            )
-            // Admin routes
-            .route("/admin/cache/clear", post(routes::admin::clear_cache))
-            .route("/admin/cache/stats", get(routes::admin::cache_stats))
-            .route("/admin/config/reload", post(routes::admin::reload_config))
-            .route("/admin/server/info", get(routes::admin::server_info))
-            // Alert management
+            );
+
+        #[cfg(not(feature = "admin"))]
+        let api_router = Router::new()
+            // Health check endpoint
+            .route("/health", get(routes::dashboard::overview))
+            // Server features detection
+            .route("/features", get(server_features))
+            // Dashboard
+            .route("/dashboard/overview", get(routes::dashboard::overview))
             .route(
-                "/admin/alerts/acknowledge-all",
-                post(routes::admin::acknowledge_all_alerts),
+                "/dashboard/cache/stats",
+                get(routes::dashboard::cache_stats),
             )
             .route(
-                "/admin/alerts/acknowledge/{id}",
-                post(routes::admin::acknowledge_alert),
+                "/dashboard/server/info",
+                get(routes::dashboard::server_info),
             )
-            .route("/admin/alerts/clear", post(routes::admin::clear_alerts))
-            // Log export
-            .route("/admin/logs/export", post(routes::admin::export_logs))
+            .route("/alerts/recent", get(routes::dashboard::recent_alerts))
+            // Metrics
+            .route("/metrics/top-domains", get(routes::metrics::top_domains))
+            .route("/metrics/top-clients", get(routes::metrics::top_clients))
+            .route(
+                "/metrics/upstream-health",
+                get(routes::metrics::upstream_health),
+            )
+            .route(
+                "/metrics/latency",
+                get(routes::metrics::latency_distribution),
+            )
+            .route("/metrics/qps", get(routes::metrics::qps_history))
+            // SSE streams
+            .route(
+                "/audit/query-logs/stream",
+                get(routes::audit::query_logs_stream),
+            )
+            .route(
+                "/audit/security-events/stream",
+                get(routes::audit::security_events_stream),
+            );
+
+        // Admin routes (only when admin feature is enabled)
+        #[cfg(feature = "admin")]
+        {
+            api_router = api_router
+                .route("/admin/cache/clear", post(routes::admin::clear_cache))
+                .route("/admin/config/reload", post(routes::admin::reload_config))
+                // Alert management
+                .route(
+                    "/admin/alerts/acknowledge-all",
+                    post(routes::admin::acknowledge_all_alerts),
+                )
+                .route(
+                    "/admin/alerts/acknowledge/{id}",
+                    post(routes::admin::acknowledge_alert),
+                )
+                .route("/admin/alerts/clear", post(routes::admin::clear_alerts))
+                // Log export
+                .route("/admin/logs/export", post(routes::admin::export_logs));
+        }
+
+        let api_router = api_router
             .layer(trace_layer.clone())
             .with_state(state.clone());
 
@@ -279,6 +329,17 @@ impl WebServer {
     }
 }
 
+/// Server features detection endpoint
+///
+/// GET /api/features
+async fn server_features() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "admin": cfg!(feature = "admin"),
+        "metrics": cfg!(feature = "metrics"),
+        "audit": cfg!(feature = "audit"),
+    }))
+}
+
 /// Root handler - returns a simple info page or redirects to dashboard
 async fn root_handler() -> axum::response::Html<&'static str> {
     axum::response::Html(
@@ -349,8 +410,8 @@ async fn root_handler() -> axum::response::Html<&'static str> {
         <h3>API Endpoints:</h3>
         <div class="links">
             <a href="/api/dashboard/overview">Dashboard Overview</a>
-            <a href="/api/admin/server/info">Server Info</a>
-            <a href="/api/admin/cache/stats">Cache Stats</a>
+            <a href="/api/dashboard/cache/stats">Cache Stats</a>
+            <a href="/api/dashboard/server/info">Server Info</a>
         </div>
         
         <div class="divider"></div>

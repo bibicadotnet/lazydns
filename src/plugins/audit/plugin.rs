@@ -92,8 +92,8 @@ impl AuditPlugin {
         qname.contains("._dns-sd._udp")
     }
 
-    /// Log a query entry
-    async fn log_query(&self, ctx: &Context, start_time: Option<Instant>) {
+    /// Log a query entry (sync - publishes to event bus)
+    fn log_query(&self, ctx: &Context, start_time: Option<Instant>) {
         // Skip if query logging is not enabled
         if !self.query_log_enabled {
             return;
@@ -185,8 +185,8 @@ impl AuditPlugin {
             }
         }
 
-        // Log the entry
-        AUDIT_LOGGER.log_query(entry).await;
+        // Log the entry (sync - publishes to event bus)
+        AUDIT_LOGGER.log_query(entry);
     }
 }
 
@@ -214,8 +214,8 @@ impl Plugin for AuditPlugin {
         // Get start time from metadata if available
         let start_time = ctx.get_metadata::<Instant>("request_start_time").copied();
 
-        // Log query if applicable
-        self.log_query(ctx, start_time).await;
+        // Log query if applicable (sync - publishes to event bus)
+        self.log_query(ctx, start_time);
 
         Ok(())
     }

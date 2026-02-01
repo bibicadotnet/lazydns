@@ -20,8 +20,6 @@ help:
 install:
 	@echo "Installing dependencies..."
 	npm install
-	@echo "Installing coverage tools..."
-	npm install --save-dev @vitest/coverage-v8@^3.0.0
 
 # Run TypeScript type checking
 check:
@@ -53,6 +51,7 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf dist/
 	rm -rf node_modules/
+	rm -rf coverage/
 	@echo "Clean complete"
 
 # Run linting and type checking

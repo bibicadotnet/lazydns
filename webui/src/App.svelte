@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import Router from "svelte-spa-router";
   import TopNav from "./components/TopNav.svelte";
   import Header from "./components/Header.svelte";
@@ -8,6 +9,7 @@
   import Metrics from "./routes/Metrics.svelte";
   import Admin from "./routes/Admin.svelte";
   import { darkMode } from "./lib/stores";
+  import { loadServerFeatures } from "./lib/features.svelte";
 
   const routes = {
     "/": Dashboard,
@@ -15,6 +17,11 @@
     "/metrics": Metrics,
     "/admin": Admin,
   };
+
+  // Load server features on mount
+  onMount(() => {
+    loadServerFeatures();
+  });
 
   // Apply dark class to html element for proper CSS cascade
   $: if (typeof document !== "undefined") {

@@ -3,6 +3,7 @@
   import { formatNumber } from "../lib/utils";
   import { api, type Alert } from "../lib/api";
   import { notifications, darkMode } from "../lib/stores";
+  import { features } from "../lib/features.svelte";
   import AlertsList from "../components/AlertsList.svelte";
 
   let configPath = "/etc/lazydns/config.yaml";
@@ -262,13 +263,62 @@
     </div>
   </div>
 
+  <!-- Feature Not Enabled Warning -->
+  {#if !features.admin}
+    <div
+      class="card p-4 border-2 {$darkMode
+        ? 'border-yellow-800 bg-yellow-900/20'
+        : 'border-yellow-300 bg-yellow-50'}"
+    >
+      <div class="flex items-start gap-3">
+        <svg
+          class="w-6 h-6 flex-shrink-0 {$darkMode
+            ? 'text-yellow-400'
+            : 'text-yellow-600'}"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          />
+        </svg>
+        <div>
+          <h4
+            class="font-semibold {$darkMode
+              ? 'text-yellow-300'
+              : 'text-yellow-800'}"
+          >
+            Admin Feature Not Enabled
+          </h4>
+          <p
+            class="text-sm mt-1 {$darkMode
+              ? 'text-yellow-400/80'
+              : 'text-yellow-700'}"
+          >
+            The admin feature is not enabled on this server. All administrative
+            operations are disabled. To enable, rebuild with
+            <code
+              class="px-1.5 py-0.5 rounded {$darkMode
+                ? 'bg-yellow-900/40'
+                : 'bg-yellow-200'} font-mono text-xs">--features admin</code
+            > flag.
+          </p>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- Quick Actions -->
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
     <!-- Reload Config -->
     <button
       on:click={reloadConfig}
-      disabled={isReloading}
-      class="card p-5 text-left transition-colors group disabled:opacity-50 {$darkMode
+      disabled={isReloading || !features.admin}
+      class="card p-5 text-left transition-colors group disabled:opacity-50 disabled:cursor-not-allowed {$darkMode
         ? 'hover:bg-gray-700/50'
         : 'hover:bg-gray-50'}"
     >
@@ -332,8 +382,8 @@
     <!-- Clear Cache -->
     <button
       on:click={clearCache}
-      disabled={isClearingCache}
-      class="card p-5 text-left transition-colors group disabled:opacity-50 {$darkMode
+      disabled={isClearingCache || !features.admin}
+      class="card p-5 text-left transition-colors group disabled:opacity-50 disabled:cursor-not-allowed {$darkMode
         ? 'hover:bg-gray-700/50'
         : 'hover:bg-gray-50'}"
     >
@@ -399,9 +449,10 @@
     <!-- Acknowledge All Alerts -->
     <button
       on:click={acknowledgeAllAlerts}
-      class="card p-5 text-left {$darkMode
+      disabled={!features.admin}
+      class="card p-5 text-left transition-colors group disabled:opacity-50 disabled:cursor-not-allowed {$darkMode
         ? 'hover:bg-gray-700/50'
-        : 'hover:bg-gray-50'} transition-colors group"
+        : 'hover:bg-gray-50'}"
     >
       <div class="flex items-center gap-4">
         <div
@@ -439,10 +490,10 @@
     <!-- Export Logs -->
     <button
       on:click={() => exportLogs("alerts", "csv")}
-      disabled={isExportingLogs}
-      class="card p-5 text-left {$darkMode
+      disabled={isExportingLogs || !features.admin}
+      class="card p-5 text-left transition-colors group disabled:opacity-50 disabled:cursor-not-allowed {$darkMode
         ? 'hover:bg-gray-700/50'
-        : 'hover:bg-gray-50'} transition-colors group disabled:opacity-50"
+        : 'hover:bg-gray-50'}"
     >
       <div class="flex items-center gap-4">
         <div
@@ -505,8 +556,8 @@
         </h3>
         <button
           on:click={clearCache}
-          disabled={isClearingCache}
-          class="btn-danger text-xs py-1"
+          disabled={isClearingCache || !features.admin}
+          class="btn-danger text-xs py-1 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Clear Cache
         </button>
@@ -867,8 +918,8 @@
         </div>
         <button
           on:click={reloadConfig}
-          disabled={isReloading}
-          class="btn-primary flex items-center gap-2"
+          disabled={isReloading || !features.admin}
+          class="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {#if isReloading}
             <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -936,12 +987,17 @@
         All Alerts
       </h3>
       <div class="flex gap-2">
-        <button on:click={clearAllAlerts} class="btn-secondary text-xs py-1">
+        <button
+          on:click={clearAllAlerts}
+          disabled={!features.admin}
+          class="btn-secondary text-xs py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
           Clear All
         </button>
         <button
           on:click={acknowledgeAllAlerts}
-          class="btn-secondary text-xs py-1"
+          disabled={!features.admin}
+          class="btn-secondary text-xs py-1 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Acknowledge All
         </button>
