@@ -15,7 +15,7 @@
   }
 
   function toggleTheme() {
-    darkMode.update((v) => !v);
+    darkMode.toggle();
   }
 </script>
 

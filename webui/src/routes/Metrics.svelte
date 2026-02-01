@@ -302,14 +302,18 @@
     <!-- Query Type Distribution -->
     <div class="card">
       <div class="card-header">
-        <h3 class="font-semibold text-white">Query Types</h3>
+        <h3 class="font-semibold {$darkMode ? 'text-white' : 'text-gray-900'}">
+          Query Types
+        </h3>
       </div>
       <div class="card-body space-y-3">
         {#each [{ type: "A", count: 456789, color: "bg-blue-500" }, { type: "AAAA", count: 234567, color: "bg-purple-500" }, { type: "CNAME", count: 123456, color: "bg-green-500" }, { type: "MX", count: 56789, color: "bg-yellow-500" }, { type: "TXT", count: 34567, color: "bg-pink-500" }, { type: "Other", count: 12345, color: "bg-gray-500" }] as item}
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               <div class="w-3 h-3 rounded {item.color}"></div>
-              <span class="text-gray-300">{item.type}</span>
+              <span class={$darkMode ? "text-gray-300" : "text-gray-700"}
+                >{item.type}</span
+              >
             </div>
             <div class="flex items-center gap-3">
               <div class="w-24 bg-gray-700 rounded-full h-2 overflow-hidden">
@@ -318,7 +322,11 @@
                   style="width: {(item.count / 456789) * 100}%"
                 ></div>
               </div>
-              <span class="text-sm text-gray-400 w-16 text-right">
+              <span
+                class={$darkMode
+                  ? "text-sm text-gray-400 w-16 text-right"
+                  : "text-sm text-gray-700 w-16 text-right"}
+              >
                 {(item.count / 1000).toFixed(1)}K
               </span>
             </div>
@@ -330,18 +338,30 @@
     <!-- Response Codes -->
     <div class="card">
       <div class="card-header">
-        <h3 class="font-semibold text-white">Response Codes</h3>
+        <h3 class="font-semibold {$darkMode ? 'text-white' : 'text-gray-900'}">
+          Response Codes
+        </h3>
       </div>
       <div class="card-body space-y-3">
         {#each [{ code: "NOERROR", count: 1123456, color: "bg-green-500", pct: 91.2 }, { code: "NXDOMAIN", count: 56789, color: "bg-yellow-500", pct: 4.6 }, { code: "SERVFAIL", count: 23456, color: "bg-red-500", pct: 1.9 }, { code: "REFUSED", count: 12345, color: "bg-orange-500", pct: 1.0 }, { code: "Other", count: 16012, color: "bg-gray-500", pct: 1.3 }] as item}
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               <div class="w-3 h-3 rounded {item.color}"></div>
-              <span class="text-gray-300">{item.code}</span>
+              <span class={$darkMode ? "text-gray-300" : "text-gray-700"}
+                >{item.code}</span
+              >
             </div>
             <div class="flex items-center gap-3">
-              <span class="text-sm text-gray-400">{item.pct}%</span>
-              <span class="text-sm text-gray-500 w-16 text-right">
+              <span
+                class={$darkMode
+                  ? "text-sm text-gray-400"
+                  : "text-sm text-gray-700"}>{item.pct}%</span
+              >
+              <span
+                class={$darkMode
+                  ? "text-sm text-gray-500 w-16 text-right"
+                  : "text-sm text-gray-700 w-16 text-right"}
+              >
                 {(item.count / 1000).toFixed(1)}K
               </span>
             </div>
@@ -353,14 +373,18 @@
     <!-- Protocol Distribution -->
     <div class="card">
       <div class="card-header">
-        <h3 class="font-semibold text-white">Protocols</h3>
+        <h3 class="font-semibold {$darkMode ? 'text-white' : 'text-gray-900'}">
+          Protocols
+        </h3>
       </div>
       <div class="card-body space-y-3">
         {#each [{ proto: "UDP", count: 789012, color: "bg-blue-500", pct: 64.0 }, { proto: "TCP", count: 234567, color: "bg-cyan-500", pct: 19.0 }, { proto: "DoT (TLS)", count: 123456, color: "bg-green-500", pct: 10.0 }, { proto: "DoH", count: 56789, color: "bg-yellow-500", pct: 4.6 }, { proto: "DoQ", count: 29630, color: "bg-purple-500", pct: 2.4 }] as item}
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               <div class="w-3 h-3 rounded {item.color}"></div>
-              <span class="text-gray-300">{item.proto}</span>
+              <span class={$darkMode ? "text-gray-300" : "text-gray-700"}
+                >{item.proto}</span
+              >
             </div>
             <div class="flex items-center gap-3">
               <div class="w-24 bg-gray-700 rounded-full h-2 overflow-hidden">
@@ -369,7 +393,11 @@
                   style="width: {item.pct}%"
                 ></div>
               </div>
-              <span class="text-sm text-gray-400 w-12 text-right">
+              <span
+                class={$darkMode
+                  ? "text-sm text-gray-400 w-12 text-right"
+                  : "text-sm text-gray-700 w-12 text-right"}
+              >
                 {item.pct}%
               </span>
             </div>

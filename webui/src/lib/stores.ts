@@ -3,8 +3,36 @@
 import { writable, derived } from 'svelte/store';
 import type { Alert, QueryLogEntry, SecurityEvent } from './types';
 
-// Theme store
-export const darkMode = writable(true);
+// Theme store - with localStorage persistence
+function createDarkModeStore() {
+    // Get initial value from localStorage or default to true
+    const initialValue = typeof window !== 'undefined' 
+        ? localStorage.getItem('darkMode') === 'false' ? false : true
+        : true;
+    
+    const { subscribe, set, update } = writable<boolean>(initialValue);
+
+    return {
+        subscribe,
+        set: (value: boolean) => {
+            set(value);
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('darkMode', String(value));
+            }
+        },
+        toggle: () => {
+            update(v => {
+                const newValue = !v;
+                if (typeof window !== 'undefined') {
+                    localStorage.setItem('darkMode', String(newValue));
+                }
+                return newValue;
+            });
+        }
+    };
+}
+
+export const darkMode = createDarkModeStore();
 
 // Live data toggle
 export const isLiveMode = writable(true);
