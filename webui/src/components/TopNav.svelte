@@ -1,7 +1,13 @@
 <script lang="ts">
   import { link } from "svelte-spa-router";
   import active from "svelte-spa-router/active";
-  import { topNavCollapsed, darkMode } from "../lib/stores";
+  import {
+    topNavCollapsed,
+    darkMode,
+    isLiveMode,
+    unacknowledgedAlerts,
+    notifications,
+  } from "../lib/stores";
 
   const navItems = [
     { path: "/", icon: "dashboard", label: "Dashboard" },
@@ -11,12 +17,16 @@
     { path: "/admin", icon: "settings", label: "Admin" },
   ];
 
-  function toggleNav() {
-    topNavCollapsed.update((v) => !v);
-  }
-
   function toggleTheme() {
     darkMode.toggle();
+  }
+
+  function toggleLiveMode() {
+    isLiveMode.update((v) => !v);
+    notifications.add({
+      type: "info",
+      message: $isLiveMode ? "Live updates disabled" : "Live updates enabled",
+    });
   }
 </script>
 
@@ -105,19 +115,28 @@
             />
           </svg>
         {:else if item.icon === "alert"}
-          <svg
-            class="w-5 h-5 flex-shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-            />
-          </svg>
+          <div class="relative">
+            <svg
+              class="w-5 h-5 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+              />
+            </svg>
+            {#if $unacknowledgedAlerts > 0}
+              <span
+                class="absolute -top-2 -right-2 flex items-center justify-center min-w-[1.125rem] h-4.5 px-1 text-xs font-bold text-white bg-red-500 rounded-full"
+              >
+                {$unacknowledgedAlerts}
+              </span>
+            {/if}
+          </div>
         {:else if item.icon === "settings"}
           <svg
             class="w-5 h-5 flex-shrink-0"
@@ -190,28 +209,33 @@
     {/if}
   </button>
 
-  <!-- Toggle Button -->
+  <!-- Live Button -->
   <button
-    on:click={toggleNav}
-    class="flex items-center justify-center p-2 rounded-lg transition-colors {$darkMode
-      ? 'text-gray-400 hover:text-white hover:bg-gray-800'
-      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}"
-    title={$topNavCollapsed ? "Expand menu" : "Collapse menu"}
+    on:click={toggleLiveMode}
+    class="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors border {$isLiveMode
+      ? $darkMode
+        ? 'bg-green-900 bg-opacity-30 text-green-400 border-green-700'
+        : 'bg-green-50 text-green-700 border-green-300'
+      : $darkMode
+        ? 'bg-gray-800 text-gray-400 border-gray-700'
+        : 'bg-gray-100 text-gray-600 border-gray-300'}"
+    title={$isLiveMode ? "Disable live updates" : "Enable live updates"}
   >
-    <svg
-      class="w-5 h-5 transition-transform duration-300"
-      class:rotate-180={!$topNavCollapsed}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke-width="2"
-        d="M4 6h16M4 12h16M4 18h16"
-      />
-    </svg>
+    <span class="relative flex h-2.5 w-2.5">
+      {#if $isLiveMode}
+        <span
+          class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+        ></span>
+      {/if}
+      <span
+        class="relative inline-flex rounded-full h-2.5 w-2.5"
+        class:bg-green-400={$isLiveMode}
+        class:bg-gray-500={!$isLiveMode}
+      ></span>
+    </span>
+    <span class="text-sm font-medium">
+      {$isLiveMode ? "Live" : "Paused"}
+    </span>
   </button>
 </nav>
 
