@@ -102,7 +102,9 @@ export interface Alert {
     rule_name: string;
     severity: 'info' | 'warning' | 'critical';
     message: string;
-    timestamp: number;  // Unix seconds
+    timestamp: number;  // Unix seconds (first occurrence)
+    last_updated: number;  // Unix seconds (last occurrence)
+    occurrence_count: number;  // Number of times this alert has been triggered
     acknowledged: boolean;
     context?: Record<string, string | number>;
 }

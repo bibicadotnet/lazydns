@@ -108,7 +108,7 @@ web:
           type: security_event
           event_type: "malformed_query"
         severity: info
-        message: "Malformed DNS query from {client_ip}"
+        message: "Malformed DNS query from {client_ip} for {domain}"
       
       # Alert when query times out
       - name: "Query Timeout"

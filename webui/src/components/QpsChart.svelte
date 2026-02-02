@@ -34,13 +34,6 @@
     const tooltipBorder = isDark ? "#374151" : "#e5e7eb";
     const tooltipTextColor = isDark ? "#f3f4f6" : "#1f2937";
 
-    // Calculate base time for converting relative timestamps to absolute time
-    // Assumption: the latest timestamp represents "now"
-    const now = Date.now();
-    const maxTimestamp =
-      data.length > 0 ? Math.max(...data.map((d) => d.timestamp)) : 0;
-    const baseTime = now - maxTimestamp * 1000;
-
     const option: echarts.EChartsOption = {
       backgroundColor: "transparent",
       title: {
@@ -61,10 +54,9 @@
         },
         formatter: (params: any) => {
           const point = params[0];
-          // Convert relative timestamp to absolute time
-          const relativeSeconds = Number(point.axisValue);
-          const absoluteTime = baseTime + relativeSeconds * 1000;
-          const date = new Date(absoluteTime);
+          // Timestamp is now absolute Unix seconds from backend
+          const unixSeconds = Number(point.axisValue);
+          const date = new Date(unixSeconds * 1000);
           const time = date.toLocaleTimeString();
           return `<div class="font-medium">${time}</div>
                   <div style="color: ${color}">${point.value.toFixed(1)} qps</div>`;
@@ -81,10 +73,9 @@
         data: data.map((d) => d.timestamp),
         axisLabel: {
           formatter: (value: any) => {
-            // Convert relative timestamp to absolute time
-            const relativeSeconds = Number(value);
-            const absoluteTime = baseTime + relativeSeconds * 1000;
-            const date = new Date(absoluteTime);
+            // Timestamp is now absolute Unix seconds from backend
+            const unixSeconds = Number(value);
+            const date = new Date(unixSeconds * 1000);
             const hours = String(date.getHours()).padStart(2, "0");
             const minutes = String(date.getMinutes()).padStart(2, "0");
             return `${hours}:${minutes}`;

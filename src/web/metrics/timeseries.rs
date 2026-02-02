@@ -144,11 +144,15 @@ impl TimeSeries {
         let now = self.current_bucket_timestamp();
         let buckets = self.buckets.read();
 
+        // Calculate the Unix timestamp of start_time
+        let start_unix = self.get_start_time_unix();
+
         buckets
             .iter()
             .filter(|b| b.timestamp <= now)
             .map(|b| TimeSeriesPoint {
-                timestamp: b.timestamp,
+                // Convert to absolute Unix timestamp: start_time + bucket_relative_time
+                timestamp: start_unix + b.timestamp,
                 value: b.sum,
             })
             .collect()
@@ -159,14 +163,38 @@ impl TimeSeries {
         let now = self.current_bucket_timestamp();
         let buckets = self.buckets.read();
 
+        // Calculate the Unix timestamp of start_time
+        let start_unix = self.get_start_time_unix();
+
         buckets
             .iter()
             .filter(|b| b.timestamp <= now)
             .map(|b| TimeSeriesPoint {
-                timestamp: b.timestamp,
+                // Convert to absolute Unix timestamp: start_time + bucket_relative_time
+                timestamp: start_unix + b.timestamp,
                 value: b.average(),
             })
             .collect()
+    }
+
+    /// Get the Unix timestamp of the start_time
+    fn get_start_time_unix(&self) -> u64 {
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+        let now_instant = std::time::Instant::now();
+        let elapsed_since_start = now_instant
+            .checked_duration_since(self.start_time)
+            .unwrap_or(Duration::ZERO);
+
+        // Get current system time
+        let now_system = SystemTime::now();
+        let unix_now = now_system
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // Subtract elapsed time to get start_time's Unix timestamp
+        unix_now.saturating_sub(elapsed_since_start.as_secs())
     }
 
     /// Get the sum of all values in the window

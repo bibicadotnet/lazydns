@@ -235,7 +235,7 @@ impl QueryLogEntry {
 
 /// Audit event (generic wrapper for all audit log types)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(untagged)]
 pub enum AuditEvent {
     /// DNS query/response log
     Query(QueryLogEntry),
@@ -292,7 +292,45 @@ impl AuditEvent {
 
     /// Format as JSON
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string(self)
+        match self {
+            AuditEvent::Security {
+                timestamp,
+                event_type,
+                message,
+                client_ip,
+                qname,
+                details: _,
+            } => {
+                // Manually construct JSON to control field order: timestamp first, type at end
+                let mut result = String::from("{");
+                result.push_str(&format!(
+                    "\"timestamp\":{},",
+                    serde_json::to_string(timestamp)?
+                ));
+                result.push_str(&format!(
+                    "\"event_type\":{},",
+                    serde_json::to_string(event_type.as_str())?
+                ));
+                result.push_str(&format!("\"message\":{},", serde_json::to_string(message)?));
+
+                if let Some(ip) = client_ip {
+                    result.push_str(&format!(
+                        "\"client_ip\":{},",
+                        serde_json::to_string(&ip.to_string())?
+                    ));
+                }
+
+                if let Some(name) = qname {
+                    result.push_str(&format!("\"qname\":{},", serde_json::to_string(name)?));
+                }
+
+                // Add type field before closing brace
+                result.push_str("\"type\":\"security\"}");
+
+                Ok(result)
+            }
+            _ => serde_json::to_string(self),
+        }
     }
 }
 

@@ -535,26 +535,68 @@ async fn security_log_writer(
     let mut accumulated_size: u64 = 0;
     let mut flush_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
 
+    // Aggregation: map of (signature -> (json, occurrence_count, first_timestamp))
+    // This tracks events that haven't been written yet, allowing aggregation within window
+    let mut pending_events: std::collections::HashMap<String, (String, u64, u64)> =
+        std::collections::HashMap::with_capacity(20);
+
     loop {
         tokio::select! {
             event = subscriber.recv() => {
                 match event {
                     Some(event) => {
                         if let Ok(json) = event.to_json() {
-                            let event_size = json.len() as u64 + 1; // +1 for newline
-                            buffer.push(json);
-                            accumulated_size += event_size;
+                            // Extract event signature for aggregation
+                            let signature = extract_event_signature(&event);
+                            let now_secs = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
 
-                            // Flush if buffer reaches size limit
-                            if buffer.len() >= buffer_size {
-                                flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
+                            // Check if this signature is already pending (within 10s window)
+                            if let Some((_, count, _)) = pending_events.get_mut(&signature) {
+                                // Same event within aggregation window, just increment count
+                                *count += 1;
+                                trace!(signature = %signature, count = %count, "Event aggregated (pending)");
+                            } else {
+                                // New event or window expired, add to pending
+                                pending_events.insert(signature.clone(), (json.clone(), 1, now_secs));
+                                trace!(signature = %signature, "New event added (pending)");
+                            }
+
+                            // Check if we should flush (pending events accumulated)
+                            if pending_events.len() >= buffer_size {
+                                flush_security_buffer_aggregated(
+                                    &path,
+                                    &mut pending_events,
+                                    &mut buffer,
+                                    max_file_size,
+                                    max_files,
+                                    &mut accumulated_size,
+                                    now_secs,
+                                );
                             }
                         } else {
                             error!("Failed to serialize security event");
                         }
                     }
                     None => {
-                        // Channel closed, flush and exit
+                        // Channel closed, flush all pending and exit
+                        if !pending_events.is_empty() {
+                            let now_secs = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            flush_security_buffer_aggregated(
+                                &path,
+                                &mut pending_events,
+                                &mut buffer,
+                                max_file_size,
+                                max_files,
+                                &mut accumulated_size,
+                                now_secs,
+                            );
+                        }
                         if !buffer.is_empty() {
                             flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
                         }
@@ -563,7 +605,22 @@ async fn security_log_writer(
                 }
             }
             _ = flush_interval.tick() => {
-                // Periodic flush
+                // Periodic flush of pending events
+                if !pending_events.is_empty() {
+                    let now_secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    flush_security_buffer_aggregated(
+                        &path,
+                        &mut pending_events,
+                        &mut buffer,
+                        max_file_size,
+                        max_files,
+                        &mut accumulated_size,
+                        now_secs,
+                    );
+                }
                 if !buffer.is_empty() {
                     flush_security_buffer(&path, &mut buffer, max_file_size, max_files, &mut accumulated_size);
                 }
@@ -572,6 +629,47 @@ async fn security_log_writer(
     }
 
     debug!("Security log writer stopped");
+}
+
+/// Flush aggregated pending events to the write buffer
+/// Expires old signatures (> 10s) and converts pending events to aggregated JSON
+fn flush_security_buffer_aggregated(
+    _path: &str,
+    pending_events: &mut std::collections::HashMap<String, (String, u64, u64)>,
+    buffer: &mut Vec<String>,
+    _max_file_size: u64,
+    _max_files: u32,
+    accumulated_size: &mut u64,
+    now_secs: u64,
+) {
+    let aggregation_window = 10u64; // 10 seconds
+
+    // Move pending events to buffer, filtering out expired ones and applying aggregation
+    for (signature, (json, count, first_ts)) in pending_events.drain() {
+        // Only write events within aggregation window or those that haven't been expired
+        if now_secs.saturating_sub(first_ts) <= aggregation_window {
+            // Format with aggregation count (count > 1 means it was aggregated)
+            let aggregated_json = if count > 1 {
+                format_aggregated_event(&json, count)
+            } else {
+                json
+            };
+            let event_size = aggregated_json.len() as u64 + 1;
+            buffer.push(aggregated_json);
+            *accumulated_size += event_size;
+            debug!(
+                signature = %signature,
+                count = count,
+                "Event flushed to buffer with aggregation"
+            );
+        } else {
+            debug!(
+                signature = %signature,
+                age = now_secs.saturating_sub(first_ts),
+                "Event expired, not writing"
+            );
+        }
+    }
 }
 
 /// Flush security event buffer to file
@@ -651,6 +749,55 @@ fn rotate_log_file(path: &str, max_files: u32) {
         warn!(path = %path, error = %e, "Failed to rotate log file");
     } else {
         info!(path = %path, "Rotated log file");
+    }
+}
+
+/// Extract event signature for aggregation purposes
+/// Combines event_type and key fields to create a unique signature
+fn extract_event_signature(event: &AuditEvent) -> String {
+    match event {
+        AuditEvent::Security {
+            event_type,
+            client_ip,
+            qname,
+            ..
+        } => {
+            // Signature: "event_type:ip:domain" - capture the essentials
+            format!(
+                "{}:{}:{}",
+                event_type.as_str(),
+                client_ip.map(|ip| ip.to_string()).unwrap_or_default(),
+                qname.as_deref().unwrap_or("")
+            )
+        }
+        AuditEvent::Query(_) => "query".to_string(),
+    }
+}
+
+/// Format event JSON with aggregation count
+fn format_aggregated_event(original_json: &str, count: u64) -> String {
+    // Preserve original JSON key order by appending occurrence_count at the end
+    // Remove the closing brace and add the field before it
+    let trimmed = original_json.trim_end();
+    if let Some(last_brace) = trimmed.rfind('}') {
+        let json_body = &trimmed[..last_brace];
+        format!(
+            "{}{}\"occurrence_count\":{}}}",
+            json_body,
+            if json_body.trim_end().ends_with(',') || json_body.trim_end().ends_with('{') {
+                ""
+            } else {
+                ","
+            },
+            count
+        )
+    } else {
+        // Not a valid JSON object, return with occurrence_count appended anyway
+        format!(
+            "{},\"occurrence_count\":{}}}",
+            trimmed.trim_end_matches('}'),
+            count
+        )
     }
 }
 

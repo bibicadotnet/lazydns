@@ -56,6 +56,8 @@ describe('alerts store', () => {
             severity: 'warning',
             message: 'Test alert',
             timestamp: Math.floor(Date.now() / 1000),
+            last_updated: Math.floor(Date.now() / 1000),
+            occurrence_count: 1,
             acknowledged: false
         };
         alerts.set([alert]);
@@ -71,9 +73,9 @@ describe('unacknowledgedAlerts derived store', () => {
     it('should count unacknowledged alerts', () => {
         const now = Math.floor(Date.now() / 1000);
         alerts.set([
-            { id: '1', rule_name: 'rule1', severity: 'warning', message: 'Test 1', timestamp: now, acknowledged: false },
-            { id: '2', rule_name: 'rule2', severity: 'critical', message: 'Test 2', timestamp: now, acknowledged: true },
-            { id: '3', rule_name: 'rule3', severity: 'info', message: 'Test 3', timestamp: now, acknowledged: false }
+            { id: '1', rule_name: 'rule1', severity: 'warning', message: 'Test 1', timestamp: now, last_updated: now, occurrence_count: 1, acknowledged: false },
+            { id: '2', rule_name: 'rule2', severity: 'critical', message: 'Test 2', timestamp: now, last_updated: now, occurrence_count: 1, acknowledged: true },
+            { id: '3', rule_name: 'rule3', severity: 'info', message: 'Test 3', timestamp: now, last_updated: now, occurrence_count: 1, acknowledged: false }
         ]);
         expect(get(unacknowledgedAlerts)).toBe(2);
     });
@@ -81,8 +83,8 @@ describe('unacknowledgedAlerts derived store', () => {
     it('should return 0 when all alerts are acknowledged', () => {
         const now = Math.floor(Date.now() / 1000);
         alerts.set([
-            { id: '1', rule_name: 'rule1', severity: 'warning', message: 'Test 1', timestamp: now, acknowledged: true },
-            { id: '2', rule_name: 'rule2', severity: 'critical', message: 'Test 2', timestamp: now, acknowledged: true }
+            { id: '1', rule_name: 'rule1', severity: 'warning', message: 'Test 1', timestamp: now, last_updated: now, occurrence_count: 1, acknowledged: true },
+            { id: '2', rule_name: 'rule2', severity: 'critical', message: 'Test 2', timestamp: now, last_updated: now, occurrence_count: 1, acknowledged: true }
         ]);
         expect(get(unacknowledgedAlerts)).toBe(0);
     });

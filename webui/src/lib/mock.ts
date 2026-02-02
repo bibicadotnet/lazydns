@@ -250,6 +250,8 @@ export const mockAlerts: Alert[] = [
         rule_name: 'upstream_high_latency',
         message: "Upstream 'quad9' response time > 100ms",
         timestamp: Math.floor((Date.now() - 300000) / 1000),
+        last_updated: Math.floor(Date.now() / 1000),
+        occurrence_count: 3,
         context: { upstream: 'quad9', latency_ms: 125 },
         acknowledged: false
     },
@@ -259,6 +261,8 @@ export const mockAlerts: Alert[] = [
         rule_name: 'cache_cleared',
         message: 'Cache was manually cleared by admin',
         timestamp: Math.floor((Date.now() - 900000) / 1000),
+        last_updated: Math.floor((Date.now() - 900000) / 1000),
+        occurrence_count: 1,
         context: { cleared_entries: 12456 },
         acknowledged: true
     },
@@ -268,6 +272,8 @@ export const mockAlerts: Alert[] = [
         rule_name: 'high_block_rate',
         message: 'Block rate exceeded 15% in last 5 minutes',
         timestamp: Math.floor((Date.now() - 1200000) / 1000),
+        last_updated: Math.floor((Date.now() - 600000) / 1000),
+        occurrence_count: 2,
         context: { block_rate: 17.5, threshold: 15 },
         acknowledged: false
     },
@@ -277,6 +283,8 @@ export const mockAlerts: Alert[] = [
         rule_name: 'upstream_down',
         message: "Upstream 'backup-dns' is unreachable",
         timestamp: Math.floor((Date.now() - 1800000) / 1000),
+        last_updated: Math.floor((Date.now() - 1800000) / 1000),
+        occurrence_count: 1,
         context: { upstream: 'backup-dns', consecutive_failures: 10 },
         acknowledged: true
     },
@@ -286,6 +294,8 @@ export const mockAlerts: Alert[] = [
         rule_name: 'config_reloaded',
         message: 'Configuration reloaded successfully',
         timestamp: Math.floor((Date.now() - 3600000) / 1000),
+        last_updated: Math.floor((Date.now() - 3600000) / 1000),
+        occurrence_count: 1,
         context: { path: '/etc/lazydns/config.yaml' },
         acknowledged: true
     }

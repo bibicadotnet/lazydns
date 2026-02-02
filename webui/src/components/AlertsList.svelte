@@ -89,12 +89,21 @@
                 >
                   {alert.severity}
                 </span>
+                {#if alert.occurrence_count > 1}
+                  <span
+                    class="text-xs px-2 py-0.5 rounded {$darkMode
+                      ? 'bg-gray-700 text-gray-300'
+                      : 'bg-gray-200 text-gray-700'}"
+                  >
+                    {alert.occurrence_count}x
+                  </span>
+                {/if}
                 <span
                   class="text-xs {$darkMode
                     ? 'text-gray-500'
                     : 'text-gray-400'}"
                 >
-                  {formatTimeAgo(alert.timestamp)}
+                  {formatTimeAgo(alert.last_updated)}
                 </span>
               </div>
               <p

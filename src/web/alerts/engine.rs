@@ -23,8 +23,12 @@ pub struct Alert {
     pub severity: AlertSeverity,
     /// Alert message
     pub message: String,
-    /// Timestamp (Unix seconds)
+    /// Timestamp (Unix seconds) of first occurrence
     pub timestamp: u64,
+    /// Timestamp (Unix seconds) of last occurrence
+    pub last_updated: u64,
+    /// Number of times this alert has been triggered
+    pub occurrence_count: u64,
     /// Whether the alert has been acknowledged
     pub acknowledged: bool,
     /// Additional context
@@ -35,15 +39,19 @@ pub struct Alert {
 impl Alert {
     /// Create a new alert
     pub fn new(rule_name: &str, severity: AlertSeverity, message: String) -> Self {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             rule_name: rule_name.to_string(),
             severity,
             message,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
+            timestamp: now,
+            last_updated: now,
+            occurrence_count: 1,
             acknowledged: false,
             context: None,
         }
@@ -55,6 +63,20 @@ impl Alert {
             .get_or_insert_with(HashMap::new)
             .insert(key.to_string(), value.to_string());
         self
+    }
+
+    /// Update occurrence count and last_updated timestamp
+    pub fn increment_occurrence(&mut self) {
+        self.occurrence_count += 1;
+        self.last_updated = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+    }
+
+    /// Check if this alert matches another (for deduplication)
+    pub fn matches(&self, other: &Alert) -> bool {
+        self.rule_name == other.rule_name && self.message == other.message
     }
 }
 
@@ -226,10 +248,25 @@ impl AlertEngine {
         }
     }
 
-    /// Add an alert to storage
+    /// Add an alert to storage, aggregating duplicates
     fn add_alert(&self, alert: Alert) {
         let mut alerts = self.alerts.write();
 
+        // Check if a matching alert already exists in recent history (last 10 alerts)
+        for existing in alerts.iter_mut().take(10) {
+            if existing.matches(&alert) && !existing.acknowledged {
+                // Found matching alert - increment occurrence count instead of creating new
+                existing.increment_occurrence();
+                debug!(
+                    rule = %alert.rule_name,
+                    occurrences = existing.occurrence_count,
+                    "Alert aggregated"
+                );
+                return;
+            }
+        }
+
+        // No matching alert found, add new one
         // Remove oldest if at capacity
         while alerts.len() >= self.config.max_alerts {
             alerts.pop_back();
@@ -390,20 +427,39 @@ mod tests {
     }
 
     #[test]
-    fn test_max_alerts() {
-        let mut config = sample_config();
-        config.max_alerts = 5;
+    fn test_alert_aggregation() {
+        let config = sample_config();
         let engine = AlertEngine::new(&config).unwrap();
 
-        for i in 0..10 {
-            let alert = Alert::new("test", AlertSeverity::Info, format!("Alert {}", i));
-            engine.add_alert(alert);
-        }
+        // Add same alert multiple times
+        let alert1 = Alert::new("test", AlertSeverity::Warning, "Same alert".to_string());
+        let alert2 = Alert::new("test", AlertSeverity::Warning, "Same alert".to_string());
+        let alert3 = Alert::new("test", AlertSeverity::Warning, "Same alert".to_string());
 
-        assert_eq!(engine.recent_alert_count(), 5);
-        // Newest should be first
-        let alerts = engine.recent_alerts(5);
-        assert!(alerts[0].message.contains("9"));
+        engine.add_alert(alert1);
+        engine.add_alert(alert2);
+        engine.add_alert(alert3);
+
+        // Should only have 1 alert with occurrence_count = 3
+        assert_eq!(engine.recent_alert_count(), 1);
+        let alerts = engine.recent_alerts(1);
+        assert_eq!(alerts[0].occurrence_count, 3);
+    }
+
+    #[test]
+    fn test_alert_different_messages() {
+        let config = sample_config();
+        let engine = AlertEngine::new(&config).unwrap();
+
+        // Add alerts with different messages
+        let alert1 = Alert::new("test", AlertSeverity::Warning, "Alert A".to_string());
+        let alert2 = Alert::new("test", AlertSeverity::Warning, "Alert B".to_string());
+
+        engine.add_alert(alert1);
+        engine.add_alert(alert2);
+
+        // Should have 2 alerts
+        assert_eq!(engine.recent_alert_count(), 2);
     }
 
     #[test]
