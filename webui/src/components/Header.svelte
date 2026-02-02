@@ -193,7 +193,7 @@
             {/each}
           </div>
           <a
-            href="#/admin"
+            href="#/alerts"
             class="block px-4 py-3 text-center text-sm transition-colors {$darkMode
               ? 'text-primary-400 hover:text-primary-300 hover:bg-gray-700/50'
               : 'text-primary-600 hover:text-primary-500 hover:bg-gray-50'}"

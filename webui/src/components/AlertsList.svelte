@@ -7,6 +7,7 @@
   export let alerts: Alert[];
   export let limit: number = 5;
   export let showAcknowledgeButton: boolean = false;
+  export let adminEnabled: boolean = false;
 
   const dispatch = createEventDispatcher<{ acknowledge: string }>();
 
@@ -129,10 +130,13 @@
             {:else if showAcknowledgeButton}
               <button
                 on:click|stopPropagation={() => handleAcknowledge(alert.id)}
-                class="text-xs px-2 py-1 rounded transition-colors flex-shrink-0 {$darkMode
+                disabled={!adminEnabled}
+                class="text-xs px-2 py-1 rounded transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed {$darkMode
                   ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
                   : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}"
-                title="Acknowledge alert"
+                title={adminEnabled
+                  ? "Acknowledge alert"
+                  : "Admin feature not enabled"}
               >
                 Ack
               </button>
@@ -149,7 +153,7 @@
       : 'border-gray-200'}"
   >
     <a
-      href="#/admin"
+      href="#/alerts"
       class="text-sm transition-colors {$darkMode
         ? 'text-primary-400 hover:text-primary-300'
         : 'text-primary-600 hover:text-primary-500'}"

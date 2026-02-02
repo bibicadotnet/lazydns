@@ -7,14 +7,16 @@
   import Dashboard from "./routes/Dashboard.svelte";
   import AuditLogs from "./routes/AuditLogs.svelte";
   import Metrics from "./routes/Metrics.svelte";
+  import Alerts from "./routes/Alerts.svelte";
   import Admin from "./routes/Admin.svelte";
   import { darkMode } from "./lib/stores";
   import { loadServerFeatures } from "./lib/features.svelte";
 
   const routes = {
     "/": Dashboard,
-    "/audit": AuditLogs,
     "/metrics": Metrics,
+    "/audit": AuditLogs,
+    "/alerts": Alerts,
     "/admin": Admin,
   };
 

@@ -1,17 +1,16 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { formatNumber } from "../lib/utils";
-  import { api, type Alert } from "../lib/api";
+  import { api } from "../lib/api";
   import { notifications, darkMode } from "../lib/stores";
   import { features } from "../lib/features.svelte";
-  import AlertsList from "../components/AlertsList.svelte";
 
   let configPath = "/etc/lazydns/config.yaml";
   let isReloading = false;
   let isClearingCache = false;
+  let isAcknowledgingAlerts = false;
 
   // Real data
-  let alerts: Alert[] = [];
   let serverInfo = {
     version: "0.3.1",
     status: "loading",
@@ -37,30 +36,28 @@
 
   async function fetchData() {
     try {
-      const [overviewRes, alertsRes, latencyRes, cacheStatsRes] =
-        await Promise.all([
-          api.getDashboardOverview(),
-          api.getRecentAlerts().catch(() => ({ alerts: [], total: 0 })),
-          api.getLatencyDistribution().catch(() => ({
-            distribution: {
-              buckets: [],
-              total: 0,
-              p50_ms: 0,
-              p95_ms: 0,
-              p99_ms: 0,
-              max_ms: 0,
-              avg_ms: 0,
-            },
-          })),
-          api.getCacheStats().catch(() => ({
-            size: 0,
-            hits: 0,
-            misses: 0,
-            evictions: 0,
-            expirations: 0,
-            hit_rate: 0,
-          })),
-        ]);
+      const [overviewRes, latencyRes, cacheStatsRes] = await Promise.all([
+        api.getDashboardOverview(),
+        api.getLatencyDistribution().catch(() => ({
+          distribution: {
+            buckets: [],
+            total: 0,
+            p50_ms: 0,
+            p95_ms: 0,
+            p99_ms: 0,
+            max_ms: 0,
+            avg_ms: 0,
+          },
+        })),
+        api.getCacheStats().catch(() => ({
+          size: 0,
+          hits: 0,
+          misses: 0,
+          evictions: 0,
+          expirations: 0,
+          hit_rate: 0,
+        })),
+      ]);
 
       serverInfo = {
         version: "0.3.1",
@@ -88,8 +85,6 @@
         max_ms: latencyRes.distribution.max_ms ?? 0,
         avg_ms: latencyRes.distribution.avg_ms ?? 0,
       };
-
-      alerts = alertsRes.alerts || [];
     } catch (e) {
       console.error("Admin fetch error:", e);
     }
@@ -140,10 +135,19 @@
     }
   }
 
+  let isExportingLogs = false;
+
   async function acknowledgeAllAlerts() {
+    if (!features.admin) {
+      notifications.add({
+        type: "error",
+        message: "Admin feature is not enabled on this server",
+      });
+      return;
+    }
+    isAcknowledgingAlerts = true;
     try {
       await api.acknowledgeAllAlerts();
-      alerts = alerts.map((a) => ({ ...a, acknowledged: true }));
       notifications.add({
         type: "success",
         message: "All alerts acknowledged",
@@ -154,44 +158,10 @@
         message:
           e instanceof Error ? e.message : "Failed to acknowledge alerts",
       });
+    } finally {
+      isAcknowledgingAlerts = false;
     }
   }
-
-  async function acknowledgeAlert(id: string) {
-    try {
-      await api.acknowledgeAlert(id);
-      alerts = alerts.map((a) =>
-        a.id === id ? { ...a, acknowledged: true } : a,
-      );
-      notifications.add({
-        type: "success",
-        message: "Alert acknowledged",
-      });
-    } catch (e) {
-      notifications.add({
-        type: "error",
-        message: e instanceof Error ? e.message : "Failed to acknowledge alert",
-      });
-    }
-  }
-
-  async function clearAllAlerts() {
-    try {
-      await api.clearAlerts();
-      alerts = [];
-      notifications.add({
-        type: "success",
-        message: "All alerts cleared",
-      });
-    } catch (e) {
-      notifications.add({
-        type: "error",
-        message: e instanceof Error ? e.message : "Failed to clear alerts",
-      });
-    }
-  }
-
-  let isExportingLogs = false;
 
   async function exportLogs(logType: string = "query", format: string = "csv") {
     if (isExportingLogs) return;
@@ -449,7 +419,7 @@
     <!-- Acknowledge All Alerts -->
     <button
       on:click={acknowledgeAllAlerts}
-      disabled={!features.admin}
+      disabled={isAcknowledgingAlerts || !features.admin}
       class="card p-5 text-left transition-colors group disabled:opacity-50 disabled:cursor-not-allowed {$darkMode
         ? 'hover:bg-gray-700/50'
         : 'hover:bg-gray-50'}"
@@ -460,33 +430,56 @@
             ? 'bg-green-900/30 group-hover:bg-green-900/50'
             : 'bg-green-100 group-hover:bg-green-200'}"
         >
-          <svg
-            class="w-6 h-6 {$darkMode ? 'text-green-400' : 'text-green-600'}"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          {#if isAcknowledgingAlerts}
+            <svg
+              class="w-6 h-6 animate-spin {$darkMode
+                ? 'text-green-400'
+                : 'text-green-600'}"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+          {:else}
+            <svg
+              class="w-6 h-6 {$darkMode ? 'text-green-400' : 'text-green-600'}"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          {/if}
         </div>
         <div>
           <div
             class="font-semibold {$darkMode ? 'text-white' : 'text-gray-900'}"
           >
-            Ack All Alerts
+            Acknowledge All
           </div>
           <div class="text-sm {$darkMode ? 'text-gray-400' : 'text-gray-700'}">
-            Mark all as read
+            Acknowledge all alerts
           </div>
         </div>
       </div>
     </button>
-
     <!-- Export Logs -->
     <button
       on:click={() => exportLogs("alerts", "csv")}
@@ -960,56 +953,6 @@
         Reload the configuration file to apply changes without restarting the
         server.
       </p>
-    </div>
-  </div>
-
-  <!-- All Alerts -->
-  <div class="card">
-    <div class="card-header flex items-center justify-between">
-      <h3
-        class="font-semibold {$darkMode
-          ? 'text-white'
-          : 'text-gray-900'} flex items-center gap-2"
-      >
-        <svg
-          class="w-5 h-5 {$darkMode ? 'text-gray-400' : 'text-gray-500'}"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-          />
-        </svg>
-        All Alerts
-      </h3>
-      <div class="flex gap-2">
-        <button
-          on:click={clearAllAlerts}
-          disabled={!features.admin}
-          class="btn-secondary text-xs py-1 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Clear All
-        </button>
-        <button
-          on:click={acknowledgeAllAlerts}
-          disabled={!features.admin}
-          class="btn-secondary text-xs py-1 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Acknowledge All
-        </button>
-      </div>
-    </div>
-    <div class="p-4">
-      <AlertsList
-        {alerts}
-        limit={20}
-        showAcknowledgeButton={true}
-        on:acknowledge={(e) => acknowledgeAlert(e.detail)}
-      />
     </div>
   </div>
 </div>
