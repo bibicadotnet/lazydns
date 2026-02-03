@@ -12,7 +12,7 @@
   const navItems = [
     { path: "/", icon: "dashboard", label: "Dashboard" },
     { path: "/metrics", icon: "chart", label: "Metrics" },
-    { path: "/audit", icon: "logs", label: "Audit Logs" },
+    { path: "/audit", icon: "logs", label: "Logs" },
     { path: "/alerts", icon: "alert", label: "Alerts" },
     { path: "/admin", icon: "settings", label: "Admin" },
   ];
@@ -36,7 +36,7 @@
     : 'bg-white border-gray-200'}"
 >
   <!-- Logo -->
-  <div class="flex items-center gap-3 flex-shrink-0">
+  <div class="flex items-center gap-3 flex-shrink-0 logo-hide-xs">
     <div
       class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-blue-600 flex items-center justify-center"
     >
@@ -166,7 +166,7 @@
   </div>
 
   <!-- Spacer -->
-  <div class="flex-1"></div>
+  <div class="flex-1 spacer-hide-xs"></div>
 
   <!-- Theme Toggle Button -->
   <button
@@ -286,5 +286,17 @@
       rgba(37, 99, 235, 0.1)
     );
     border: 1px solid rgba(59, 130, 246, 0.3);
+  }
+
+  /* Hide full logo (icon + text) on very narrow screens */
+  @media (max-width: 440px) {
+    :global(.logo-hide-xs) {
+      display: none !important;
+    }
+  }
+  @media (max-width: 420px) {
+    :global(.spacer-hide-xs) {
+      display: none !important;
+    }
   }
 </style>

@@ -130,11 +130,17 @@
   <div class="flex items-center justify-between">
     <div>
       <h1
-        class="text-2xl font-bold {$darkMode ? 'text-white' : 'text-gray-900'}"
+        class="text-2xl font-bold {$darkMode
+          ? 'text-white'
+          : 'text-gray-900'} hidden sm:block"
       >
         Metrics
       </h1>
-      <p class="{$darkMode ? 'text-gray-400' : 'text-gray-600'} mt-1">
+      <p
+        class="{$darkMode
+          ? 'text-gray-400'
+          : 'text-gray-600'} mt-1 hidden sm:inline"
+      >
         DNS performance analytics and statistics
       </p>
     </div>
