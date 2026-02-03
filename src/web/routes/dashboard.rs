@@ -24,8 +24,31 @@ pub struct DashboardOverview {
 
 /// GET /api/dashboard/overview
 pub async fn overview(State(state): State<Arc<WebState>>) -> Json<DashboardOverview> {
-    let metrics = state.metrics_collector().get_overview();
+    let mut metrics = state.metrics_collector().get_overview();
     let alert_count = state.alert_engine().recent_alert_count();
+
+    // Get accurate cache stats from CachePlugin instead of MetricsCollector
+    if let Some(registry) = state.registry()
+        && let Some(cache) = registry.get("cache")
+        && let Some(cache_plugin) = cache
+            .as_ref()
+            .as_any()
+            .downcast_ref::<crate::plugins::CachePlugin>()
+    {
+        let stats = cache_plugin.stats();
+        let cache_hits = stats.hits();
+        let cache_misses = stats.misses();
+        let total = cache_hits + cache_misses;
+
+        // Update metrics with accurate cache data from CachePlugin
+        metrics.cache_hits = cache_hits;
+        metrics.cache_misses = cache_misses;
+        metrics.cache_hit_rate = if total > 0 {
+            (cache_hits as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+    }
 
     // TODO: Track actual SSE/WS connections
     let response = DashboardOverview {
