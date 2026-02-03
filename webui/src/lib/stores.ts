@@ -6,8 +6,12 @@ import type { Alert, QueryLogEntry, SecurityEvent } from './types';
 // Theme store - with localStorage persistence
 function createDarkModeStore() {
     // Get initial value from localStorage or default to true
-    const initialValue = typeof window !== 'undefined' 
-        ? localStorage.getItem('darkMode') === 'false' ? false : true
+    const hasLocalStorage = typeof window !== 'undefined' &&
+        typeof window.localStorage !== 'undefined' &&
+        typeof window.localStorage.getItem === 'function';
+
+    const initialValue = hasLocalStorage
+        ? (window.localStorage.getItem('darkMode') === 'false' ? false : true)
         : true;
     
     const { subscribe, set, update } = writable<boolean>(initialValue);
@@ -16,15 +20,15 @@ function createDarkModeStore() {
         subscribe,
         set: (value: boolean) => {
             set(value);
-            if (typeof window !== 'undefined') {
-                localStorage.setItem('darkMode', String(value));
+            if (typeof window !== 'undefined' && typeof window.localStorage?.setItem === 'function') {
+                window.localStorage.setItem('darkMode', String(value));
             }
         },
         toggle: () => {
             update(v => {
                 const newValue = !v;
-                if (typeof window !== 'undefined') {
-                    localStorage.setItem('darkMode', String(newValue));
+                if (typeof window !== 'undefined' && typeof window.localStorage?.setItem === 'function') {
+                    window.localStorage.setItem('darkMode', String(newValue));
                 }
                 return newValue;
             });

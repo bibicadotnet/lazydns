@@ -121,6 +121,7 @@ pub fn detect_cgroup_version() -> Option<CgroupVersion> {
     }
 }
 
+#[cfg(target_os = "linux")]
 #[cfg(test)]
 mod tests {
     use super::*;

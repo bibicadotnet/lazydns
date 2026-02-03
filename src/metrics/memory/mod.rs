@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use prometheus::{IntGauge, Opts};
 use std::time::Duration;
 use tokio::time;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::metrics::METRICS_REGISTRY;
 
@@ -219,20 +219,20 @@ fn collect_memory_metrics(has_cgroup: bool) {
         }
     }
 
-    // Priority 2: Always collect /proc metrics (universal fallback)
+    // Priority 2: Always collect process memory metrics
     match proc_reader::read_proc_memory() {
         Ok(proc_stats) => {
             PROCESS_RESIDENT_MEMORY_BYTES.set(proc_stats.rss_bytes as i64);
             PROCESS_VIRTUAL_MEMORY_BYTES.set(proc_stats.vms_bytes as i64);
 
             trace!(
-                "Updated /proc memory metrics: RSS={}MB, VMS={}MB",
+                "Updated process memory metrics: RSS={}MB, VMS={}MB",
                 proc_stats.rss_bytes / (1024 * 1024),
                 proc_stats.vms_bytes / (1024 * 1024)
             );
         }
         Err(e) => {
-            error!("Failed to read /proc memory stats: {}", e);
+            debug!("Failed to read process memory stats: {}", e);
         }
     }
 }

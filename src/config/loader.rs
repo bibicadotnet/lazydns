@@ -682,9 +682,8 @@ plugins: []
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_apply_env_overrides_top_level_log_format() {
-        unsafe {
-            env::set_var("LOG_FORMAT", "json");
-        }
+        // Use a deterministic snapshot to avoid races with other tests
+        use std::collections::HashMap;
 
         let yaml = r#"
 log:
@@ -692,15 +691,16 @@ log:
   format: text
 plugins: []
 "#;
-        let config = load_from_yaml(yaml).unwrap();
+
+        let mut config: Config = serde_yaml::from_str(yaml).unwrap();
+        let mut snapshot = HashMap::new();
+        snapshot.insert("LOG_FORMAT".to_string(), "json".to_string());
+
+        apply_env_overrides_from_snapshot(&mut config, &snapshot).unwrap();
         assert_eq!(
             config.log.format, "json",
             "LOG_FORMAT should override config"
         );
-
-        unsafe {
-            env::remove_var("LOG_FORMAT");
-        }
     }
 
     #[tokio::test(flavor = "current_thread")]
