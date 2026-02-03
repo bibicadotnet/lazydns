@@ -19,11 +19,17 @@ pub async fn query_logs_stream(
     State(state): State<Arc<WebState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let keepalive_secs = state.config().sse.keepalive_secs;
+    let sse_counter = state.sse_connections();
 
     let stream = async_stream::stream! {
+        // Increment active SSE connections
+        sse_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        debug!("SSE connection established for query logs");
+
         let bus = match event_bus() {
             Some(bus) => bus,
             None => {
+                sse_counter.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                 yield Ok(Event::default()
                     .event("error")
                     .data("Event bus not available"));
@@ -32,7 +38,6 @@ pub async fn query_logs_stream(
         };
 
         let mut subscriber = bus.subscribe_queries();
-        debug!("New SSE subscriber for query logs");
 
         // Send initial connection event
         yield Ok(Event::default()
@@ -73,6 +78,10 @@ pub async fn query_logs_stream(
                 }
             }
         }
+
+        // Decrement active SSE connections when stream closes
+        sse_counter.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        debug!("SSE connection closed for query logs");
     };
 
     Sse::new(stream).keep_alive(
@@ -89,11 +98,17 @@ pub async fn security_events_stream(
     State(state): State<Arc<WebState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let keepalive_secs = state.config().sse.keepalive_secs;
+    let sse_counter = state.sse_connections();
 
     let stream = async_stream::stream! {
+        // Increment active SSE connections
+        sse_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        debug!("SSE connection established for security events");
+
         let bus = match event_bus() {
             Some(bus) => bus,
             None => {
+                sse_counter.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                 yield Ok(Event::default()
                     .event("error")
                     .data("Event bus not available"));
@@ -102,7 +117,6 @@ pub async fn security_events_stream(
         };
 
         let mut subscriber = bus.subscribe_security();
-        debug!("New SSE subscriber for security events");
 
         // Send initial connection event
         yield Ok(Event::default()
@@ -138,10 +152,15 @@ pub async fn security_events_stream(
                     }
                 }
                 _ = keepalive_interval.tick() => {
+                    // Send keepalive comment
                     yield Ok(Event::default().comment("keepalive"));
                 }
             }
         }
+
+        // Decrement active SSE connections when stream closes
+        sse_counter.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        debug!("SSE connection closed for security events");
     };
 
     Sse::new(stream).keep_alive(

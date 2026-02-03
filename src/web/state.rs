@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::plugin::Registry;
 use crate::web::config::WebConfig;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use tokio::sync::RwLock;
 
@@ -25,6 +26,10 @@ pub struct WebState {
     registry: Option<Arc<Registry>>,
     /// Global config (optional, for config reload)
     config_arc: Option<Arc<RwLock<Config>>>,
+    /// Active SSE connections counter
+    sse_connections: Arc<AtomicU64>,
+    /// Active WebSocket connections counter
+    ws_connections: Arc<AtomicU64>,
 }
 
 impl WebState {
@@ -40,6 +45,8 @@ impl WebState {
             start_time: Instant::now(),
             registry: None,
             config_arc: None,
+            sse_connections: Arc::new(AtomicU64::new(0)),
+            ws_connections: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -81,5 +88,25 @@ impl WebState {
     /// Get uptime in seconds
     pub fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
+    }
+
+    /// Get SSE connection counter
+    pub fn sse_connections(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.sse_connections)
+    }
+
+    /// Get WebSocket connection counter
+    pub fn ws_connections(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.ws_connections)
+    }
+
+    /// Get active SSE connections count
+    pub fn active_sse_connections(&self) -> u64 {
+        self.sse_connections.load(Ordering::Relaxed)
+    }
+
+    /// Get active WebSocket connections count
+    pub fn active_ws_connections(&self) -> u64 {
+        self.ws_connections.load(Ordering::Relaxed)
     }
 }

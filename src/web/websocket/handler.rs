@@ -65,7 +65,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<WebState>) {
 
     let heartbeat_secs = state.config().websocket.heartbeat_secs;
     let timeout_secs = state.config().websocket.timeout_secs;
+    let ws_counter = state.ws_connections();
 
+    // Increment active WebSocket connections
+    ws_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     info!("New WebSocket connection for metrics");
 
     // Send connected message
@@ -74,6 +77,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<WebState>) {
     };
     if let Err(e) = send_message(&mut sender, &connected_msg).await {
         error!(error = %e, "Failed to send connected message");
+        ws_counter.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         return;
     }
 
@@ -192,6 +196,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<WebState>) {
         }
     }
 
+    // Decrement active WebSocket connections when connection closes
+    ws_counter.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     info!("WebSocket connection closed");
 }
 

@@ -56,8 +56,8 @@ pub async fn overview(State(state): State<Arc<WebState>>) -> Json<DashboardOverv
         uptime_secs: state.uptime_secs(),
         metrics,
         recent_alerts: alert_count,
-        active_sse_connections: 0,
-        active_ws_connections: 0,
+        active_sse_connections: state.active_sse_connections() as usize,
+        active_ws_connections: state.active_ws_connections() as usize,
     };
 
     Json(response)
