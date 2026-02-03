@@ -166,6 +166,10 @@ impl WebServer {
                 "/dashboard/cache/stats",
                 get(routes::dashboard::cache_stats),
             )
+            .route(
+                "/dashboard/server/info",
+                get(routes::dashboard::server_info),
+            )
             .route("/alerts/recent", get(routes::dashboard::recent_alerts))
             // Metrics
             .route("/metrics/top-domains", get(routes::metrics::top_domains))

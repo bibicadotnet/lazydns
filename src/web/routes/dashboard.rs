@@ -138,13 +138,22 @@ pub async fn cache_stats(State(state): State<Arc<WebState>>) -> Json<CacheStatsR
 pub struct ServerInfoResponse {
     pub version: String,
     pub uptime_secs: u64,
+    /// Resident Set Size (RSS) in bytes - physical memory used
+    pub rss_bytes: u64,
 }
 
 /// GET /api/dashboard/server/info
 pub async fn server_info(State(state): State<Arc<WebState>>) -> Json<ServerInfoResponse> {
+    // Get current RSS memory from Prometheus metrics (if metrics feature is enabled)
+    #[cfg(feature = "metrics")]
+    let rss_bytes = crate::metrics::memory::PROCESS_RESIDENT_MEMORY_BYTES.get() as u64;
+    #[cfg(not(feature = "metrics"))]
+    let rss_bytes = 0u64;
+
     Json(ServerInfoResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_secs: state.uptime_secs(),
+        rss_bytes,
     })
 }
 

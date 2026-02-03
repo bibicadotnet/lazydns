@@ -183,6 +183,7 @@ class ApiClient {
     async getServerInfo(): Promise<{
         version: string;
         uptime_secs: number;
+        rss_bytes: number;
     }> {
         return this.fetch('/dashboard/server/info');
     }

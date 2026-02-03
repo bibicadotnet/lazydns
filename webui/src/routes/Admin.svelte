@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { formatNumber } from "../lib/utils";
+  import { formatNumber, formatBytes, formatUptime } from "../lib/utils";
   import { api } from "../lib/api";
   import { notifications, darkMode } from "../lib/stores";
   import { features } from "../lib/features.svelte";
@@ -17,6 +17,7 @@
     uptime_secs: 0,
     total_queries: 0,
     cache_size: 0,
+    rss_bytes: 0,
   };
   let cacheStats = {
     size: 0,
@@ -36,35 +37,45 @@
 
   async function fetchData() {
     try {
-      const [overviewRes, latencyRes, cacheStatsRes] = await Promise.all([
-        api.getDashboardOverview(),
-        api.getLatencyDistribution().catch(() => ({
-          distribution: {
-            buckets: [],
-            total: 0,
-            p50_ms: 0,
-            p95_ms: 0,
-            p99_ms: 0,
-            max_ms: 0,
-            avg_ms: 0,
-          },
-        })),
-        api.getCacheStats().catch(() => ({
-          size: 0,
-          hits: 0,
-          misses: 0,
-          evictions: 0,
-          expirations: 0,
-          hit_rate: 0,
-        })),
-      ]);
+      const [overviewRes, latencyRes, cacheStatsRes, serverInfoRes] =
+        await Promise.all([
+          api.getDashboardOverview(),
+          api.getLatencyDistribution().catch(() => ({
+            distribution: {
+              buckets: [],
+              total: 0,
+              p50_ms: 0,
+              p95_ms: 0,
+              p99_ms: 0,
+              max_ms: 0,
+              avg_ms: 0,
+            },
+          })),
+          api.getCacheStats().catch(() => ({
+            size: 0,
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            expirations: 0,
+            hit_rate: 0,
+          })),
+          api.getServerInfo().catch((err) => {
+            console.warn("Failed to fetch server info:", err);
+            return {
+              version: "0.3.1",
+              uptime_secs: 0,
+              rss_bytes: 0,
+            };
+          }),
+        ]);
 
       serverInfo = {
-        version: "0.3.1",
+        version: serverInfoRes.version || "0.3.1",
         status: overviewRes.status,
         uptime_secs: overviewRes.uptime_secs,
         total_queries: overviewRes.metrics.total_queries,
         cache_size: cacheStatsRes.size,
+        rss_bytes: serverInfoRes.rss_bytes || 0,
       };
 
       // Use actual cache stats from admin API
@@ -191,21 +202,6 @@
   }
 
   let refreshInterval: ReturnType<typeof setInterval>;
-
-  function formatUptime(seconds: number): string {
-    if (seconds === 0) return "0s";
-
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    if (minutes > 0) return `${minutes}m ${secs}s`;
-    return `${secs}s`;
-  }
-
   onMount(() => {
     fetchData();
     refreshInterval = setInterval(fetchData, 10000);
@@ -721,7 +717,7 @@
         </h3>
       </div>
       <div class="card-body space-y-3">
-        {#each [{ label: "Version", value: serverInfo.version }, { label: "Status", value: serverInfo.status }, { label: "Uptime", value: formatUptime(serverInfo.uptime_secs) }, { label: "Total Queries", value: formatNumber(serverInfo.total_queries) }] as item}
+        {#each [{ label: "Version", value: serverInfo.version }, { label: "Status", value: serverInfo.status }, { label: "Uptime", value: formatUptime(serverInfo.uptime_secs) }, { label: "Total Queries", value: formatNumber(serverInfo.total_queries) }, { label: "Memory (RSS)", value: formatBytes(serverInfo.rss_bytes) }] as item}
           <div
             class="flex items-center justify-between py-2 border-b {$darkMode
               ? 'border-gray-700/50'
