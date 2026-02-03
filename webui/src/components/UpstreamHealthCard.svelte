@@ -101,9 +101,7 @@
               Last OK
             </div>
             <div class={$darkMode ? "text-gray-300" : "text-gray-700"}>
-              {upstream.last_success_at
-                ? formatTimeAgo(upstream.last_success_at)
-                : "Never"}
+              {formatTimeAgo(upstream.last_success_at)}
             </div>
           </div>
         </div>

@@ -53,6 +53,12 @@ export function formatTimeAgo(timestamp: string | number | null): string {
         if (!timestamp || timestamp === '') {
             return 'Never';
         }
+        
+        // Check if it's already in relative time format (e.g., "5s ago", "2m ago")
+        if (timestamp.includes(' ago')) {
+            return timestamp;
+        }
+        
         const parsed = new Date(timestamp).getTime();
         if (isNaN(parsed)) {
             return 'Never';

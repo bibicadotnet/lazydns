@@ -105,10 +105,12 @@
 
 <div class="max-w-7xl mx-auto">
   <div class="mb-8">
-    <h1 class="text-3xl font-bold {$darkMode ? 'text-white' : 'text-gray-900'}">
+    <h1 class="text-2xl font-bold {$darkMode ? 'text-white' : 'text-gray-900'}">
       All Alerts
     </h1>
-    <p class="text-gray-500 mt-2">View all security and system alerts</p>
+    <p class="{$darkMode ? 'text-gray-400' : 'text-gray-700'} mt-1">
+      View all security and system alerts
+    </p>
   </div>
 
   {#if error}
@@ -179,6 +181,7 @@
           limit={alerts.length}
           showAcknowledgeButton={true}
           adminEnabled={features.admin}
+          showViewAllLink={false}
           on:acknowledge={(e) => acknowledgeAlert(e.detail)}
         />
       </div>

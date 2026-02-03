@@ -8,6 +8,7 @@
   export let limit: number = 5;
   export let showAcknowledgeButton: boolean = false;
   export let adminEnabled: boolean = false;
+  export let showViewAllLink: boolean = true;
 
   const dispatch = createEventDispatcher<{ acknowledge: string }>();
 
@@ -152,13 +153,15 @@
       ? 'border-gray-700'
       : 'border-gray-200'}"
   >
-    <a
-      href="#/alerts"
-      class="text-sm transition-colors {$darkMode
-        ? 'text-primary-400 hover:text-primary-300'
-        : 'text-primary-600 hover:text-primary-500'}"
-    >
-      View all alerts →
-    </a>
+    {#if showViewAllLink}
+      <a
+        href="#/alerts"
+        class="text-sm transition-colors {$darkMode
+          ? 'text-primary-400 hover:text-primary-300'
+          : 'text-primary-600 hover:text-primary-500'}"
+      >
+        View all alerts →
+      </a>
+    {/if}
   </div>
 </div>

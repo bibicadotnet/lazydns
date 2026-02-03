@@ -551,9 +551,18 @@ impl ForwardBuilder {
         }
 
         // health_checks
-        if let Some(Value::Bool(enabled)) = args.get("health_checks") {
-            builder = builder.enable_health_checks(*enabled);
-        }
+        // If web UI is enabled, automatically enable health checks to populate upstream status
+        #[cfg(feature = "web")]
+        let default_health_checks = true;
+        #[cfg(not(feature = "web"))]
+        let default_health_checks = false;
+
+        let health_checks_enabled = if let Some(Value::Bool(enabled)) = args.get("health_checks") {
+            *enabled
+        } else {
+            default_health_checks
+        };
+        builder = builder.enable_health_checks(health_checks_enabled);
 
         // max_attempts
         if let Some(Value::Number(n)) = args.get("max_attempts") {

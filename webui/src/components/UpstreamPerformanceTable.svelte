@@ -121,14 +121,10 @@
               </span>
             </td>
             <td class="text-sm {$darkMode ? 'text-gray-400' : 'text-gray-700'}">
-              {upstream.last_success_at
-                ? formatTimeAgo(upstream.last_success_at)
-                : "-"}
+              {formatTimeAgo(upstream.last_success_at) || "-"}
             </td>
             <td class="text-sm {$darkMode ? 'text-gray-400' : 'text-gray-700'}">
-              {upstream.last_failure_at
-                ? formatTimeAgo(upstream.last_failure_at)
-                : "-"}
+              {formatTimeAgo(upstream.last_failure_at) || "-"}
             </td>
           </tr>
         {/each}
