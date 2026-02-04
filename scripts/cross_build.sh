@@ -50,10 +50,40 @@ if [ "$#" -lt 1 ]; then
   exit 1
 fi
 
-PLATFORM="$1"
+ORIGINAL_PLATFORM="$1"
+PLATFORM="$ORIGINAL_PLATFORM"
 # Extra args to append to the underlying build command (can be used to pass flags like
 # --no-default-features --features "log,cron" or --release etc.)
 EXTRA_ARGS=""
+
+# If caller passed a three-segment platform like "linux/amd64/v7", trim to the
+# first two segments ("linux/amd64"). This covers common variants that include
+# a vendor/variant suffix which confuses buildx/docker expected platform string.
+case "$PLATFORM" in
+  */*/*)
+    PLATFORM="$(printf '%s' "$PLATFORM" | cut -d/ -f1-2)"
+    ;;
+esac
+
+# Normalize a few other common variants to canonical two-segment forms.
+case "$PLATFORM" in
+  linux/amd64|linux/x86_64|linux/amd64-gnu|linux/amd64_gnu)
+    # keep as-is or map later in the triple mapping
+    ;;
+  linux/arm64|linux/aarch64)
+    ;;
+  darwin/amd64|darwin/x86_64|macos/amd64)
+    PLATFORM="darwin/amd64"
+    ;;
+  darwin/arm64|darwin/aarch64|macos/arm64)
+    PLATFORM="darwin/arm64"
+    ;;
+  # leave other PLATFORM values untouched
+esac
+
+if [ "$PLATFORM" != "$ORIGINAL_PLATFORM" ]; then
+  echo "Normalized PLATFORM: '$ORIGINAL_PLATFORM' -> '$PLATFORM'"
+fi
 if [ "$#" -ge 2 ]; then
   # Join all remaining args as the extra args (POSIX sh compatible)
   shift
