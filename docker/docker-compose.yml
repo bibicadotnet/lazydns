@@ -1,11 +1,18 @@
-# lazydns Docker Compose configuration
-
-version: '3.8'
+# lazydns Docker Compose configuration (Example)
+# Podman-friendly: removed Swarm-only `deploy` section (resource limits)
+# and prefer bind-mounts / named volumes. Use `podman compose up -d`.
+#
+# Note: For rootless Podman, ensure low port binding is allowed:
+#  systemctl --user enable --now podman.socket
+#  sudo sysctl -w net.ipv4.ip_unprivileged_port_start=53
+#
+# To make persistent across reboots, create a sysctl config file:
+#  echo "net.ipv4.ip_unprivileged_port_start=53" | sudo tee /etc/sysctl.d/99-unprivileged-ports.conf
+#  sudo sysctl --system
 
 services:
   lazydns:
-    build: .
-    image: lazydns:latest
+    image: lazywalker:latest
     container_name: lazydns
     
     # Network configuration
@@ -14,27 +21,29 @@ services:
       - "53:53/tcp"  # DNS TCP
       - "853:853/tcp" # DoT
       - "443:443/tcp" # DoH
+      - "784:784/tcp" # DoQ
+      - "8000:8000/tcp" # ADMIN HTTP API
+      - "8001:8001/tcp" # METRICS HTTP API
+      - "8002:8002/tcp" # WEB UI
     
     # Volume mounts
     volumes:
-      - ./config.yaml:/etc/lazydns/config.yaml:ro
-      - ./certs:/etc/lazydns/certs:ro
-      - lazydns-cache:/var/cache/lazydns
+      - ./etc/lazydns:/etc/lazydns
+      - ./log:/var/log/lazydns
     
     # Environment variables
     environment:
-      - RUST_LOG=info
+      - RUST_LOG=debug
       - RUST_BACKTRACE=1
-    
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 128M
+      - LOG_FORMAT=text
+      - PLUGINS_AUTO_UPDATE_SCHEDULER_ARGS_JOBS_0_CRON="10 2 * * *"
+      - TZ=Asia/Shanghai
+
+    # Allow binding low ports (<1024) from non-root processes inside container.
+    # Podman/Docker: container must have the capability; rootless Podman may still
+    # restrict this—run with sudo or grant capability on the host if needed.
+    cap_add:
+      - CAP_NET_BIND_SERVICE
     
     # Restart policy
     restart: unless-stopped
@@ -48,5 +57,5 @@ services:
       start_period: 5s
 
 volumes:
-  lazydns-cache:
+  lazydns-rules:
     driver: local
