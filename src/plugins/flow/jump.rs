@@ -31,6 +31,10 @@ impl Plugin for JumpPlugin {
         ctx.set_metadata(RETURN_FLAG, true);
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl ExecPlugin for JumpPlugin {
@@ -49,7 +53,10 @@ impl ExecPlugin for JumpPlugin {
             ));
         }
 
-        Ok(Arc::new(JumpPlugin::new(target)))
+        // Strip leading $ if present (plugin reference: $plugin_name)
+        let target_name = target.strip_prefix('$').unwrap_or(target);
+
+        Ok(Arc::new(JumpPlugin::new(target_name)))
     }
 }
 
@@ -130,5 +137,29 @@ mod tests {
     fn test_jump_quick_setup_trims_whitespace() {
         let plugin = <JumpPlugin as ExecPlugin>::quick_setup("jump", "  my_target  ").unwrap();
         assert_eq!(plugin.name(), "jump");
+    }
+
+    #[test]
+    fn test_jump_quick_setup_strips_dollar_prefix() {
+        let plugin = <JumpPlugin as ExecPlugin>::quick_setup("jump", "$sequence_gfwlist").unwrap();
+        assert_eq!(plugin.name(), "jump");
+        let jp = plugin.as_any().downcast_ref::<JumpPlugin>().unwrap();
+        assert_eq!(jp.target(), "sequence_gfwlist");
+    }
+
+    #[test]
+    fn test_jump_quick_setup_strips_dollar_with_whitespace() {
+        let plugin = <JumpPlugin as ExecPlugin>::quick_setup("jump", "  $my_sequence  ").unwrap();
+        assert_eq!(plugin.name(), "jump");
+        let jp = plugin.as_any().downcast_ref::<JumpPlugin>().unwrap();
+        assert_eq!(jp.target(), "my_sequence");
+    }
+
+    #[test]
+    fn test_jump_quick_setup_accepts_target_without_dollar() {
+        let plugin = <JumpPlugin as ExecPlugin>::quick_setup("jump", "target_name").unwrap();
+        assert_eq!(plugin.name(), "jump");
+        let jp = plugin.as_any().downcast_ref::<JumpPlugin>().unwrap();
+        assert_eq!(jp.target(), "target_name");
     }
 }

@@ -56,11 +56,23 @@ PLATFORM="$ORIGINAL_PLATFORM"
 # --no-default-features --features "log,cron" or --release etc.)
 EXTRA_ARGS=""
 
-# If caller passed a three-segment platform like "linux/amd64/v7", trim to the
-# first two segments ("linux/amd64"). This covers common variants that include
-# a vendor/variant suffix which confuses buildx/docker expected platform string.
+# Special handling for ARM variants: preserve v6/v7 suffix while removing vendor/variant
+# e.g. linux/arm/v7/something -> linux/arm/v7, but linux/arm -> stays as is
 case "$PLATFORM" in
+  linux/arm/v6/*)
+    PLATFORM="linux/arm/v6"
+    ;;
+  linux/arm/v6)
+    # already normalized
+    ;;
+  linux/arm/v7/*)
+    PLATFORM="linux/arm/v7"
+    ;;
+  linux/arm/v7)
+    # already normalized
+    ;;
   */*/*)
+    # For other three-segment platforms, trim to first two segments
     PLATFORM="$(printf '%s' "$PLATFORM" | cut -d/ -f1-2)"
     ;;
 esac
@@ -69,6 +81,9 @@ esac
 case "$PLATFORM" in
   linux/amd64|linux/x86_64|linux/amd64-gnu|linux/amd64_gnu)
     # keep as-is or map later in the triple mapping
+    ;;
+  linux/arm/v6|linux/arm/v7)
+    # keep ARM variants with version info as-is
     ;;
   linux/arm64|linux/aarch64)
     ;;

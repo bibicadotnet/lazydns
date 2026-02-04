@@ -27,6 +27,10 @@ impl Plugin for GotoPlugin {
     fn name(&self) -> &str {
         "goto"
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl ExecPlugin for GotoPlugin {
@@ -38,13 +42,17 @@ impl ExecPlugin for GotoPlugin {
             )));
         }
 
-        if exec_str.trim().is_empty() {
+        let target = exec_str.trim();
+        if target.is_empty() {
             return Err(crate::Error::Config(
                 "goto exec action requires a label argument".to_string(),
             ));
         }
 
-        Ok(Arc::new(GotoPlugin::new(exec_str.trim())))
+        // Strip leading $ if present (plugin reference: $plugin_name)
+        let target_name = target.strip_prefix('$').unwrap_or(target);
+
+        Ok(Arc::new(GotoPlugin::new(target_name)))
     }
 }
 
@@ -117,5 +125,29 @@ mod tests {
     fn test_goto_quick_setup_trims_whitespace() {
         let plugin = <GotoPlugin as ExecPlugin>::quick_setup("goto", "  my_label  ").unwrap();
         assert_eq!(plugin.name(), "goto");
+    }
+
+    #[test]
+    fn test_goto_quick_setup_strips_dollar_prefix() {
+        let plugin = <GotoPlugin as ExecPlugin>::quick_setup("goto", "$sequence_gfwlist").unwrap();
+        assert_eq!(plugin.name(), "goto");
+        let gp = plugin.as_any().downcast_ref::<GotoPlugin>().unwrap();
+        assert_eq!(gp.label, "sequence_gfwlist");
+    }
+
+    #[test]
+    fn test_goto_quick_setup_strips_dollar_with_whitespace() {
+        let plugin = <GotoPlugin as ExecPlugin>::quick_setup("goto", "  $my_sequence  ").unwrap();
+        assert_eq!(plugin.name(), "goto");
+        let gp = plugin.as_any().downcast_ref::<GotoPlugin>().unwrap();
+        assert_eq!(gp.label, "my_sequence");
+    }
+
+    #[test]
+    fn test_goto_quick_setup_accepts_label_without_dollar() {
+        let plugin = <GotoPlugin as ExecPlugin>::quick_setup("goto", "label_name").unwrap();
+        assert_eq!(plugin.name(), "goto");
+        let gp = plugin.as_any().downcast_ref::<GotoPlugin>().unwrap();
+        assert_eq!(gp.label, "label_name");
     }
 }
