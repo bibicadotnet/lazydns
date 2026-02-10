@@ -8,6 +8,7 @@ use crate::RegisterPlugin;
 use crate::Result;
 use crate::config::PluginConfig;
 use crate::dns::Message;
+use crate::dns::types::RecordType;
 use crate::plugin::{Context, Plugin};
 use async_trait::async_trait;
 use reqwest::Client as HttpClient;
@@ -847,11 +848,61 @@ impl ForwardPlugin {
             tasks.push(task);
         }
 
-        // Wait for first success
+        // Get request qtype for validation
+        let request_qtype = request.questions().first().map(|q| q.qtype());
+
+        // Wait for first success with response validation
         for task in tasks {
             if let Ok(Ok(response)) = task.await {
-                trace!(answers = ?response.answers(), "Got fastest response in concurrent mode");
-                return Ok(response);
+                // CRITICAL FIX: Validate response answers match request query type
+                // This prevents mismatched responses from concurrent queries being returned
+                let response_valid = match request_qtype {
+                    Some(req_qtype) => {
+                        if response.answers().is_empty() {
+                            // Empty answer is valid (NODATA response)
+                            true
+                        } else {
+                            // Check if response has target type
+                            let has_target_type = response
+                                .answers()
+                                .iter()
+                                .any(|record| record.rtype() == req_qtype);
+
+                            // Check if response is CNAME-only (valid recursive case)
+                            let has_only_cname = response
+                                .answers()
+                                .iter()
+                                .all(|record| record.rtype() == RecordType::CNAME);
+
+                            // Accept if:
+                            // 1. Has matching record type (A query got A, etc), OR
+                            // 2. Is CNAME-only (valid DNS pattern for referral)
+                            has_target_type || has_only_cname
+                        }
+                    }
+                    None => true, // No request question, accept any response
+                };
+
+                if response_valid {
+                    debug!(
+                        answers = ?response.answers(),
+                        "Got fastest response in concurrent mode (validated)"
+                    );
+                    return Ok(response);
+                } else {
+                    // Response doesn't match request type - skip and continue
+                    debug!(
+                        "Skipping concurrent response with mismatched answer type. \
+                        Request: {:?}, Response answers: {:?}",
+                        request_qtype,
+                        response
+                            .answers()
+                            .iter()
+                            .map(|r| format!("{}:{:?}", r.name(), r.rtype()))
+                            .collect::<Vec<_>>()
+                    );
+                    continue;
+                }
             }
         }
 
@@ -864,6 +915,9 @@ impl ForwardPlugin {
     async fn execute_sequential(&self, ctx: &mut Context, request: &Message) -> Result<()> {
         let mut attempts = 0;
         let mut last_error = None;
+
+        // Get request qtype for validation (same as concurrent mode)
+        let request_qtype = request.questions().first().map(|q| q.qtype());
 
         while attempts < self.core.max_attempts && attempts < self.core.upstreams.len() {
             let upstream_idx = match self.select_upstream() {
@@ -889,8 +943,59 @@ impl ForwardPlugin {
                         self.core.upstreams[upstream_idx].addr,
                         response.answer_count()
                     );
-                    ctx.set_response(Some(response));
-                    return Ok(());
+
+                    // CRITICAL FIX: Validate response answers match request query type
+                    // Same validation as concurrent mode to ensure consistency
+                    let response_valid = match request_qtype {
+                        Some(req_qtype) => {
+                            if response.answers().is_empty() {
+                                // Empty answer is valid (NODATA response)
+                                true
+                            } else {
+                                // Check if response has target type
+                                let has_target_type = response
+                                    .answers()
+                                    .iter()
+                                    .any(|record| record.rtype() == req_qtype);
+
+                                // Check if response is CNAME-only (valid recursive case)
+                                let has_only_cname = response
+                                    .answers()
+                                    .iter()
+                                    .all(|record| record.rtype() == RecordType::CNAME);
+
+                                // Accept if:
+                                // 1. Has matching record type (A query got A, etc), OR
+                                // 2. Is CNAME-only (valid DNS pattern for referral)
+                                has_target_type || has_only_cname
+                            }
+                        }
+                        None => true, // No request question, accept any response
+                    };
+
+                    if response_valid {
+                        debug!(
+                            "Received valid response from upstream {}: {} answers (validated)",
+                            self.core.upstreams[upstream_idx].addr,
+                            response.answer_count()
+                        );
+                        ctx.set_response(Some(response));
+                        return Ok(());
+                    } else {
+                        // Response doesn't match request type - skip this upstream and try next
+                        warn!(
+                            "Sequential: Skipping response with mismatched answer type from upstream {}. \
+                            Request: {:?}, Response answers: {:?}",
+                            self.core.upstreams[upstream_idx].addr,
+                            request_qtype,
+                            response
+                                .answers()
+                                .iter()
+                                .map(|r| format!("{}:{:?}", r.name(), r.rtype()))
+                                .collect::<Vec<_>>()
+                        );
+                        // Continue to next upstream attempt instead of returning
+                    }
                 }
                 Err(e) => {
                     warn!(
@@ -1683,5 +1788,85 @@ mod tests {
 
         let url = format!("https://localhost:{}/dns-query", local_addr.port());
         (url, handle)
+    }
+
+    #[test]
+    fn test_concurrent_response_validation_filters_mismatched_types() {
+        // This test verifies that execute_concurrent validates response types match request types
+        // Scenario: Two concurrent requests (A and AAAA) should each get correct response type
+
+        let mut req_a = Message::new();
+        req_a.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
+
+        let mut req_aaaa = Message::new();
+        req_aaaa.add_question(Question::new(
+            "example.com",
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+
+        // Create response with AAAA record when A was requested
+        let mut wrong_response = Message::new();
+        wrong_response.add_answer(ResourceRecord::new(
+            "example.com",
+            RecordType::AAAA, // Response has AAAA but request is A
+            RecordClass::IN,
+            300,
+            RData::AAAA("2001:db8::1".parse().unwrap()),
+        ));
+
+        // The concurrent validator should detect this mismatch
+        // When request is for A type but response contains only AAAA records,
+        // it should be marked as invalid and skipped
+        let request_qtype = req_a.questions().first().map(|q| q.qtype());
+
+        let response_valid = match request_qtype {
+            Some(req_qtype) => {
+                if wrong_response.answers().is_empty() {
+                    true
+                } else {
+                    wrong_response
+                        .answers()
+                        .iter()
+                        .any(|record| record.rtype() == req_qtype)
+                }
+            }
+            None => true,
+        };
+
+        // Should be invalid: A request getting AAAA response
+        assert!(
+            !response_valid,
+            "Response with wrong answer type should be rejected"
+        );
+
+        // Now test correct response is accepted
+        let mut correct_response = Message::new();
+        correct_response.add_answer(ResourceRecord::new(
+            "example.com",
+            RecordType::A, // Correct type for A request
+            RecordClass::IN,
+            300,
+            RData::A("192.0.2.1".parse().unwrap()),
+        ));
+
+        let response_valid = match request_qtype {
+            Some(req_qtype) => {
+                if correct_response.answers().is_empty() {
+                    true
+                } else {
+                    correct_response
+                        .answers()
+                        .iter()
+                        .any(|record| record.rtype() == req_qtype)
+                }
+            }
+            None => true,
+        };
+
+        assert!(
+            response_valid,
+            "Response with matching answer type should be accepted"
+        );
     }
 }

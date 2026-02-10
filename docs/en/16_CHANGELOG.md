@@ -2,6 +2,14 @@
 
 This file contains high-level release notes and migration guidance.
 
+## Release v0.3.13 - 2026-2-15
+
+**Summary**: Patch release fixing A/AAAA response type mismatch in Forward plugin's concurrent mode, which caused incorrect caching and response serving.
+
+- fix(cache): sync question section with current request to prevent mismatches
+- fix(forward): validate response types against request types in concurrent queries
+- chore(deps): bump to latest deps with cargo update
+
 ## Release v0.3.10 - 2026-02-03
 
 **Platform & Metrics**

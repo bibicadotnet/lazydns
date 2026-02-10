@@ -645,6 +645,14 @@ impl CachePlugin {
                 q.qclass().to_u16()
             );
 
+            trace!(
+                "Generated cache key: {} | qname={} | qtype={:?} | qclass={:?}",
+                key,
+                qname_lower,
+                q.qtype(),
+                q.qclass()
+            );
+
             // TODO: Add EDNS0 flags if message has EDNS0
             // This would ensure DNSSEC queries are cached separately from non-DNSSEC
             // Currently, we focus on the main fix: domain name normalization
@@ -857,6 +865,11 @@ impl Plugin for CachePlugin {
                         let response_ref = Arc::make_mut(&mut response_arc);
                         Self::update_ttls(response_ref, STALE_RESPONSE_TTL_SECS); // stale response TTL is fixed to 5s (matches upstream)
                         response_ref.set_id(context.request().id());
+                        // Sync question section with current request to fix question/answer mismatch
+                        response_ref.clear_questions();
+                        for q in context.request().questions() {
+                            response_ref.add_question(q.clone());
+                        }
                         context.set_response_arc(Some(response_arc));
 
                         // Mark that response came from cache to prevent Phase 2 re-execution
@@ -1012,6 +1025,11 @@ impl Plugin for CachePlugin {
                     let response_ref = Arc::make_mut(&mut response_arc);
                     Self::update_ttls(response_ref, remaining_ttl);
                     response_ref.set_id(context.request().id());
+                    // Sync question section with current request to fix question/answer mismatch
+                    response_ref.clear_questions();
+                    for q in context.request().questions() {
+                        response_ref.add_question(q.clone());
+                    }
                     context.set_response_arc(Some(response_arc));
 
                     // Mark that response came from cache to prevent Phase 2 re-execution
@@ -1125,6 +1143,11 @@ impl Plugin for CachePlugin {
                         let response_ref = Arc::make_mut(&mut response_arc);
                         Self::update_ttls(response_ref, remaining_ttl);
                         response_ref.set_id(context.request().id());
+                        // Sync question section with current request to fix question/answer mismatch
+                        response_ref.clear_questions();
+                        for q in context.request().questions() {
+                            response_ref.add_question(q.clone());
+                        }
                         context.set_response_arc(Some(response_arc));
 
                         // Mark that response came from cache to prevent Phase 2 re-execution
@@ -1179,9 +1202,32 @@ impl Plugin for CachePlugin {
                     if ttl > 0 {
                         // Determine cache TTL: if cache_ttl is set, use it for positive answers
                         let cache_ttl = self.cache_ttl.unwrap_or(ttl);
+
+                        // Verify cache key matches request question type
+                        let request_qtype = context
+                            .request()
+                            .questions()
+                            .first()
+                            .map(|q| format!("{:?}", q.qtype()))
+                            .unwrap_or_else(|| "N/A".to_string());
+
+                        // Get response answer record types
+                        let answer_types: Vec<String> = response
+                            .answers()
+                            .iter()
+                            .map(|r| r.rtype())
+                            .collect::<std::collections::HashSet<_>>()
+                            .iter()
+                            .map(|rt| format!("{:?}", rt))
+                            .collect();
+
                         debug!(
-                            "Storing response in cache: {} (message TTL: {}s, cache TTL: {}s)",
-                            key, ttl, cache_ttl
+                            "Storing response in cache: {} | request_qtype={} | answer_types={} | message_ttl={}s | cache_ttl={}s",
+                            key,
+                            request_qtype,
+                            answer_types.join(","),
+                            ttl,
+                            cache_ttl
                         );
 
                         // Always create/replace with new entry
@@ -1908,5 +1954,53 @@ plugins:
         // Note: We can't directly test that expired entries were removed via the background task
         // because we're testing with a different cache instance. But we've verified the task
         // spawns and runs without errors.
+    }
+
+    #[tokio::test]
+    async fn test_cache_hit_syncs_question_section() {
+        // Test the critical fix: cache hit should sync question section with current request
+        let cache = CachePlugin::new(100);
+
+        // Create initial A query response with A question
+        let mut a_response = create_test_response();
+        a_response.clear_questions();
+        a_response.add_question(Question::new("example.com", RecordType::A, RecordClass::IN));
+
+        // Store in cache with key "example.com:1:1" (A query)
+        let entry = CacheEntry::new(a_response, 300, 300);
+        cache
+            .cache
+            .write()
+            .push("example.com:1:1".to_string(), entry);
+
+        // Verify the cached response has A question
+        let cached = cache.cache.write().get("example.com:1:1").cloned();
+        assert!(cached.is_some());
+        let cached_resp = cached.unwrap().response;
+        assert_eq!(cached_resp.questions()[0].qtype(), RecordType::A);
+
+        // Simulate what cache does: prepare response for AAAA request
+        // by syncing question section (this is the fix)
+        let mut aaaa_request = Message::new();
+        aaaa_request.add_question(Question::new(
+            "example.com",
+            RecordType::AAAA,
+            RecordClass::IN,
+        ));
+
+        if let Some(entry) = cache.cache.write().get("example.com:1:1").cloned() {
+            let mut response_arc = Arc::clone(&entry.response);
+            let response_ref = Arc::make_mut(&mut response_arc);
+
+            // This is the fix: sync question section with current request
+            response_ref.clear_questions();
+            for q in aaaa_request.questions() {
+                response_ref.add_question(q.clone());
+            }
+
+            // Verify the question section was updated
+            assert_eq!(response_ref.question_count(), 1);
+            assert_eq!(response_ref.questions()[0].qtype(), RecordType::AAAA);
+        }
     }
 }

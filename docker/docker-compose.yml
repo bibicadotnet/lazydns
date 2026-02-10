@@ -9,6 +9,12 @@
 # To make persistent across reboots, create a sysctl config file:
 #  echo "net.ipv4.ip_unprivileged_port_start=53" | sudo tee /etc/sysctl.d/99-unprivileged-ports.conf
 #  sudo sysctl --system
+#
+# Run with `--service-ports` to ensure all ports are exposed, especially for rootless Podman.
+# Example usage:
+#  podman compose -f docker-compose.yml run --rm --service-ports -it lazydns
+#  podman compose -f docker-compose.yml up -d
+
 
 services:
   lazydns:
@@ -47,14 +53,6 @@ services:
     
     # Restart policy
     restart: unless-stopped
-    
-    # Health check
-    healthcheck:
-      test: ["CMD", "dig", "@127.0.0.1", "-p", "53", "health.check"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
 
 volumes:
   lazydns-rules:
