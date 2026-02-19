@@ -1178,6 +1178,19 @@ impl Plugin for CachePlugin {
                 .is_none()
                 && let Some(response) = context.response()
             {
+                // IMPORTANT: Recompute cache key here because the request may have been modified
+                // by plugins like redirect between Phase 1 and Phase 2. If we use the old key
+                // computed in Phase 1, we'll cache responses with the wrong domain name.
+                // Example: Query asks for release-assets.githubusercontent.com, redirect plugin
+                // changes it to ping.archlinux.org, and we must cache under the NEW key.
+                let phase2_key = match Self::make_key(context.request()) {
+                    Some(k) => k,
+                    None => {
+                        debug!("Cannot generate cache key in Phase 2, no questions in request");
+                        return Ok(());
+                    }
+                };
+
                 let response_code = response.response_code();
                 let is_error = response_code != crate::dns::ResponseCode::NoError;
                 // Handle negative caching
@@ -1191,7 +1204,7 @@ impl Plugin for CachePlugin {
 
                         let cache_ttl = self.cache_ttl.unwrap_or(self.negative_ttl);
                         let entry = CacheEntry::new(response.clone(), self.negative_ttl, cache_ttl);
-                        self.store(key.clone(), entry);
+                        self.store(phase2_key.clone(), entry);
                     } else {
                         debug!("Not caching error response: {:?}", response_code);
                     }
@@ -1223,7 +1236,7 @@ impl Plugin for CachePlugin {
 
                         debug!(
                             "Storing response in cache: {} | request_qtype={} | answer_types={} | message_ttl={}s | cache_ttl={}s",
-                            key,
+                            phase2_key,
                             request_qtype,
                             answer_types.join(","),
                             ttl,
@@ -1233,7 +1246,7 @@ impl Plugin for CachePlugin {
                         // Always create/replace with new entry
                         // This resets original_ttl for the new cache cycle
                         let entry = CacheEntry::new(response.clone(), ttl, cache_ttl);
-                        self.store(key.clone(), entry);
+                        self.store(phase2_key.clone(), entry);
                     }
                 }
             }
